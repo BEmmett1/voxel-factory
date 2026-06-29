@@ -2,6 +2,7 @@
 
 in vec3 vNormal;
 in vec3 vColor;
+in float vEmissive;
 
 out vec4 FragColor;
 
@@ -16,5 +17,7 @@ void main() {
     }
     float diffuse = max(dot(normalize(vNormal), normalize(-uLightDir)), 0.0);
     float shade = 0.35 + 0.65 * diffuse; // ambient + directional
-    FragColor = vec4(vColor * shade, 1.0);
+    // Energized power blocks self-illuminate so satisfied networks glow.
+    vec3 color = vColor * shade + vEmissive * vColor;
+    FragColor = vec4(min(color, vec3(1.0)), 1.0);
 }

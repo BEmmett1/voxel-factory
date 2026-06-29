@@ -63,6 +63,14 @@ interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 
 ## Roadmap
 
-M0 (done): window + fly camera + face-culled voxel scene. Next: multi-chunk world +
-texture atlas (M1), block place/break via raycast (M2), tick-driven machines (M3),
-power networks (M4), conveyor item transport (M5), machine recipes (M6).
+Done:
+- **M0** — window + fly camera + face-culled voxel scene.
+- **M2** — block place/break via center-screen raycast, block selection (1-7), target
+  outline (`Raycast.*`, editing in `VoxelGame`).
+- **M4** — power networks: connected-component solve over adjacent generator/wire/machine
+  blocks; satisfied networks (production >= demand) render energized via a per-vertex
+  emissive term (`PowerSystem.*`, `ChunkMesher`, `voxel.frag`). Recomputed on each edit.
+
+Next: multi-chunk world + texture atlas (M1), tick-driven machine behavior (M3), conveyor
+item transport (M5), machine recipes that close the loop (M6). The fixed 20 Hz `onTick()`
+hook is in place for when simulation state changes continuously (M5+).

@@ -76,8 +76,11 @@ void VoxelGame::buildWorld() {
 }
 
 void VoxelGame::rebuildMesh() {
-    const std::vector<float> data = ChunkMesher::build(*m_chunk, glm::vec3(0.0f));
-    m_mesh.upload(data, {3, 3, 3}); // position, normal, color
+    // Power state is a function of the chunk's topology, so recompute it here —
+    // the only time it can change in this milestone is when a block is edited.
+    m_power = PowerSystem::solve(*m_chunk);
+    const std::vector<float> data = ChunkMesher::build(*m_chunk, glm::vec3(0.0f), m_power);
+    m_mesh.upload(data, {3, 3, 3, 1}); // position, normal, color, emissive
     m_chunk->clearDirty();
 }
 

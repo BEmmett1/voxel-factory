@@ -4,6 +4,7 @@ add_executable(voxel-factory
     src/Chunk.cpp
     src/ChunkMesher.cpp
     src/Raycast.cpp
+    src/PowerSystem.cpp
     src/VoxelGame.cpp
 )
 

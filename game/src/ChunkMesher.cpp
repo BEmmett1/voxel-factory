@@ -37,7 +37,7 @@ namespace {
     }};
 
     void pushVertex(std::vector<float>& out, const glm::vec3& pos,
-                    const glm::vec3& normal, const glm::vec3& color) {
+                    const glm::vec3& normal, const glm::vec3& color, float emissive) {
         out.push_back(pos.x);
         out.push_back(pos.y);
         out.push_back(pos.z);
@@ -47,14 +47,19 @@ namespace {
         out.push_back(color.x);
         out.push_back(color.y);
         out.push_back(color.z);
+        out.push_back(emissive);
     }
 
 } // namespace
 
 namespace ChunkMesher {
 
-    std::vector<float> build(const Chunk& chunk, const glm::vec3& origin) {
+    std::vector<float> build(const Chunk& chunk, const glm::vec3& origin,
+                             const PowerState& power) {
         std::vector<float> out;
+
+        // How strongly an energized power block self-illuminates.
+        constexpr float kEnergizedEmissive = 0.7f;
 
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int y = 0; y < CHUNK_SIZE; ++y) {
@@ -63,6 +68,7 @@ namespace ChunkMesher {
                     if (!isSolid(id)) continue;
 
                     const glm::vec3 color = blockInfo(id).color;
+                    const float emissive = power.energized(x, y, z) ? kEnergizedEmissive : 0.0f;
                     const glm::vec3 base = origin + glm::vec3(x, y, z);
 
                     for (const Face& f : kFaces) {
@@ -77,13 +83,13 @@ namespace ChunkMesher {
                         const glm::vec3 c2 = base + f.corners[2];
                         const glm::vec3 c3 = base + f.corners[3];
 
-                        pushVertex(out, c0, f.normal, color);
-                        pushVertex(out, c1, f.normal, color);
-                        pushVertex(out, c2, f.normal, color);
+                        pushVertex(out, c0, f.normal, color, emissive);
+                        pushVertex(out, c1, f.normal, color, emissive);
+                        pushVertex(out, c2, f.normal, color, emissive);
 
-                        pushVertex(out, c0, f.normal, color);
-                        pushVertex(out, c2, f.normal, color);
-                        pushVertex(out, c3, f.normal, color);
+                        pushVertex(out, c0, f.normal, color, emissive);
+                        pushVertex(out, c2, f.normal, color, emissive);
+                        pushVertex(out, c3, f.normal, color, emissive);
                     }
                 }
             }

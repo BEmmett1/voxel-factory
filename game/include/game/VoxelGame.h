@@ -5,6 +5,7 @@
 #include "engine/Mesh.h"
 #include "game/Chunk.h"
 #include "game/Block.h"
+#include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
 #include <memory>
@@ -32,6 +33,7 @@ private:
     engine::Mesh   m_mesh;
     engine::Mesh   m_highlightMesh;
     std::unique_ptr<Chunk> m_chunk;
+    PowerState m_power; // which cells are energized; refreshed on every edit
 
     BlockId    m_selectedBlock = BlockId::Stone;
     bool       m_hasTarget = false;   // is the center ray pointing at a block?
