@@ -1,0 +1,36 @@
+#pragma once
+
+#include <SDL3/SDL.h>
+
+namespace engine {
+
+    // Per-frame keyboard/mouse state with edge detection. The Application feeds
+    // it SDL events each frame; game code queries it in onUpdate.
+    class Input {
+    public:
+        // Call once at the start of each frame, before polling events.
+        void newFrame();
+        void handleEvent(const SDL_Event& e);
+
+        bool isKeyDown(SDL_Scancode sc) const;
+        bool wasKeyPressed(SDL_Scancode sc) const;   // true only on the frame it went down
+
+        bool isMouseDown(int button) const;
+        bool wasMousePressed(int button) const;
+
+        // Relative mouse motion accumulated this frame (for FPS look).
+        float mouseRelX() const { return m_relX; }
+        float mouseRelY() const { return m_relY; }
+
+    private:
+        static constexpr int kMouseButtons = 8;
+
+        bool  m_keyDown[SDL_SCANCODE_COUNT] = {};
+        bool  m_keyPrev[SDL_SCANCODE_COUNT] = {};
+        bool  m_mouseDown[kMouseButtons] = {};
+        bool  m_mousePrev[kMouseButtons] = {};
+        float m_relX = 0.0f;
+        float m_relY = 0.0f;
+    };
+
+} // namespace engine

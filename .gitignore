@@ -1,0 +1,12 @@
+# Build output
+out/
+build/
+cmake-build-*/
+
+# Visual Studio
+.vs/
+*.user
+
+# OS junk
+Thumbs.db
+.DS_Store
