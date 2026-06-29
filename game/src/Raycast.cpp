@@ -1,12 +1,12 @@
 #include "game/Raycast.h"
 
-#include "game/Chunk.h"
+#include "game/World.h"
 #include "game/Block.h"
 
 #include <cmath>
 #include <limits>
 
-RaycastHit raycastVoxel(const Chunk& chunk, const glm::vec3& origin,
+RaycastHit raycastVoxel(const World& world, const glm::vec3& origin,
                         const glm::vec3& dir, float maxDistance) {
     RaycastHit result;
 
@@ -45,7 +45,7 @@ RaycastHit raycastVoxel(const Chunk& chunk, const glm::vec3& origin,
     float t = 0.0f;
 
     while (t <= maxDistance) {
-        if (chunk.inBounds(x, y, z) && isSolid(chunk.get(x, y, z))) {
+        if (isSolid(world.getBlock(x, y, z))) {
             result.hit = true;
             result.block = {x, y, z};
             result.normal = normal;

@@ -1,28 +1,27 @@
 #pragma once
 
-#include "game/Chunk.h"
 #include "game/Block.h"
+#include "game/HashIVec3.h"
 
-#include <array>
+#include <glm/glm.hpp>
+#include <unordered_set>
 
-// Per-cell result of a power solve: which blocks belong to a satisfied power
-// network (and should therefore render as "energized").
+class World;
+
+// Which world cells belong to a satisfied power network (and so render as
+// "energized"). Stored sparsely — only energized cells are present.
 class PowerState {
 public:
-    bool energized(int x, int y, int z) const {
-        if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
-            return false;
-        return m_energized[idx(x, y, z)];
+    bool energized(int wx, int wy, int wz) const {
+        return m_energized.find({wx, wy, wz}) != m_energized.end();
     }
-    void setEnergized(int x, int y, int z, bool v) { m_energized[idx(x, y, z)] = v; }
+    void setEnergized(const glm::ivec3& c) { m_energized.insert(c); }
 
-    bool operator==(const PowerState&) const = default;
+    bool operator==(const PowerState& other) const { return m_energized == other.m_energized; }
+    bool operator!=(const PowerState& other) const { return !(*this == other); }
 
 private:
-    static int idx(int x, int y, int z) {
-        return x + CHUNK_SIZE * (y + CHUNK_SIZE * z);
-    }
-    std::array<bool, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE> m_energized{}; // all false
+    std::unordered_set<glm::ivec3, IVec3Hash> m_energized;
 };
 
 namespace PowerSystem {
@@ -33,7 +32,8 @@ namespace PowerSystem {
     int production(BlockId id);
     int demand(BlockId id);
 
-    // Find connected power networks and mark every cell of each *satisfied*
-    // network (production >= demand, with some production) as energized.
-    PowerState solve(const Chunk& chunk);
+    // Find connected power networks across the world and mark every cell of
+    // each *satisfied* network (production >= demand, with some production)
+    // as energized.
+    PowerState solve(const World& world);
 }

@@ -5,6 +5,7 @@ add_library(engine STATIC
     src/Camera.cpp
     src/Shader.cpp
     src/Mesh.cpp
+    src/Texture.cpp
     src/Application.cpp
 )
 

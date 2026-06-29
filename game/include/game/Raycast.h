@@ -2,7 +2,7 @@
 
 #include <glm/glm.hpp>
 
-class Chunk;
+class World;
 
 // Result of marching a ray through the voxel grid.
 struct RaycastHit {
@@ -12,7 +12,7 @@ struct RaycastHit {
                            // empty cell to place a new block into
 };
 
-// March a ray (origin + t*dir) through the chunk and return the first solid
+// March a ray (origin + t*dir) through the world and return the first solid
 // block within maxDistance, using the Amanatides & Woo voxel traversal.
-RaycastHit raycastVoxel(const Chunk& chunk, const glm::vec3& origin,
+RaycastHit raycastVoxel(const World& world, const glm::vec3& origin,
                         const glm::vec3& dir, float maxDistance);

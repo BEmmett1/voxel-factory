@@ -70,7 +70,12 @@ Done:
 - **M4** — power networks: connected-component solve over adjacent generator/wire/machine
   blocks; satisfied networks (production >= demand) render energized via a per-vertex
   emissive term (`PowerSystem.*`, `ChunkMesher`, `voxel.frag`). Recomputed on each edit.
+- **M1** — multi-chunk `World` (sparse chunk map, world-coord get/set; raycast/power/mesher
+  all operate across chunk boundaries), a procedurally generated block texture atlas
+  (`Atlas.*` + `engine::Texture`, no art assets), and a screen-space crosshair. The world
+  currently renders as one combined buffer rebuilt on edit; per-chunk meshes are a future
+  perf step.
 
-Next: multi-chunk world + texture atlas (M1), tick-driven machine behavior (M3), conveyor
-item transport (M5), machine recipes that close the loop (M6). The fixed 20 Hz `onTick()`
-hook is in place for when simulation state changes continuously (M5+).
+Next: tick-driven machine behavior (M3), conveyor item transport (M5), machine recipes
+that close the loop (M6). The fixed 20 Hz `onTick()` hook is in place for when simulation
+state changes continuously (M5+).
