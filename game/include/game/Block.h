@@ -26,6 +26,9 @@ struct BlockInfo {
 // Static properties for a block type.
 const BlockInfo& blockInfo(BlockId id);
 
+// Human-readable name, e.g. for UI / window title.
+const char* blockName(BlockId id);
+
 inline bool isSolid(BlockId id) {
     return blockInfo(id).solid;
 }

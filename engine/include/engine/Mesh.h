@@ -20,7 +20,7 @@ namespace engine {
         Mesh& operator=(Mesh&& other) noexcept;
 
         void upload(const std::vector<float>& data, const std::vector<int>& attributeSizes);
-        void draw() const;
+        void draw(GLenum mode = GL_TRIANGLES) const;
 
         bool empty() const { return m_vertexCount == 0; }
 

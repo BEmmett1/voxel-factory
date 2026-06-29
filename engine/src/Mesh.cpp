@@ -70,10 +70,10 @@ namespace engine {
         glBindVertexArray(0);
     }
 
-    void Mesh::draw() const {
+    void Mesh::draw(GLenum mode) const {
         if (m_vertexCount == 0) return;
         glBindVertexArray(m_vao);
-        glDrawArrays(GL_TRIANGLES, 0, m_vertexCount);
+        glDrawArrays(mode, 0, m_vertexCount);
         glBindVertexArray(0);
     }
 

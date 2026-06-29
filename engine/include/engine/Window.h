@@ -24,6 +24,7 @@ namespace engine {
         float aspect() const;
 
         void setRelativeMouse(bool enabled);
+        void setTitle(const std::string& title);
 
         SDL_Window* handle() const { return m_window; }
 

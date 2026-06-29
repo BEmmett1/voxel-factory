@@ -88,4 +88,8 @@ namespace engine {
         SDL_SetWindowRelativeMouseMode(m_window, enabled);
     }
 
+    void Window::setTitle(const std::string& title) {
+        SDL_SetWindowTitle(m_window, title.c_str());
+    }
+
 } // namespace engine

@@ -19,3 +19,17 @@ namespace {
 const BlockInfo& blockInfo(BlockId id) {
     return kBlocks[static_cast<std::size_t>(id)];
 }
+
+const char* blockName(BlockId id) {
+    switch (id) {
+        case BlockId::Air:       return "Air";
+        case BlockId::Grass:     return "Grass";
+        case BlockId::Dirt:      return "Dirt";
+        case BlockId::Stone:     return "Stone";
+        case BlockId::Generator: return "Generator";
+        case BlockId::Wire:      return "Wire";
+        case BlockId::Machine:   return "Machine";
+        case BlockId::Belt:      return "Belt";
+        default:                 return "?";
+    }
+}
