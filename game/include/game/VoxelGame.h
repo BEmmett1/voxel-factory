@@ -6,10 +6,13 @@
 #include "engine/Texture.h"
 #include "game/World.h"
 #include "game/Block.h"
+#include "game/Item.h"
+#include "game/Inventory.h"
 #include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <vector>
 
 // The voxel automation game.
 //   M0: render a face-culled voxel scene and fly around it.
@@ -43,7 +46,10 @@ private:
     std::unique_ptr<World> m_world;
     PowerState m_power; // energized cells; refreshed on every edit
 
-    BlockId    m_selectedBlock = BlockId::Stone;
+    Inventory           m_inventory;
+    std::vector<ItemId> m_hotbar;        // placeable items, selected by number keys
+    int                 m_selectedSlot = 0;
+
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};
 };

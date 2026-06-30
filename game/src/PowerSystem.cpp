@@ -18,8 +18,13 @@ namespace PowerSystem {
         }};
     } // namespace
 
+    bool isMachine(BlockId id) {
+        return id == BlockId::Grinder || id == BlockId::Cauldron ||
+               id == BlockId::Infuser || id == BlockId::Alembic || id == BlockId::Miner;
+    }
+
     bool isPowerNode(BlockId id) {
-        return id == BlockId::Generator || id == BlockId::Wire || id == BlockId::Machine;
+        return id == BlockId::Generator || id == BlockId::Wire || isMachine(id);
     }
 
     int production(BlockId id) {
@@ -27,7 +32,7 @@ namespace PowerSystem {
     }
 
     int demand(BlockId id) {
-        return id == BlockId::Machine ? kMachineDemand : 0;
+        return isMachine(id) ? kMachineDemand : 0;
     }
 
     PowerState solve(const World& world) {

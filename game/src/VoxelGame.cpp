@@ -29,6 +29,14 @@ namespace {
                           static_cast<std::uint32_t>(id) * 83492791u;
         return (static_cast<float>(h % 1000u) / 1000.0f - 0.5f) * 0.25f;
     }
+
+    // Deterministic hash for scattering resource nodes by world (x, z).
+    std::uint32_t hash2(int x, int z) {
+        std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
+                          static_cast<std::uint32_t>(z) * 668265263u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return h ^ (h >> 16);
+    }
 }
 
 VoxelGame::VoxelGame()
@@ -58,6 +66,20 @@ void VoxelGame::onStart() {
     camera().position = {8.0f, 5.0f, 10.0f};
     camera().yaw = -90.0f;
     camera().pitch = -20.0f;
+
+    // Placeable hotbar (number keys) + a starting stock to build with until the
+    // crafting menu exists.
+    m_hotbar = {ItemId::Conduit, ItemId::WireItem, ItemId::GeneratorItem,
+                ItemId::GrinderItem, ItemId::CauldronItem, ItemId::InfuserItem,
+                ItemId::AlembicItem, ItemId::MinerItem};
+    m_inventory.add(ItemId::Conduit, 40);
+    m_inventory.add(ItemId::WireItem, 40);
+    m_inventory.add(ItemId::GeneratorItem, 8);
+    m_inventory.add(ItemId::GrinderItem, 8);
+    m_inventory.add(ItemId::CauldronItem, 6);
+    m_inventory.add(ItemId::InfuserItem, 4);
+    m_inventory.add(ItemId::AlembicItem, 4);
+    m_inventory.add(ItemId::MinerItem, 8);
 
     updateTitle();
 }
@@ -108,21 +130,32 @@ void VoxelGame::buildWorld() {
     }
 
     // Automation preview on top of the grass (y = 3):
-    // generator -> wire -> machine, plus a parallel belt line.
+    // generator -> wire -> grinder, plus a parallel conduit line.
     m_world->setBlock(3, 3, 3, BlockId::Generator);
     for (int x = 4; x <= 8; ++x) {
         m_world->setBlock(x, 3, 3, BlockId::Wire);
     }
-    m_world->setBlock(9, 3, 3, BlockId::Machine);
+    m_world->setBlock(9, 3, 3, BlockId::Grinder);
 
     for (int x = 3; x <= 9; ++x) {
         m_world->setBlock(x, 3, 6, BlockId::Belt);
     }
 
-    // A couple of stone pillars for vertical reference.
-    for (int y = 3; y <= 6; ++y) {
-        m_world->setBlock(12, y, 12, BlockId::Stone);
-        m_world->setBlock(13, y, 12, BlockId::Stone);
+    // Scatter mineable resource nodes across the surface, keeping the demo
+    // area clear so the power preview stays readable.
+    for (int z = 0; z < extent; ++z) {
+        for (int x = 0; x < extent; ++x) {
+            if (x >= 2 && x <= 14 && z >= 2 && z <= 13) continue;
+            const std::uint32_t h = hash2(x, z);
+            BlockId node = BlockId::Air;
+            if      (h % 17 == 0)  node = BlockId::HerbBush;
+            else if (h % 23 == 0)  node = BlockId::CopperOre;
+            else if (h % 47 == 0)  node = BlockId::SandNode;
+            else if (h % 89 == 0)  node = BlockId::CrystalNode;
+            else if (h % 131 == 0) node = BlockId::WaterSource;
+            else if (h % 211 == 0) node = BlockId::EssenceVent;
+            if (node != BlockId::Air) m_world->setBlock(x, 3, z, node);
+        }
     }
 }
 
@@ -181,8 +214,11 @@ void VoxelGame::buildCrosshairMesh() {
 }
 
 void VoxelGame::updateTitle() {
-    window().setTitle(std::string("Voxel Factory  —  [") + blockName(m_selectedBlock) +
-                      "]   (LMB break / RMB place / 1-7 select)");
+    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    window().setTitle(std::string("Voxel Factory  —  Holding: ") + itemName(held) +
+                      " x" + std::to_string(m_inventory.count(held)) +
+                      "   (LMB mine / RMB place / 1-" + std::to_string(m_hotbar.size()) +
+                      " select)");
 }
 
 void VoxelGame::onUpdate(float dt) {
@@ -210,11 +246,11 @@ void VoxelGame::onUpdate(float dt) {
         cam.position += glm::normalize(dir) * speed * dt;
     }
 
-    // Block selection: number keys 1-7 map to Grass..Belt.
-    for (int n = 1; n <= 7; ++n) {
+    // Hotbar selection: number keys pick a placeable item.
+    for (int n = 1; n <= static_cast<int>(m_hotbar.size()); ++n) {
         const SDL_Scancode sc = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + (n - 1));
         if (input().wasKeyPressed(sc)) {
-            m_selectedBlock = static_cast<BlockId>(n);
+            m_selectedSlot = n - 1;
             updateTitle();
         }
     }
@@ -226,15 +262,24 @@ void VoxelGame::onUpdate(float dt) {
 
     bool edited = false;
     if (aim.hit) {
+        // Mine: break the block and collect its drop.
         if (input().wasMousePressed(SDL_BUTTON_LEFT)) {
+            const BlockId broken = m_world->getBlock(aim.block.x, aim.block.y, aim.block.z);
+            const ItemStack drop = blockDrop(broken);
+            m_inventory.add(drop.id, drop.count);
             m_world->setBlock(aim.block.x, aim.block.y, aim.block.z, BlockId::Air);
             edited = true;
+            updateTitle();
         }
+        // Place: consume the held item if available and the target cell is empty.
         if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+            const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
             const glm::ivec3 p = aim.block + aim.normal;
-            if (!isSolid(m_world->getBlock(p.x, p.y, p.z))) {
-                m_world->setBlock(p.x, p.y, p.z, m_selectedBlock);
+            if (m_inventory.has(held) && !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
+                m_world->setBlock(p.x, p.y, p.z, itemInfo(held).placesBlock);
+                m_inventory.remove(held, 1);
                 edited = true;
+                updateTitle();
             }
         }
     }

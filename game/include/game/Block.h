@@ -3,18 +3,33 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 
-// The set of block types. Air is the empty block. The automation blocks
-// (Generator/Wire/Machine/Belt) render as flat-colored markers for now; their
-// behavior arrives in later milestones.
+// The set of block types. Air is the empty block.
+//  - Terrain:    Grass / Dirt / Stone
+//  - Equipment:  Generator / Wire / Belt (conduit) / Grinder / Cauldron /
+//                Infuser / Alembic / Miner  (placed from inventory items)
+//  - Resource nodes (mined for raw items): HerbBush / CrystalNode / CopperOre /
+//                SandNode / WaterSource / EssenceVent
 enum class BlockId : std::uint8_t {
     Air = 0,
     Grass,
     Dirt,
     Stone,
+    // Equipment / machines
     Generator,
     Wire,
-    Machine,
     Belt,
+    Grinder,
+    Cauldron,
+    Infuser,
+    Alembic,
+    Miner,
+    // Resource nodes
+    HerbBush,
+    CrystalNode,
+    CopperOre,
+    SandNode,
+    WaterSource,
+    EssenceVent,
     Count
 };
 

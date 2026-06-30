@@ -9,8 +9,8 @@
 // atlas generator (which fills the pixels) and the mesher (which emits UVs), so
 // they stay in lockstep.
 namespace Atlas {
-    constexpr int Cols   = 4;
-    constexpr int Rows   = 4;   // room for up to 16 block tiles
+    constexpr int Cols   = 8;
+    constexpr int Rows   = 8;   // room for 64 tiles (blocks + item icons)
     constexpr int TilePx = 16;
     constexpr int WidthPx  = Cols * TilePx;
     constexpr int HeightPx = Rows * TilePx;
