@@ -30,6 +30,11 @@ const BlockInfo& blockInfo(BlockId id) {
     return kBlocks[static_cast<std::size_t>(id)];
 }
 
+bool isMachine(BlockId id) {
+    return id == BlockId::Grinder || id == BlockId::Cauldron ||
+           id == BlockId::Infuser || id == BlockId::Alembic || id == BlockId::Miner;
+}
+
 const char* blockName(BlockId id) {
     switch (id) {
         case BlockId::Air:         return "Air";

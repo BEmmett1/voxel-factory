@@ -10,10 +10,13 @@
 #include "game/Item.h"
 #include "game/Inventory.h"
 #include "game/Recipes.h"
+#include "game/Machine.h"
+#include "game/HashIVec3.h"
 #include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // The voxel automation game.
@@ -29,6 +32,7 @@ public:
 protected:
     void onStart() override;
     void onUpdate(float dt) override;
+    void onTick() override;      // fixed 20 Hz machine processing
     void onRender() override;
     void onEscape() override;    // closes the crafting menu, else quits
 
@@ -38,12 +42,16 @@ private:
     void rebuildMesh();          // recompute power and rebuild the combined mesh
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
-    void drawHud();              // hotbar overlay (icons + counts)
+    void drawHud();              // hotbar + machine overlays
     void drawCraftMenu();        // crafting menu overlay
     void updateMenu();           // crafting menu navigation + crafting
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
+
+    void registerMachine(const glm::ivec3& pos, BlockId type);
+    void unregisterMachine(const glm::ivec3& pos); // returns buffered items
+    bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
     engine::Shader     m_shader;
     engine::Texture    m_atlas;
@@ -58,6 +66,8 @@ private:
     Inventory           m_inventory;
     std::vector<ItemId> m_hotbar;        // placeable items, selected by number keys
     int                 m_selectedSlot = 0;
+
+    std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
 
     bool m_menuOpen = false;             // crafting menu visible?
     int  m_menuSelection = 0;

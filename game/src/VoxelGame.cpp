@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -20,6 +21,8 @@ namespace {
     constexpr float kBoostMultiplier = 3.0f;
     constexpr float kReach = 8.0f;             // how far you can target blocks
     constexpr int   kWorldChunks = 4;          // NxN ground chunks => 64x64 area
+    constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
+    constexpr int   kLoadPerPress = 16;        // items moved into a machine per F press
     const glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
     const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
@@ -80,6 +83,11 @@ void VoxelGame::onStart() {
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
+
+    // The demo grinder is a working machine; pre-load it with herb to grind so
+    // the reagent chain is visible right away.
+    registerMachine({9, 3, 3}, BlockId::Grinder);
+    m_machines[{9, 3, 3}].input.add(ItemId::Herb, 6);
 
     // Stand near the demo structures so blocks are within reach to edit.
     camera().position = {8.0f, 5.0f, 10.0f};
@@ -199,6 +207,61 @@ void VoxelGame::rebuildMesh() {
     m_mesh.upload(data, {3, 3, 2, 1}); // position, normal, uv, emissive
 }
 
+void VoxelGame::registerMachine(const glm::ivec3& pos, BlockId type) {
+    Machine m;
+    m.type = type;
+    m_machines[pos] = m;
+}
+
+void VoxelGame::unregisterMachine(const glm::ivec3& pos) {
+    const auto it = m_machines.find(pos);
+    if (it == m_machines.end()) return;
+    // Return any buffered items to the player so nothing is lost.
+    for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+        const ItemId id = static_cast<ItemId>(i);
+        m_inventory.add(id, it->second.input.count(id));
+        m_inventory.add(id, it->second.output.count(id));
+    }
+    m_machines.erase(it);
+}
+
+void VoxelGame::onTick() {
+    // Powered machines process their input buffer into outputs over time.
+    for (auto& [pos, m] : m_machines) {
+        m.crafting = false;
+        if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
+
+        const MachineRecipe* active = nullptr;
+        for (const MachineRecipe& r : machineRecipes()) {
+            if (r.machine != m.type) continue;
+            bool ok = true;
+            for (const ItemStack& in : r.inputs) {
+                if (!m.input.has(in.id, in.count)) { ok = false; break; }
+            }
+            if (ok) { active = &r; break; }
+        }
+        if (!active) { m.progress = 0.0f; continue; }
+
+        m.crafting = true;
+        m.craftTime = active->seconds;
+        m.progress += kTickSeconds;
+        if (m.progress >= active->seconds) {
+            for (const ItemStack& in : active->inputs) m.input.remove(in.id, in.count);
+            m.output.add(active->output.id, active->output.count);
+            m.progress = 0.0f;
+        }
+    }
+}
+
+bool VoxelGame::projectToScreen(const glm::vec3& world, glm::vec2& outPx) {
+    const glm::vec4 clip = camera().projection() * camera().view() * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.0001f) return false; // behind the camera
+    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    outPx.x = (ndc.x * 0.5f + 0.5f) * static_cast<float>(window().width());
+    outPx.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(window().height());
+    return true;
+}
+
 void VoxelGame::buildHighlightMesh() {
     // Wireframe cube centered on the origin (edges of [-0.5, 0.5]^3).
     const float h = 0.5f;
@@ -299,12 +362,15 @@ void VoxelGame::onUpdate(float dt) {
 
     bool edited = false;
     if (aim.hit) {
+        const glm::ivec3 tb = aim.block;
+
         // Mine: break the block and collect its drop.
         if (input().wasMousePressed(SDL_BUTTON_LEFT)) {
-            const BlockId broken = m_world->getBlock(aim.block.x, aim.block.y, aim.block.z);
+            const BlockId broken = m_world->getBlock(tb.x, tb.y, tb.z);
+            if (isMachine(broken)) unregisterMachine(tb); // returns buffered items
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
-            m_world->setBlock(aim.block.x, aim.block.y, aim.block.z, BlockId::Air);
+            m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
             edited = true;
             updateTitle();
         }
@@ -313,9 +379,41 @@ void VoxelGame::onUpdate(float dt) {
             const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
             const glm::ivec3 p = aim.block + aim.normal;
             if (m_inventory.has(held) && !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
-                m_world->setBlock(p.x, p.y, p.z, itemInfo(held).placesBlock);
+                const BlockId placed = itemInfo(held).placesBlock;
+                m_world->setBlock(p.x, p.y, p.z, placed);
                 m_inventory.remove(held, 1);
+                if (isMachine(placed)) registerMachine(p, placed);
                 edited = true;
+                updateTitle();
+            }
+        }
+
+        // Load/unload when aiming at a machine.
+        const auto mit = m_machines.find(tb);
+        if (mit != m_machines.end()) {
+            Machine& mac = mit->second;
+            if (input().wasKeyPressed(SDL_SCANCODE_F)) { // load accepted inputs
+                for (const MachineRecipe& r : machineRecipes()) {
+                    if (r.machine != mac.type) continue;
+                    for (const ItemStack& in : r.inputs) {
+                        const int move = std::min(m_inventory.count(in.id), kLoadPerPress);
+                        if (move > 0) {
+                            m_inventory.remove(in.id, move);
+                            mac.input.add(in.id, move);
+                        }
+                    }
+                }
+                updateTitle();
+            }
+            if (input().wasKeyPressed(SDL_SCANCODE_G)) { // take all outputs
+                for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+                    const ItemId id = static_cast<ItemId>(i);
+                    const int c = mac.output.count(id);
+                    if (c > 0) {
+                        mac.output.remove(id, c);
+                        m_inventory.add(id, c);
+                    }
+                }
                 updateTitle();
             }
         }
@@ -444,6 +542,44 @@ void VoxelGame::drawHud() {
         const float th = 16.0f;
         m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 5, y + slot - th - 4, th, cnt,
                   glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    // Floating progress bars over actively-crafting machines.
+    for (const auto& [pos, m] : m_machines) {
+        if (!m.crafting) continue;
+        glm::vec2 sp;
+        if (!projectToScreen(glm::vec3(pos) + glm::vec3(0.5f, 1.25f, 0.5f), sp)) continue;
+        const float bw = 46.0f, bh = 7.0f;
+        const float bx = sp.x - bw * 0.5f, by = sp.y - bh * 0.5f;
+        m_ui.rect(bx - 1, by - 1, bw + 2, bh + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.7f));
+        const float frac = glm::clamp(m.craftTime > 0 ? m.progress / m.craftTime : 0.0f, 0.0f, 1.0f);
+        m_ui.rect(bx, by, bw * frac, bh, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+    }
+
+    // Look-at machine panel (name, input/output buffers, controls).
+    if (m_hasTarget) {
+        const auto mit = m_machines.find(m_targetBlock);
+        if (mit != m_machines.end()) {
+            const Machine& m = mit->second;
+            const float pw = 380.0f, ph = 98.0f;
+            const float pxp = (static_cast<float>(w) - pw) * 0.5f;
+            const float pyp = y - ph - 14.0f;
+            m_ui.rect(pxp, pyp, pw, ph, glm::vec4(0.07f, 0.07f, 0.09f, 0.92f));
+            m_ui.text(pxp + 12, pyp + 8, 16.0f, blockName(m.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+
+            std::string in = "IN:";
+            std::string out = "OUT:";
+            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                if (m.input.count(id) > 0)
+                    in += " " + std::string(itemName(id)) + " x" + std::to_string(m.input.count(id));
+                if (m.output.count(id) > 0)
+                    out += " " + std::string(itemName(id)) + " x" + std::to_string(m.output.count(id));
+            }
+            m_ui.text(pxp + 12, pyp + 32, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
+            m_ui.text(pxp + 12, pyp + 52, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
+            m_ui.text(pxp + 12, pyp + 76, 12.0f, "F LOAD   G TAKE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+        }
     }
 
     m_ui.end();

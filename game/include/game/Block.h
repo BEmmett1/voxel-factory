@@ -47,3 +47,6 @@ const char* blockName(BlockId id);
 inline bool isSolid(BlockId id) {
     return blockInfo(id).solid;
 }
+
+// A processing machine (grinder/cauldron/infuser/alembic/miner).
+bool isMachine(BlockId id);
