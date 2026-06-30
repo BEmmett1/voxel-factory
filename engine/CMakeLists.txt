@@ -6,6 +6,7 @@ add_library(engine STATIC
     src/Shader.cpp
     src/Mesh.cpp
     src/Texture.cpp
+    src/UiRenderer.cpp
     src/Application.cpp
 )
 

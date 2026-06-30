@@ -4,6 +4,7 @@
 #include "engine/Shader.h"
 #include "engine/Mesh.h"
 #include "engine/Texture.h"
+#include "engine/UiRenderer.h"
 #include "game/World.h"
 #include "game/Block.h"
 #include "game/Item.h"
@@ -35,13 +36,15 @@ private:
     void rebuildMesh();          // recompute power and rebuild the combined mesh
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
-    void updateTitle();          // show the selected block in the window title
+    void drawHud();              // hotbar overlay (icons + counts)
+    void updateTitle();          // show the selected item in the window title
 
-    engine::Shader  m_shader;
-    engine::Texture m_atlas;
-    engine::Mesh    m_mesh;          // whole world, one combined buffer
-    engine::Mesh    m_highlightMesh;
-    engine::Mesh    m_crosshairMesh;
+    engine::Shader     m_shader;
+    engine::Texture    m_atlas;
+    engine::Mesh       m_mesh;          // whole world, one combined buffer
+    engine::Mesh       m_highlightMesh;
+    engine::Mesh       m_crosshairMesh;
+    engine::UiRenderer m_ui;
 
     std::unique_ptr<World> m_world;
     PowerState m_power; // energized cells; refreshed on every edit

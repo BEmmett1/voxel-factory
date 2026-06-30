@@ -76,6 +76,15 @@ Done:
   currently renders as one combined buffer rebuilt on edit; per-chunk meshes are a future
   perf step.
 
-Next: tick-driven machine behavior (M3), conveyor item transport (M5), machine recipes
-that close the loop (M6). The fixed 20 Hz `onTick()` hook is in place for when simulation
-state changes continuously (M5+).
+Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → automate):
+- **Econ 1** — items + inventory (`Item.*`, `Inventory.h`); resource-node blocks + machines
+  (`Block.*`); mining (LMB) collects a block's `blockDrop`; placing (RMB) consumes the held
+  item; world-gen scatters nodes.
+- **Econ 2** — `engine::UiRenderer` (orthographic 2D quads + atlas icons + embedded bitmap
+  digit font) and an on-screen hotbar HUD (icons + counts + selection).
+
+Next:
+- **Econ 3** — crafting menu (hand-craft recipe table → make belts/machines from materials).
+- **Econ 4 / M3** — machines process the reagent chain (power + inputs → outputs over time),
+  tick-driven via the 20 Hz `onTick()`.
+- **Econ 5 / M5** — conduits move items between machines.

@@ -15,7 +15,10 @@ namespace Atlas {
     constexpr int WidthPx  = Cols * TilePx;
     constexpr int HeightPx = Rows * TilePx;
 
-    // UV rectangle for a block's tile, inset by half a texel to avoid bleeding
+    // UV rectangle for a tile index, inset by half a texel to avoid bleeding
     // into neighboring tiles under nearest-neighbor sampling.
+    void uvForTile(int tile, glm::vec2& uvMin, glm::vec2& uvMax);
+
+    // Block tiles are indexed by the block's enum value.
     void uvForBlock(BlockId id, glm::vec2& uvMin, glm::vec2& uvMax);
 }

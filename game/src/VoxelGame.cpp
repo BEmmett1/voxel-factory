@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -37,6 +38,23 @@ namespace {
         h = (h ^ (h >> 13)) * 1274126177u;
         return h ^ (h >> 16);
     }
+
+    // HSV (h,s,v in [0,1]) -> RGB, for distinct material icon colors.
+    glm::vec3 hsvColor(float h, float s, float v) {
+        const float i = std::floor(h * 6.0f);
+        const float f = h * 6.0f - i;
+        const float p = v * (1.0f - s);
+        const float q = v * (1.0f - f * s);
+        const float t = v * (1.0f - (1.0f - f) * s);
+        switch (static_cast<int>(i) % 6) {
+            case 0:  return {v, t, p};
+            case 1:  return {q, v, p};
+            case 2:  return {p, v, t};
+            case 3:  return {p, q, v};
+            case 4:  return {t, p, v};
+            default: return {v, p, q};
+        }
+    }
 }
 
 VoxelGame::VoxelGame()
@@ -61,6 +79,7 @@ void VoxelGame::onStart() {
     rebuildMesh();
     buildHighlightMesh();
     buildCrosshairMesh();
+    m_ui.init();
 
     // Stand near the demo structures so blocks are within reach to edit.
     camera().position = {8.0f, 5.0f, 10.0f};
@@ -87,23 +106,17 @@ void VoxelGame::onStart() {
 void VoxelGame::buildAtlas() {
     std::vector<unsigned char> pixels(static_cast<std::size_t>(Atlas::WidthPx) * Atlas::HeightPx * 4, 0);
 
-    for (int id = 1; id < static_cast<int>(BlockId::Count); ++id) {
-        const glm::vec3 baseColor = blockInfo(static_cast<BlockId>(id)).color;
-        const int col = id % Atlas::Cols;
-        const int row = id / Atlas::Cols;
-        const int x0 = col * Atlas::TilePx;
-        const int y0 = row * Atlas::TilePx;
-
+    // Fill one atlas tile with a noisy, edge-darkened swatch of `baseColor`.
+    auto fillTile = [&](int tile, const glm::vec3& baseColor) {
+        const int x0 = (tile % Atlas::Cols) * Atlas::TilePx;
+        const int y0 = (tile / Atlas::Cols) * Atlas::TilePx;
         for (int py = 0; py < Atlas::TilePx; ++py) {
             for (int px = 0; px < Atlas::TilePx; ++px) {
-                // Darken a 1px border so block edges read clearly.
                 const bool edge = px == 0 || py == 0 ||
                                   px == Atlas::TilePx - 1 || py == Atlas::TilePx - 1;
                 const float edgeMul = edge ? 0.6f : 1.0f;
-                const float n = 1.0f + texelNoise(id, px, py);
-
-                glm::vec3 c = glm::clamp(baseColor * n * edgeMul, 0.0f, 1.0f);
-
+                const float n = 1.0f + texelNoise(tile, px, py);
+                const glm::vec3 c = glm::clamp(baseColor * n * edgeMul, 0.0f, 1.0f);
                 const std::size_t idx =
                     (static_cast<std::size_t>(y0 + py) * Atlas::WidthPx + (x0 + px)) * 4;
                 pixels[idx + 0] = static_cast<unsigned char>(c.r * 255.0f);
@@ -112,6 +125,21 @@ void VoxelGame::buildAtlas() {
                 pixels[idx + 3] = 255;
             }
         }
+    };
+
+    // Block tiles (indexed by block enum value).
+    for (int id = 1; id < static_cast<int>(BlockId::Count); ++id) {
+        fillTile(id, blockInfo(static_cast<BlockId>(id)).color);
+    }
+
+    // Item icon tiles: placeables reuse their block color; materials get a
+    // distinct hue spaced around the wheel.
+    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        const ItemInfo& info = itemInfo(static_cast<ItemId>(i));
+        const glm::vec3 color = info.placeable
+            ? blockInfo(info.placesBlock).color
+            : hsvColor(std::fmod(static_cast<float>(i) * 0.61803398875f, 1.0f), 0.55f, 0.85f);
+        fillTile(info.atlasTile, color);
     }
 
     m_atlas.createFromPixels(Atlas::WidthPx, Atlas::HeightPx, pixels.data());
@@ -331,4 +359,41 @@ void VoxelGame::onRender() {
     m_shader.setVec3("uFlatColor", glm::vec3(0.95f)); // fill
     m_crosshairMesh.draw();
     glEnable(GL_DEPTH_TEST);
+
+    drawHud();
+}
+
+void VoxelGame::drawHud() {
+    const int w = window().width();
+    const int h = window().height();
+    m_ui.begin(w, h);
+
+    const int n = static_cast<int>(m_hotbar.size());
+    const float slot = 64.0f, gap = 8.0f, pad = 7.0f;
+    const float totalW = n * slot + (n - 1) * gap;
+    const float x0 = (static_cast<float>(w) - totalW) * 0.5f;
+    const float y = static_cast<float>(h) - slot - 24.0f;
+
+    for (int i = 0; i < n; ++i) {
+        const ItemId item = m_hotbar[i];
+        const float sx = x0 + i * (slot + gap);
+
+        if (i == m_selectedSlot) {
+            m_ui.rect(sx - 3, y - 3, slot + 6, slot + 6, glm::vec4(1.0f, 0.85f, 0.2f, 0.95f));
+        }
+        m_ui.rect(sx, y, slot, slot, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
+
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(itemInfo(item).atlasTile, uv0, uv1);
+        m_ui.icon(m_atlas, sx + pad, y + pad, slot - 2 * pad, slot - 2 * pad, uv0, uv1);
+
+        // Slot number (top-left) and inventory count (bottom-right).
+        m_ui.text(sx + 4, y + 4, 12.0f, std::to_string(i + 1), glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
+        const std::string cnt = std::to_string(m_inventory.count(item));
+        const float th = 16.0f;
+        m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 5, y + slot - th - 4, th, cnt,
+                  glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    m_ui.end();
 }
