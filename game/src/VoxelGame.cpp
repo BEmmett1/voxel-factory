@@ -192,18 +192,21 @@ void VoxelGame::onUpdate(float dt) {
     cam.addLook(input().mouseRelX() * kLookSensitivity,
                 -input().mouseRelY() * kLookSensitivity);
 
-    // Fly movement.
+    // Movement: horizontal on WASD, vertical on Space (up) / Left Shift (down).
+    glm::vec3 flatFront(cam.front().x, 0.0f, cam.front().z);
+    if (glm::dot(flatFront, flatFront) > 1e-6f) flatFront = glm::normalize(flatFront);
+
     glm::vec3 dir(0.0f);
-    if (input().isKeyDown(SDL_SCANCODE_W)) dir += cam.front();
-    if (input().isKeyDown(SDL_SCANCODE_S)) dir -= cam.front();
+    if (input().isKeyDown(SDL_SCANCODE_W)) dir += flatFront;
+    if (input().isKeyDown(SDL_SCANCODE_S)) dir -= flatFront;
     if (input().isKeyDown(SDL_SCANCODE_D)) dir += cam.right();
     if (input().isKeyDown(SDL_SCANCODE_A)) dir -= cam.right();
-    if (input().isKeyDown(SDL_SCANCODE_SPACE)) dir += kWorldUp;
-    if (input().isKeyDown(SDL_SCANCODE_LCTRL)) dir -= kWorldUp;
+    if (input().isKeyDown(SDL_SCANCODE_SPACE))  dir += kWorldUp; // up
+    if (input().isKeyDown(SDL_SCANCODE_LSHIFT)) dir -= kWorldUp; // down
 
     if (glm::dot(dir, dir) > 0.0f) {
         float speed = kMoveSpeed;
-        if (input().isKeyDown(SDL_SCANCODE_LSHIFT)) speed *= kBoostMultiplier;
+        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) speed *= kBoostMultiplier; // sprint
         cam.position += glm::normalize(dir) * speed * dt;
     }
 
