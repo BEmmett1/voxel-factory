@@ -86,19 +86,18 @@ void VoxelGame::onStart() {
     camera().yaw = -90.0f;
     camera().pitch = -20.0f;
 
-    // Placeable hotbar (number keys) + a starting stock to build with until the
-    // crafting menu exists.
+    // Placeable hotbar (number keys). All placeables are hand-crafted, so the
+    // player starts with raw materials and a head start of a few of each raw.
     m_hotbar = {ItemId::Conduit, ItemId::WireItem, ItemId::GeneratorItem,
                 ItemId::GrinderItem, ItemId::CauldronItem, ItemId::InfuserItem,
                 ItemId::AlembicItem, ItemId::MinerItem};
-    m_inventory.add(ItemId::Conduit, 40);
-    m_inventory.add(ItemId::WireItem, 40);
-    m_inventory.add(ItemId::GeneratorItem, 8);
-    m_inventory.add(ItemId::GrinderItem, 8);
-    m_inventory.add(ItemId::CauldronItem, 6);
-    m_inventory.add(ItemId::InfuserItem, 4);
-    m_inventory.add(ItemId::AlembicItem, 4);
-    m_inventory.add(ItemId::MinerItem, 8);
+    m_inventory.add(ItemId::CopperOre, 30);
+    m_inventory.add(ItemId::Stone, 12);
+    m_inventory.add(ItemId::Sand, 10);
+    m_inventory.add(ItemId::Crystal, 8);
+    m_inventory.add(ItemId::Herb, 6);
+    m_inventory.add(ItemId::SpringWater, 4);
+    m_inventory.add(ItemId::Essence, 2);
 
     updateTitle();
 }
@@ -252,6 +251,16 @@ void VoxelGame::updateTitle() {
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
 
+    // Crafting menu: toggle with E. While open it owns the input and freezes
+    // the world (no look / move / mine / place).
+    if (input().wasKeyPressed(SDL_SCANCODE_E)) {
+        m_menuOpen = !m_menuOpen;
+    }
+    if (m_menuOpen) {
+        updateMenu();
+        return;
+    }
+
     // Mouse look.
     cam.addLook(input().mouseRelX() * kLookSensitivity,
                 -input().mouseRelY() * kLookSensitivity);
@@ -361,6 +370,48 @@ void VoxelGame::onRender() {
     glEnable(GL_DEPTH_TEST);
 
     drawHud();
+    if (m_menuOpen) drawCraftMenu();
+}
+
+void VoxelGame::onEscape() {
+    if (m_menuOpen) {
+        m_menuOpen = false;
+    } else {
+        quit();
+    }
+}
+
+bool VoxelGame::canCraft(const Recipe& r) const {
+    for (const ItemStack& in : r.inputs) {
+        if (!m_inventory.has(in.id, in.count)) return false;
+    }
+    return true;
+}
+
+void VoxelGame::tryCraft(const Recipe& r) {
+    if (!canCraft(r)) return;
+    for (const ItemStack& in : r.inputs) {
+        m_inventory.remove(in.id, in.count);
+    }
+    m_inventory.add(r.output.id, r.output.count);
+    updateTitle();
+}
+
+void VoxelGame::updateMenu() {
+    const auto& recipes = handcraftRecipes();
+    const int n = static_cast<int>(recipes.size());
+    if (n == 0) return;
+
+    if (input().wasKeyPressed(SDL_SCANCODE_UP) || input().wasKeyPressed(SDL_SCANCODE_W)) {
+        m_menuSelection = (m_menuSelection - 1 + n) % n;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_DOWN) || input().wasKeyPressed(SDL_SCANCODE_S)) {
+        m_menuSelection = (m_menuSelection + 1) % n;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
+        input().wasKeyPressed(SDL_SCANCODE_KP_ENTER)) {
+        tryCraft(recipes[m_menuSelection]);
+    }
 }
 
 void VoxelGame::drawHud() {
@@ -394,6 +445,55 @@ void VoxelGame::drawHud() {
         m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 5, y + slot - th - 4, th, cnt,
                   glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     }
+
+    m_ui.end();
+}
+
+void VoxelGame::drawCraftMenu() {
+    const int w = window().width();
+    const int h = window().height();
+    const auto& recipes = handcraftRecipes();
+    const int n = static_cast<int>(recipes.size());
+
+    m_ui.begin(w, h);
+
+    // Dim the world behind the menu.
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.5f));
+
+    const float rowH = 26.0f, headerH = 44.0f, footerH = 30.0f, panelW = 680.0f;
+    const float panelH = headerH + n * rowH + footerH;
+    const float px = (static_cast<float>(w) - panelW) * 0.5f;
+    const float py = (static_cast<float>(h) - panelH) * 0.5f;
+
+    m_ui.rect(px, py, panelW, panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+    m_ui.text(px + 16, py + 14, 20.0f, "CRAFTING", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+
+    for (int i = 0; i < n; ++i) {
+        const Recipe& r = recipes[i];
+        const float ry = py + headerH + i * rowH;
+        const bool affordable = canCraft(r);
+        const bool selected = (i == m_menuSelection);
+
+        if (selected) {
+            m_ui.rect(px + 6, ry - 2, panelW - 12, rowH - 2, glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+        }
+        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
+                            : affordable ? glm::vec4(0.90f, 0.90f, 0.92f, 1.0f)
+                                         : glm::vec4(0.45f, 0.45f, 0.48f, 1.0f);
+
+        std::string s = itemName(r.output.id);
+        if (r.output.count > 1) s += " x" + std::to_string(r.output.count);
+        s += "  (";
+        for (const ItemStack& in : r.inputs) {
+            s += " " + std::string(itemName(in.id));
+            if (in.count > 1) s += " x" + std::to_string(in.count);
+        }
+        s += " )   HAVE " + std::to_string(m_inventory.count(r.output.id));
+        m_ui.text(px + 14, ry + 3, 16.0f, s, col);
+    }
+
+    m_ui.text(px + 16, py + panelH - footerH + 6, 13.0f,
+              "W/S SELECT   ENTER CRAFT   E CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
 
     m_ui.end();
 }

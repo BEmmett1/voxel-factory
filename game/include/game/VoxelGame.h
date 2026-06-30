@@ -9,6 +9,7 @@
 #include "game/Block.h"
 #include "game/Item.h"
 #include "game/Inventory.h"
+#include "game/Recipes.h"
 #include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
@@ -29,6 +30,7 @@ protected:
     void onStart() override;
     void onUpdate(float dt) override;
     void onRender() override;
+    void onEscape() override;    // closes the crafting menu, else quits
 
 private:
     void buildAtlas();           // procedurally generate the block texture atlas
@@ -37,6 +39,10 @@ private:
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
     void drawHud();              // hotbar overlay (icons + counts)
+    void drawCraftMenu();        // crafting menu overlay
+    void updateMenu();           // crafting menu navigation + crafting
+    bool canCraft(const Recipe& r) const;
+    void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
 
     engine::Shader     m_shader;
@@ -52,6 +58,9 @@ private:
     Inventory           m_inventory;
     std::vector<ItemId> m_hotbar;        // placeable items, selected by number keys
     int                 m_selectedSlot = 0;
+
+    bool m_menuOpen = false;             // crafting menu visible?
+    int  m_menuSelection = 0;
 
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};

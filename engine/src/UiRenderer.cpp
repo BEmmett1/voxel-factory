@@ -28,8 +28,9 @@ void main() {
 }
 )";
 
-        // 5x7 bitmaps (one byte per row, low 5 bits) for digits 0-9.
-        const unsigned char kDigits[10][7] = {
+        // 5x7 bitmaps (one byte per row, low 5 bits). Order: digits 0-9,
+        // letters A-Z, then a few symbols (see glyphIndex).
+        const unsigned char kGlyph[][7] = {
             {14, 17, 19, 21, 25, 17, 14}, // 0
             { 4, 12,  4,  4,  4,  4, 14}, // 1
             {14, 17,  1,  2,  4,  8, 31}, // 2
@@ -40,13 +41,65 @@ void main() {
             {31,  1,  2,  4,  8,  8,  8}, // 7
             {14, 17, 17, 14, 17, 17, 14}, // 8
             {14, 17, 17, 15,  1,  2, 12}, // 9
+            {14, 17, 17, 31, 17, 17, 17}, // A
+            {30, 17, 17, 30, 17, 17, 30}, // B
+            {14, 17, 16, 16, 16, 17, 14}, // C
+            {30, 17, 17, 17, 17, 17, 30}, // D
+            {31, 16, 16, 30, 16, 16, 31}, // E
+            {31, 16, 16, 30, 16, 16, 16}, // F
+            {14, 17, 16, 23, 17, 17, 15}, // G
+            {17, 17, 17, 31, 17, 17, 17}, // H
+            {14,  4,  4,  4,  4,  4, 14}, // I
+            { 7,  2,  2,  2,  2, 18, 12}, // J
+            {17, 18, 20, 24, 20, 18, 17}, // K
+            {16, 16, 16, 16, 16, 16, 31}, // L
+            {17, 27, 21, 21, 17, 17, 17}, // M
+            {17, 17, 25, 21, 19, 17, 17}, // N
+            {14, 17, 17, 17, 17, 17, 14}, // O
+            {30, 17, 17, 30, 16, 16, 16}, // P
+            {14, 17, 17, 17, 21, 18, 13}, // Q
+            {30, 17, 17, 30, 20, 18, 17}, // R
+            {15, 16, 16, 14,  1,  1, 30}, // S
+            {31,  4,  4,  4,  4,  4,  4}, // T
+            {17, 17, 17, 17, 17, 17, 14}, // U
+            {17, 17, 17, 17, 17, 10,  4}, // V
+            {17, 17, 17, 21, 21, 27, 17}, // W
+            {17, 17, 10,  4, 10, 17, 17}, // X
+            {17, 17, 10,  4,  4,  4,  4}, // Y
+            {31,  1,  2,  4,  8, 16, 31}, // Z
+            { 0,  0,  0,  0,  0,  0,  0}, // space (36)
+            { 2,  4,  8,  8,  8,  4,  2}, // (     (37)
+            { 8,  4,  2,  2,  2,  4,  8}, // )     (38)
+            { 0,  0,  0, 14,  0,  0,  0}, // -     (39)
+            { 0,  4,  4,  0,  4,  4,  0}, // :     (40)
+            { 1,  2,  2,  4,  8,  8, 16}, // /     (41)
+            { 0,  0,  0,  0,  0,  4,  4}, // .     (42)
+            { 0,  0,  0,  0,  4,  4,  8}, // ,     (43)
         };
 
-        constexpr int kCellW = 6;   // glyph (5) + 1px spacing
-        constexpr int kCellH = 8;   // glyph (7) + 1px spacing
-        constexpr int kGlyphs = 10; // digits only
-        constexpr int kFontW = kCellW * kGlyphs; // 60
-        constexpr int kFontH = kCellH;           // 8
+        // Maps a character to its glyph index, or -1 if unsupported.
+        int glyphIndex(char ch) {
+            if (ch >= '0' && ch <= '9') return ch - '0';
+            if (ch >= 'A' && ch <= 'Z') return 10 + (ch - 'A');
+            if (ch >= 'a' && ch <= 'z') return 10 + (ch - 'a'); // lowercase -> uppercase glyph
+            switch (ch) {
+                case ' ': return 36;
+                case '(': return 37;
+                case ')': return 38;
+                case '-': return 39;
+                case ':': return 40;
+                case '/': return 41;
+                case '.': return 42;
+                case ',': return 43;
+                default:  return -1;
+            }
+        }
+
+        constexpr int kCellW = 6;  // glyph (5) + 1px spacing
+        constexpr int kCellH = 8;  // glyph (7) + 1px spacing
+        constexpr int kGlyphs = 44;
+        constexpr int kFontW = kCellW * kGlyphs;
+        constexpr int kFontH = kCellH;
     } // namespace
 
     void UiRenderer::init() {
@@ -60,7 +113,7 @@ void main() {
         for (int d = 0; d < kGlyphs; ++d) {
             for (int row = 0; row < 7; ++row) {
                 for (int col = 0; col < 5; ++col) {
-                    const bool on = (kDigits[d][row] >> (4 - col)) & 1;
+                    const bool on = (kGlyph[d][row] >> (4 - col)) & 1;
                     if (!on) continue;
                     const int x = d * kCellW + col;
                     const int y = row;
@@ -123,10 +176,10 @@ void main() {
         const float cw = pixelHeight * static_cast<float>(kCellW) / static_cast<float>(kCellH);
         float cursor = x;
         for (char ch : s) {
-            if (ch >= '0' && ch <= '9') {
-                const int d = ch - '0';
-                const glm::vec2 uv0(static_cast<float>(d * kCellW) / kFontW, 0.0f);
-                const glm::vec2 uv1(static_cast<float>((d + 1) * kCellW) / kFontW, 1.0f);
+            const int gi = glyphIndex(ch);
+            if (gi >= 0) {
+                const glm::vec2 uv0(static_cast<float>(gi * kCellW) / kFontW, 0.0f);
+                const glm::vec2 uv1(static_cast<float>((gi + 1) * kCellW) / kFontW, 1.0f);
                 pushQuad(m_text, cursor, y, cw, pixelHeight, uv0, uv1, color);
             }
             cursor += cw;

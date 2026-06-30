@@ -81,10 +81,12 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   (`Block.*`); mining (LMB) collects a block's `blockDrop`; placing (RMB) consumes the held
   item; world-gen scatters nodes.
 - **Econ 2** — `engine::UiRenderer` (orthographic 2D quads + atlas icons + embedded bitmap
-  digit font) and an on-screen hotbar HUD (icons + counts + selection).
+  font, digits + A-Z + punctuation) and an on-screen hotbar HUD (icons + counts + selection).
+- **Econ 3** — hand-craft recipe table (`Recipes.*`, the equipment chain) + crafting menu
+  overlay (open with E, W/S to select, Enter to craft; rows show inputs, affordability, and
+  owned counts). The player now starts with raw materials and crafts all placeables.
 
 Next:
-- **Econ 3** — crafting menu (hand-craft recipe table → make belts/machines from materials).
 - **Econ 4 / M3** — machines process the reagent chain (power + inputs → outputs over time),
   tick-driven via the 20 Hz `onTick()`.
 - **Econ 5 / M5** — conduits move items between machines.
