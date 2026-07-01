@@ -21,7 +21,11 @@ namespace {
     constexpr float kMoveSpeed = 14.0f;        // blocks per second
     constexpr float kBoostMultiplier = 3.0f;
     constexpr float kReach = 8.0f;             // how far you can target blocks
-    constexpr int   kWorldChunks = 4;          // NxN ground chunks => 64x64 area
+    constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area
+    constexpr float kIslandRadius = 34.0f;     // base coastline radius (noise-wobbled)
+    constexpr int   kSurfaceY = 14;            // base island surface height
+    constexpr float kPlateauRadius = 10.0f;    // flattened spawn/demo area
+    constexpr int   kPlateauY = kSurfaceY + 4; // plateau (and demo) surface height
     constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
     constexpr int   kLoadPerPress = 16;        // items moved into a machine per F press
     constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
@@ -47,12 +51,32 @@ namespace {
         return (static_cast<float>(h % 1000u) / 1000.0f - 0.5f) * 0.25f;
     }
 
-    // Deterministic hash for scattering resource nodes by world (x, z).
-    std::uint32_t hash2(int x, int z) {
+    // Deterministic hash of a 2D lattice point and a seed.
+    std::uint32_t hash2(int x, int z, std::uint32_t seed = 0) {
         std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
-                          static_cast<std::uint32_t>(z) * 668265263u;
+                          static_cast<std::uint32_t>(z) * 668265263u + seed * 2654435761u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return h ^ (h >> 16);
+    }
+
+    // Smooth value noise in [0,1]: bilinear interpolation of hashed lattice
+    // values with a smoothstep fade. Used for the island heightmap + coastline.
+    float valueNoise(float x, float z, std::uint32_t seed) {
+        const int x0 = static_cast<int>(std::floor(x));
+        const int z0 = static_cast<int>(std::floor(z));
+        const float fx = x - static_cast<float>(x0);
+        const float fz = z - static_cast<float>(z0);
+        const float sx = fx * fx * (3.0f - 2.0f * fx);
+        const float sz = fz * fz * (3.0f - 2.0f * fz);
+
+        auto lattice = [seed](int a, int b) {
+            return static_cast<float>(hash2(a, b, seed) % 1024u) / 1023.0f;
+        };
+        const float a = lattice(x0, z0);
+        const float b = lattice(x0 + 1, z0);
+        const float c = lattice(x0, z0 + 1);
+        const float d = lattice(x0 + 1, z0 + 1);
+        return glm::mix(glm::mix(a, b, sx), glm::mix(c, d, sx), sz);
     }
 
     // HSV (h,s,v in [0,1]) -> RGB, for distinct material icon colors.
@@ -97,9 +121,10 @@ void VoxelGame::onStart() {
     buildCrosshairMesh();
     m_ui.init();
 
-    // Stand near the demo structures so blocks are within reach to edit.
-    camera().position = {8.0f, 5.0f, 10.0f};
-    camera().yaw = -90.0f;
+    // Spawn above the plateau, looking at the demo line.
+    const float center = kWorldChunks * CHUNK_SIZE * 0.5f;
+    camera().position = {center, static_cast<float>(kPlateauY) + 5.0f, center + 6.0f};
+    camera().yaw = -90.0f;   // looking toward -Z (the demo row)
     camera().pitch = -20.0f;
 
     // Placeable hotbar (number keys). All placeables are hand-crafted, so the
@@ -161,50 +186,74 @@ void VoxelGame::buildAtlas() {
 }
 
 void VoxelGame::buildWorld() {
+    // Fresh island layout every launch.
+    m_worldSeed = static_cast<std::uint32_t>(SDL_GetPerformanceCounter());
+
     const int extent = kWorldChunks * CHUNK_SIZE;
+    const float cx = extent * 0.5f;
+    const float cz = extent * 0.5f;
 
-    // Flat terrain: stone, dirt, grass top.
+    // A floating island: irregular coastline, gentle hills toward the center,
+    // and an underside that tapers so it reads as a landmass adrift in the sky.
     for (int z = 0; z < extent; ++z) {
         for (int x = 0; x < extent; ++x) {
-            m_world->setBlock(x, 0, z, BlockId::Stone);
-            m_world->setBlock(x, 1, z, BlockId::Dirt);
-            m_world->setBlock(x, 2, z, BlockId::Grass);
+            const float dx = static_cast<float>(x) - cx;
+            const float dz = static_cast<float>(z) - cz;
+            const float dist = std::sqrt(dx * dx + dz * dz);
+
+            // Irregular coastline: wobble the radial distance with
+            // low-frequency noise so the circle grows bays and headlands.
+            const float wobble = (valueNoise(x * 0.06f, z * 0.06f, m_worldSeed) - 0.5f) * 14.0f;
+            const float coastDist = dist + wobble;
+            if (coastDist > kIslandRadius) continue; // open air beyond the coast
+
+            // Gentle hills, rising toward the interior.
+            const float inland = 1.0f - glm::clamp(coastDist / kIslandRadius, 0.0f, 1.0f);
+            const float hills = valueNoise(x * 0.09f, z * 0.09f, m_worldSeed ^ 0x9e3779b9u);
+            int surfaceY = kSurfaceY + static_cast<int>(inland * 4.0f + hills * 3.0f);
+
+            // Flatten the spawn plateau, blending into the terrain at its rim.
+            if (dist < kPlateauRadius) {
+                surfaceY = kPlateauY;
+            } else if (dist < kPlateauRadius + 5.0f) {
+                const float t = (dist - kPlateauRadius) / 5.0f;
+                surfaceY = static_cast<int>(glm::mix(static_cast<float>(kPlateauY),
+                                                     static_cast<float>(surfaceY), t) + 0.5f);
+            }
+
+            // Tapered underside: thicker toward the center.
+            const int thickness = 3 + static_cast<int>(inland * 8.0f + hills * 2.0f);
+            const int bottomY = surfaceY - thickness + 1;
+
+            for (int y = bottomY; y <= surfaceY; ++y) {
+                BlockId b = BlockId::Stone;
+                if (y == surfaceY) b = BlockId::Grass;
+                else if (y >= surfaceY - 2) b = BlockId::Dirt;
+                m_world->setBlock(x, y, z, b);
+            }
         }
     }
 
-    // Automation demo on top of the grass (y = 3): generator -> wire -> grinder,
-    // then a conduit line auto-carries the grinder's ground herb into a cauldron.
-    m_world->setBlock(3, 3, 3, BlockId::Generator);
-    for (int x = 4; x <= 8; ++x) {
-        m_world->setBlock(x, 3, 3, BlockId::Wire);
-    }
-    m_world->setBlock(9, 3, 3, BlockId::Grinder);
-    registerMachine({9, 3, 3}, BlockId::Grinder);
-    m_machines[{9, 3, 3}].input.add(ItemId::Herb, 20); // fuel for the demo
+    // Automation demo on the plateau: generator -> wire -> grinder, then a
+    // conduit line auto-carries the grinder's ground herb into a cauldron.
+    const int cxi = static_cast<int>(cx);
+    const int dy = kPlateauY + 1;              // on top of the plateau grass
+    const int dzRow = static_cast<int>(cz) - 4; // demo row, just north of center
 
-    for (int x = 10; x <= 12; ++x) {
-        m_world->setBlock(x, 3, 3, BlockId::Belt);
-        registerBelt({x, 3, 3}, {1, 0, 0}); // carry items toward +x
+    m_world->setBlock(cxi - 5, dy, dzRow, BlockId::Generator);
+    for (int x = cxi - 4; x <= cxi; ++x) {
+        m_world->setBlock(x, dy, dzRow, BlockId::Wire);
     }
-    m_world->setBlock(13, 3, 3, BlockId::Cauldron);
-    registerMachine({13, 3, 3}, BlockId::Cauldron);
+    m_world->setBlock(cxi + 1, dy, dzRow, BlockId::Grinder);
+    registerMachine({cxi + 1, dy, dzRow}, BlockId::Grinder);
+    m_machines[{cxi + 1, dy, dzRow}].input.add(ItemId::Herb, 20); // fuel for the demo
 
-    // Scatter mineable resource nodes across the surface, keeping the demo
-    // area clear so the power preview stays readable.
-    for (int z = 0; z < extent; ++z) {
-        for (int x = 0; x < extent; ++x) {
-            if (x >= 2 && x <= 14 && z >= 2 && z <= 13) continue;
-            const std::uint32_t h = hash2(x, z);
-            BlockId node = BlockId::Air;
-            if      (h % 17 == 0)  node = BlockId::HerbBush;
-            else if (h % 23 == 0)  node = BlockId::CopperOre;
-            else if (h % 47 == 0)  node = BlockId::SandNode;
-            else if (h % 89 == 0)  node = BlockId::CrystalNode;
-            else if (h % 131 == 0) node = BlockId::WaterSource;
-            else if (h % 211 == 0) node = BlockId::EssenceVent;
-            if (node != BlockId::Air) m_world->setBlock(x, 3, z, node);
-        }
+    for (int x = cxi + 2; x <= cxi + 4; ++x) {
+        m_world->setBlock(x, dy, dzRow, BlockId::Belt);
+        registerBelt({x, dy, dzRow}, {1, 0, 0}); // carry items toward +x
     }
+    m_world->setBlock(cxi + 5, dy, dzRow, BlockId::Cauldron);
+    registerMachine({cxi + 5, dy, dzRow}, BlockId::Cauldron);
 }
 
 void VoxelGame::rebuildMesh() {

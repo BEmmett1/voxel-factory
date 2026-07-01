@@ -73,7 +73,8 @@ private:
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
-    int m_beltTimer = 0; // ticks since the last belt step
+    int m_beltTimer = 0;          // ticks since the last belt step
+    std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
 
     bool m_menuOpen = false;             // crafting menu visible?
     int  m_menuSelection = 0;
