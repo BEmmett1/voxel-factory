@@ -27,8 +27,12 @@ namespace {
     constexpr float kPlateauRadius = 10.0f;    // flattened spawn/demo area
     constexpr int   kPlateauY = kSurfaceY + 4; // plateau (and demo) surface height
     constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
-    constexpr int   kLoadPerPress = 16;        // items moved into a machine per F press
+    constexpr int   kLoadPerAction = 8;        // recipe sets loaded per panel action
     constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
+
+    // Shared machine-panel geometry (update + draw must agree for hit-testing).
+    constexpr float kPanelW = 620.0f, kPanelHeaderH = 46.0f, kPanelRowH = 26.0f;
+    constexpr float kPanelInfoH = 100.0f, kPanelFooterH = 26.0f;
     constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
     constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
     constexpr int   kPatchCap = 5;             // max live nodes per source patch
@@ -571,6 +575,12 @@ void VoxelGame::updateTitle() {
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
 
+    // Machine panel: owns all input while open.
+    if (m_machineUiOpen) {
+        updateMachineUi();
+        return;
+    }
+
     // Help overlay: toggle with F1. While open it freezes the world.
     if (input().wasKeyPressed(SDL_SCANCODE_F1)) {
         m_helpOpen = !m_helpOpen;
@@ -652,56 +662,32 @@ void VoxelGame::onUpdate(float dt) {
             edited = true;
             updateTitle();
         }
-        // Place: consume the held item if available and the target cell is empty.
+        // RMB: on a machine, open its panel (Shift+RMB to place against it
+        // instead); otherwise place the held item into the empty target cell.
         if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
-            const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
-            const glm::ivec3 p = aim.block + aim.normal;
-            if (m_inventory.has(held) && !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
-                const BlockId placed = itemInfo(held).placesBlock;
-                m_world->setBlock(p.x, p.y, p.z, placed);
-                m_inventory.remove(held, 1);
-                if (isMachine(placed)) registerMachine(p, placed);
-                if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
-                if (placed == BlockId::Belt) {
-                    // The conduit carries items the way the player is facing.
-                    const glm::vec3 f = camera().front();
-                    const glm::ivec3 facing = (std::abs(f.x) > std::abs(f.z))
-                        ? glm::ivec3(f.x > 0 ? 1 : -1, 0, 0)
-                        : glm::ivec3(0, 0, f.z > 0 ? 1 : -1);
-                    registerBelt(p, facing);
-                }
-                edited = true;
-                updateTitle();
-            }
-        }
-
-        // Load/unload when aiming at a machine.
-        const auto mit = m_machines.find(tb);
-        if (mit != m_machines.end()) {
-            Machine& mac = mit->second;
-            if (input().wasKeyPressed(SDL_SCANCODE_F)) { // load accepted inputs
-                for (const MachineRecipe& r : machineRecipes()) {
-                    if (r.machine != mac.type) continue;
-                    for (const ItemStack& in : r.inputs) {
-                        const int move = std::min(m_inventory.count(in.id), kLoadPerPress);
-                        if (move > 0) {
-                            m_inventory.remove(in.id, move);
-                            mac.input.add(in.id, move);
-                        }
+            const bool aimedMachine = m_machines.find(tb) != m_machines.end();
+            if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
+                openMachineUi(tb);
+            } else {
+                const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+                const glm::ivec3 p = aim.block + aim.normal;
+                if (m_inventory.has(held) && !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
+                    const BlockId placed = itemInfo(held).placesBlock;
+                    m_world->setBlock(p.x, p.y, p.z, placed);
+                    m_inventory.remove(held, 1);
+                    if (isMachine(placed)) registerMachine(p, placed);
+                    if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
+                    if (placed == BlockId::Belt) {
+                        // The conduit carries items the way the player is facing.
+                        const glm::vec3 f = camera().front();
+                        const glm::ivec3 facing = (std::abs(f.x) > std::abs(f.z))
+                            ? glm::ivec3(f.x > 0 ? 1 : -1, 0, 0)
+                            : glm::ivec3(0, 0, f.z > 0 ? 1 : -1);
+                        registerBelt(p, facing);
                     }
+                    edited = true;
+                    updateTitle();
                 }
-                updateTitle();
-            }
-            if (input().wasKeyPressed(SDL_SCANCODE_G)) { // take all outputs
-                for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
-                    const ItemId id = static_cast<ItemId>(i);
-                    const int c = mac.output.count(id);
-                    if (c > 0) {
-                        mac.output.remove(id, c);
-                        m_inventory.add(id, c);
-                    }
-                }
-                updateTitle();
             }
         }
     }
@@ -757,15 +743,186 @@ void VoxelGame::onRender() {
     drawHud();
     if (m_menuOpen) drawCraftMenu();
     if (m_helpOpen) drawHelp();
+    if (m_machineUiOpen) drawMachineUi();
+}
+
+void VoxelGame::drawMachineUi() {
+    const auto mit = m_machines.find(m_machineUiPos);
+    if (mit == m_machines.end()) return;
+    const Machine& mac = mit->second;
+
+    std::vector<const MachineRecipe*> recipes;
+    for (const MachineRecipe& r : machineRecipes()) {
+        if (r.machine == mac.type) recipes.push_back(&r);
+    }
+    const int rows = static_cast<int>(recipes.size()) + 1;
+
+    const int w = window().width();
+    const int h = window().height();
+    const float panelH = kPanelHeaderH + rows * kPanelRowH + kPanelInfoH + kPanelFooterH;
+    const float px = (static_cast<float>(w) - kPanelW) * 0.5f;
+    const float py = (static_cast<float>(h) - panelH) * 0.5f;
+
+    m_ui.begin(w, h);
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.45f));
+    m_ui.rect(px, py, kPanelW, panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+
+    // Header: machine name + power status.
+    const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+    m_ui.text(px + 16, py + 12, 18.0f, blockName(mac.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    m_ui.text(px + kPanelW - 150, py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
+              powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+
+    // Action rows.
+    for (int i = 0; i < rows; ++i) {
+        const float ry = py + kPanelHeaderH + i * kPanelRowH;
+        const bool selected = (i == m_machineUiSel);
+        if (selected) {
+            m_ui.rect(px + 6, ry, kPanelW - 12, kPanelRowH - 2, glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+        }
+
+        std::string label;
+        bool actionable = false;
+        if (i < static_cast<int>(recipes.size())) {
+            const MachineRecipe& r = *recipes[i];
+            label = std::string("LOAD FOR ") + itemName(r.output.id) + "  (";
+            actionable = true;
+            for (const ItemStack& in : r.inputs) {
+                label += " " + std::string(itemName(in.id));
+                if (in.count > 1) label += " x" + std::to_string(in.count);
+                if (!m_inventory.has(in.id, in.count)) actionable = false;
+            }
+            label += " )";
+        } else {
+            label = "TAKE OUTPUTS";
+            for (int k = 1; k < static_cast<int>(ItemId::Count); ++k) {
+                if (mac.output.count(static_cast<ItemId>(k)) > 0) { actionable = true; break; }
+            }
+        }
+
+        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
+                            : actionable ? glm::vec4(0.90f, 0.90f, 0.92f, 1.0f)
+                                         : glm::vec4(0.45f, 0.45f, 0.48f, 1.0f);
+        m_ui.text(px + 16, ry + 5, 14.0f, label, col);
+    }
+
+    // Buffers + live progress.
+    const float infoY = py + kPanelHeaderH + rows * kPanelRowH + 8;
+    std::string in = "IN:";
+    std::string out = "OUT:";
+    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        const ItemId id = static_cast<ItemId>(i);
+        if (mac.input.count(id) > 0)
+            in += " " + std::string(itemName(id)) + " x" + std::to_string(mac.input.count(id));
+        if (mac.output.count(id) > 0)
+            out += " " + std::string(itemName(id)) + " x" + std::to_string(mac.output.count(id));
+    }
+    m_ui.text(px + 16, infoY, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
+    m_ui.text(px + 16, infoY + 22, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
+
+    const float barY = infoY + 48, barW = kPanelW - 32;
+    m_ui.rect(px + 16, barY, barW, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
+    if (mac.crafting) {
+        const float frac = glm::clamp(mac.craftTime > 0 ? mac.progress / mac.craftTime : 0.0f, 0.0f, 1.0f);
+        m_ui.rect(px + 16, barY, barW * frac, 10, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+    }
+
+    m_ui.text(px + 16, py + panelH - kPanelFooterH + 2, 12.0f,
+              "CLICK OR W/S + ENTER   ESC/E/RMB CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+
+    m_ui.end();
 }
 
 void VoxelGame::onEscape() {
-    if (m_helpOpen) {
+    if (m_machineUiOpen) {
+        closeMachineUi();
+    } else if (m_helpOpen) {
         m_helpOpen = false;
     } else if (m_menuOpen) {
         m_menuOpen = false;
     } else {
         quit();
+    }
+}
+
+void VoxelGame::openMachineUi(const glm::ivec3& pos) {
+    m_machineUiOpen = true;
+    m_machineUiPos = pos;
+    m_machineUiSel = 0;
+    window().setRelativeMouse(false); // release the cursor for hover/click
+}
+
+void VoxelGame::closeMachineUi() {
+    m_machineUiOpen = false;
+    window().setRelativeMouse(true);
+}
+
+void VoxelGame::updateMachineUi() {
+    const auto mit = m_machines.find(m_machineUiPos);
+    if (mit == m_machines.end()) { // machine no longer exists
+        closeMachineUi();
+        return;
+    }
+    Machine& mac = mit->second;
+
+    // Action rows: one LOAD row per recipe this machine runs, then TAKE.
+    std::vector<const MachineRecipe*> recipes;
+    for (const MachineRecipe& r : machineRecipes()) {
+        if (r.machine == mac.type) recipes.push_back(&r);
+    }
+    const int rows = static_cast<int>(recipes.size()) + 1;
+
+    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
+        m_machineUiSel = (m_machineUiSel - 1 + rows) % rows;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
+        m_machineUiSel = (m_machineUiSel + 1) % rows;
+    }
+
+    // Hover: while the cursor moves, it picks the row under it.
+    if (input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) {
+        const float panelH = kPanelHeaderH + rows * kPanelRowH + kPanelInfoH + kPanelFooterH;
+        const float px = (static_cast<float>(window().width()) - kPanelW) * 0.5f;
+        const float py = (static_cast<float>(window().height()) - panelH) * 0.5f;
+        const float mx = input().mouseX(), my = input().mouseY();
+        if (mx >= px && mx <= px + kPanelW) {
+            const int row = static_cast<int>((my - (py + kPanelHeaderH)) / kPanelRowH);
+            if (row >= 0 && row < rows) m_machineUiSel = row;
+        }
+    }
+    m_machineUiSel = std::min(m_machineUiSel, rows - 1);
+
+    // Enter or LMB activates the selected row.
+    if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
+        input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
+        input().wasMousePressed(SDL_BUTTON_LEFT)) {
+        if (m_machineUiSel < static_cast<int>(recipes.size())) {
+            // Move up to kLoadPerAction sets of this recipe's inputs in.
+            const MachineRecipe& r = *recipes[m_machineUiSel];
+            int sets = kLoadPerAction;
+            for (const ItemStack& in : r.inputs) {
+                sets = std::min(sets, m_inventory.count(in.id) / in.count);
+            }
+            for (const ItemStack& in : r.inputs) {
+                m_inventory.remove(in.id, in.count * sets);
+                mac.input.add(in.id, in.count * sets);
+            }
+        } else {
+            // Take all outputs.
+            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                const int c = mac.output.count(id);
+                if (c > 0) {
+                    mac.output.remove(id, c);
+                    m_inventory.add(id, c);
+                }
+            }
+        }
+        updateTitle();
+    }
+
+    if (input().wasKeyPressed(SDL_SCANCODE_E) || input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        closeMachineUi();
     }
 }
 
@@ -883,7 +1040,7 @@ void VoxelGame::drawHud() {
             }
             m_ui.text(pxp + 12, pyp + 32, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
             m_ui.text(pxp + 12, pyp + 52, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
-            m_ui.text(pxp + 12, pyp + 76, 12.0f, "F LOAD   G TAKE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+            m_ui.text(pxp + 12, pyp + 76, 12.0f, "RMB OPEN", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
         }
     }
 
@@ -953,14 +1110,14 @@ void VoxelGame::drawHelp() {
         {"1. MINE NODES (LMB) AT THE GLOWING SOURCE PATCHES. THEY REGROW.", 1},
         {"2. CRAFT GEAR WITH E:  ORE > INGOT > PLATE > MACHINES.", 1},
         {"3. PLACE (RMB) A GENERATOR AND RUN WIRE. POWERED BLOCKS GLOW.", 1},
-        {"4. AIM AT A MACHINE:  F LOADS INPUTS,  G TAKES OUTPUTS.", 1},
+        {"4. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
         {"5. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS.", 1},
         {"6. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
         {"", 1},
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE UP   LSHIFT DOWN   LCTRL SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
-        {"E CRAFT MENU   F LOAD   G TAKE   ESC QUIT", 1},
+        {"E CRAFT MENU   RMB OPEN MACHINE   SHIFT+RMB PLACE ON IT   ESC QUIT", 1},
         {"", 1},
         {"F1 OR ESC TO CLOSE", 2},
     };

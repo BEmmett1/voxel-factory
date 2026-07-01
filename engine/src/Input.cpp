@@ -39,6 +39,8 @@ namespace engine {
             case SDL_EVENT_MOUSE_MOTION:
                 m_relX += e.motion.xrel;
                 m_relY += e.motion.yrel;
+                m_mouseX = e.motion.x;
+                m_mouseY = e.motion.y;
                 break;
             case SDL_EVENT_MOUSE_WHEEL:
                 m_wheelY += e.wheel.y;

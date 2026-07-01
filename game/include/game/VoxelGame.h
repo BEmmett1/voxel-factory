@@ -47,6 +47,10 @@ private:
     void drawCraftMenu();        // crafting menu overlay
     void drawHelp();             // F1 how-to-play overlay
     void updateMenu();           // crafting menu navigation + crafting
+    void openMachineUi(const glm::ivec3& pos);
+    void closeMachineUi();
+    void updateMachineUi();      // keyboard + mouse interaction with the panel
+    void drawMachineUi();
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
@@ -83,6 +87,10 @@ private:
     bool m_menuOpen = false;             // crafting menu visible?
     bool m_helpOpen = false;             // F1 help overlay visible?
     int  m_menuSelection = 0;
+
+    bool       m_machineUiOpen = false;  // machine panel (RMB on a machine)
+    glm::ivec3 m_machineUiPos{0};
+    int        m_machineUiSel = 0;
 
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};

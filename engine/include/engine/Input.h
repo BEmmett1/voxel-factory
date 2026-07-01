@@ -25,6 +25,11 @@ namespace engine {
         // Whole wheel steps this frame (positive = scrolled up/away).
         int wheelSteps() const { return static_cast<int>(m_wheelY); }
 
+        // Absolute cursor position in window coordinates (meaningful while
+        // relative mouse mode is off, e.g. inside menus).
+        float mouseX() const { return m_mouseX; }
+        float mouseY() const { return m_mouseY; }
+
     private:
         static constexpr int kMouseButtons = 8;
 
@@ -35,6 +40,8 @@ namespace engine {
         float m_relX = 0.0f;
         float m_relY = 0.0f;
         float m_wheelY = 0.0f;
+        float m_mouseX = 0.0f;
+        float m_mouseY = 0.0f;
     };
 
 } // namespace engine

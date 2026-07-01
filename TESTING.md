@@ -18,7 +18,8 @@ result to expect.
 | Open/close crafting menu | **E** |
 | Help screen | **F1** (F1/Esc closes) |
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
-| Machine: load inputs / take outputs | **F** / **G** (while aiming at it) |
+| Open a machine's panel | **RMB** on it (Shift+RMB places against it instead) |
+| In the panel: choose / act / close | hover or **W/S** · click or **Enter** · **Esc/E/RMB** |
 | Close menu, or quit | **Esc** |
 
 **Observability note:** the hotbar shows only *placeable* items (conduit, wire, machines).
@@ -102,16 +103,18 @@ look-at panel.
     (**LMB**) and the now-disconnected grinder stops glowing; replace the wire and it glows
     again.
 
-## 7. Machines — load, process, take
+## 7. Machines — open, load, process, take
 
 15. Mine several **herb** bushes first, then aim at your powered grinder.
-    **Expect:** a look-at panel shows `GRINDER`, an `IN:` line, an `OUT:` line, and
-    `F LOAD   G TAKE`.
-16. Press **F**. **Expect:** herb moves from your inventory into the grinder
-    (`IN: HERB xN`); a progress bar appears above it and, after ~2s, `OUT: GROUND HERB xN`
-    grows. An unpowered machine does not progress.
-17. Press **G**. **Expect:** the outputs move to your inventory and the panel's `OUT:`
-    clears.
+    **Expect:** a small look-at panel shows `GRINDER`, `IN:`/`OUT:` lines, and `RMB OPEN`.
+16. **Right-click the grinder.** **Expect:** the cursor is released and a panel opens:
+    machine name, `POWERED`/`NO POWER` status, one `LOAD FOR <output> ( inputs )` row per
+    recipe (white when you have the inputs), a `TAKE OUTPUTS` row, `IN:`/`OUT:` buffers,
+    and a live progress bar.
+17. Click (or W/S + Enter) the `LOAD FOR GROUND HERB` row. **Expect:** herb moves from
+    your inventory into `IN:`; if powered, the progress bar fills and `OUT: GROUND HERB xN`
+    grows every ~2s. Activate `TAKE OUTPUTS` and the outputs move to your inventory.
+    Close with **Esc**, **E**, or **RMB**. (An unpowered machine loads but does not run.)
 
 ## 8. Conduits — auto-transport
 
