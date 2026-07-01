@@ -92,6 +92,19 @@ private:
     glm::ivec3 m_machineUiPos{0};
     int        m_machineUiSel = 0;
 
+    // Item being dragged inside the machine panel. The payload is removed from
+    // its source at pickup and returned there on cancel/close (or to the
+    // player if the source machine vanished), so items can't duplicate.
+    struct Drag {
+        enum class Source { None, PlayerInv, MachineIn, MachineOut };
+        Source source = Source::None;
+        ItemId id     = ItemId::None;
+        int    count  = 0;
+        bool active() const { return source != Source::None && count > 0; }
+    };
+    Drag m_drag;
+    void cancelDrag(); // return the payload to its source
+
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};
 };

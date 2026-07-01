@@ -17,6 +17,7 @@ namespace engine {
 
         bool isMouseDown(int button) const;
         bool wasMousePressed(int button) const;
+        bool wasMouseReleased(int button) const;
 
         // Relative mouse motion accumulated this frame (for FPS look).
         float mouseRelX() const { return m_relX; }

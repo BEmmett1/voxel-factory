@@ -90,9 +90,13 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   power, in `onTick()` (20 Hz). RMB on a machine opens its panel (an AUTO row + one MAKE
   row per recipe — activating a MAKE row locks `Machine::selectedRecipe` and loads the
   player's matching inputs; a locked machine also rejects belt items outside its recipe —
-  plus TAKE OUTPUTS, buffers, power status, live progress; cursor released — hover/click
-  or W/S+Enter; Shift+RMB places against a machine instead). Floating progress bars + a
-  look-at panel show in-world state. `isMachine()` shared by power + game.
+  plus TAKE OUTPUTS, IN/OUT buffers as item cells, an INVENTORY grid, power status, live
+  progress; cursor released — hover/click or W/S+Enter; Shift+RMB places against a
+  machine instead). Items drag-and-drop between the grid and the machine buffers
+  (LMB = stack, RMB = one; payload removed at pickup and returned on cancel, so no
+  duping; layout shared by hit-test + draw via `panelLayout()` in VoxelGame.cpp).
+  Floating progress bars + a look-at panel show in-world state. `isMachine()` shared by
+  power + game.
 - **Econ 5 / M5** — conduit block-entities (`Belt.h`: facing + one carried item). `beltStep()`
   (sub-tick) pushes into the machine ahead, hops items belt→belt (snapshot + claims prevent
   chaining/merging), and pulls from the machine behind. Carried items render as floating

@@ -110,8 +110,14 @@ look-at panel.
 16. **Right-click the grinder.** **Expect:** the cursor is released and a panel opens:
     machine name, `POWERED`/`NO POWER` status, an `AUTO ( FIRST READY RECIPE )` row, one
     `MAKE <output> ( inputs )` row per recipe (white when you can contribute an input),
-    a `TAKE OUTPUTS` row, `IN:`/`OUT:` buffers, and a live progress bar. A `>` marker
-    shows the active recipe mode (AUTO by default).
+    a `TAKE OUTPUTS` row, `IN:`/`OUT:` buffers shown as item cells, a live progress bar,
+    and an `INVENTORY` grid of everything you own (icon + count; hovering a cell names
+    it). A `>` marker shows the active recipe mode (AUTO by default).
+16b. **Drag and drop:** LMB-drag an inventory cell onto the `IN:` band to move the whole
+    stack (the band tints green when the machine accepts that item, red when it doesn't);
+    RMB-drag moves a single item. Dragging a cell *out* of `IN:`/`OUT:` onto the
+    inventory grid returns it to you. Releasing anywhere else (or Esc) returns the
+    payload where it came from — items are never lost.
 17. Click (or W/S + Enter) the `MAKE GROUND HERB` row. **Expect:** the `>` marker moves to
     it (the machine is now locked to that recipe — it also refuses belt deliveries of
     other ingredients) and your herb moves into `IN:`; if powered, the progress bar fills

@@ -66,4 +66,8 @@ namespace engine {
         return button >= 0 && button < kMouseButtons && m_mouseDown[button] && !m_mousePrev[button];
     }
 
+    bool Input::wasMouseReleased(int button) const {
+        return button >= 0 && button < kMouseButtons && !m_mouseDown[button] && m_mousePrev[button];
+    }
+
 } // namespace engine
