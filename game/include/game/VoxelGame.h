@@ -55,6 +55,7 @@ private:
     void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
     void unregisterBelt(const glm::ivec3& pos);    // returns carried item
     void beltStep();                                // advance items along conduits
+    bool updateSources();                           // grow patches; true if a node spawned
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
     engine::Shader     m_shader;
@@ -73,8 +74,10 @@ private:
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
-    int m_beltTimer = 0;          // ticks since the last belt step
+    std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources; // pos -> spawn timer
+    int m_beltTimer = 0;           // ticks since the last belt step
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
+    std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
 
     bool m_menuOpen = false;             // crafting menu visible?
     int  m_menuSelection = 0;

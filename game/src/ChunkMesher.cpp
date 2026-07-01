@@ -54,7 +54,10 @@ namespace ChunkMesher {
                     const BlockId id = world.getBlock(w.x, w.y, w.z);
                     if (!isSolid(id)) continue;
 
-                    const float emissive = power.energized(w.x, w.y, w.z) ? kEnergizedEmissive : 0.0f;
+                    // Powered network glow or the block's own glow (sources).
+                    const float emissive = power.energized(w.x, w.y, w.z)
+                        ? kEnergizedEmissive
+                        : blockInfo(id).emissive;
 
                     glm::vec2 uvMin, uvMax;
                     Atlas::uvForBlock(id, uvMin, uvMax);

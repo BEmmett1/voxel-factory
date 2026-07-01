@@ -29,6 +29,9 @@ namespace {
     constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
     constexpr int   kLoadPerPress = 16;        // items moved into a machine per F press
     constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
+    constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
+    constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
+    constexpr int   kPatchCap = 5;             // max live nodes per source patch
 
     // Does a machine type use `item` as an input in any of its recipes?
     bool machineAccepts(BlockId type, ItemId item) {
@@ -254,6 +257,48 @@ void VoxelGame::buildWorld() {
     }
     m_world->setBlock(cxi + 5, dy, dzRow, BlockId::Cauldron);
     registerMachine({cxi + 5, dy, dzRow}, BlockId::Cauldron);
+
+    // Scatter glowing resource sources across the island (seeded random),
+    // keeping the plateau clear. Each will grow a patch of its node type.
+    const BlockId sourceTypes[6] = {BlockId::SourceHerb, BlockId::SourceCopper,
+                                    BlockId::SourceSand, BlockId::SourceCrystal,
+                                    BlockId::SourceWater, BlockId::SourceEssence};
+    const int sourceCounts[6] = {4, 4, 3, 3, 2, 2};
+
+    for (int t = 0; t < 6; ++t) {
+        int placed = 0;
+        for (int attempt = 0; attempt < 500 && placed < sourceCounts[t]; ++attempt) {
+            const std::uint32_t h = hash2(t * 977 + attempt, attempt * 131 + 7,
+                                          m_worldSeed ^ 0xABCD1234u);
+            const int x = static_cast<int>(h % static_cast<std::uint32_t>(extent));
+            const int z = static_cast<int>((h >> 10) % static_cast<std::uint32_t>(extent));
+
+            const float ddx = static_cast<float>(x) - cx;
+            const float ddz = static_cast<float>(z) - cz;
+            if (std::sqrt(ddx * ddx + ddz * ddz) < kPlateauRadius + 6.0f) continue;
+
+            // Needs a grass surface with air above.
+            int gy = -1;
+            for (int y = kSurfaceY + 8; y >= kSurfaceY - 2; --y) {
+                if (m_world->getBlock(x, y, z) == BlockId::Grass &&
+                    m_world->getBlock(x, y + 1, z) == BlockId::Air) {
+                    gy = y;
+                    break;
+                }
+            }
+            if (gy < 0) continue;
+
+            m_world->setBlock(x, gy + 1, z, sourceTypes[t]);
+            m_sources[{x, gy + 1, z}] = 0.0f;
+            ++placed;
+        }
+    }
+
+    // Pre-grow each patch a little so raws are minable immediately.
+    for (int round = 0; round < 3; ++round) {
+        for (auto& [pos, timer] : m_sources) timer = kSourceSpawnSeconds;
+        updateSources();
+    }
 }
 
 void VoxelGame::rebuildMesh() {
@@ -350,7 +395,61 @@ void VoxelGame::beltStep() {
     }
 }
 
+bool VoxelGame::updateSources() {
+    bool anySpawned = false;
+
+    for (auto& [pos, timer] : m_sources) {
+        timer += kTickSeconds;
+        if (timer < kSourceSpawnSeconds) continue;
+        timer = 0.0f;
+
+        const BlockId node = sourceSpawnsNode(m_world->getBlock(pos.x, pos.y, pos.z));
+        if (node == BlockId::Air) continue; // source block was removed under us
+
+        // Patch is capped: count this source's live nodes nearby.
+        int liveNodes = 0;
+        for (int dz = -kPatchRadius; dz <= kPatchRadius; ++dz) {
+            for (int dx = -kPatchRadius; dx <= kPatchRadius; ++dx) {
+                for (int dy = -3; dy <= 3; ++dy) {
+                    if (m_world->getBlock(pos.x + dx, pos.y + dy, pos.z + dz) == node) {
+                        ++liveNodes;
+                    }
+                }
+            }
+        }
+        if (liveNodes >= kPatchCap) continue;
+
+        // Try a few random nearby columns for grass with air above.
+        bool placedNode = false;
+        for (int attempt = 0; attempt < 8 && !placedNode; ++attempt) {
+            const std::uint32_t h = hash2(pos.x * 31 + attempt, pos.z * 17, m_worldSeed + m_sourceRng++);
+            const int dx = static_cast<int>(h % (2 * kPatchRadius + 1)) - kPatchRadius;
+            const int dz = static_cast<int>((h >> 8) % (2 * kPatchRadius + 1)) - kPatchRadius;
+            if (dx == 0 && dz == 0) continue;
+
+            const int x = pos.x + dx;
+            const int z = pos.z + dz;
+            for (int y = pos.y + 2; y >= pos.y - 3; --y) {
+                if (m_world->getBlock(x, y, z) == BlockId::Grass &&
+                    m_world->getBlock(x, y + 1, z) == BlockId::Air) {
+                    m_world->setBlock(x, y + 1, z, node);
+                    placedNode = true;
+                    anySpawned = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return anySpawned;
+}
+
 void VoxelGame::onTick() {
+    // Grow resource patches around sources.
+    if (updateSources()) {
+        rebuildMesh();
+    }
+
     // Powered machines process their input buffer into outputs over time.
     for (auto& [pos, m] : m_machines) {
         m.crafting = false;
@@ -500,6 +599,7 @@ void VoxelGame::onUpdate(float dt) {
             const BlockId broken = m_world->getBlock(tb.x, tb.y, tb.z);
             if (isMachine(broken)) unregisterMachine(tb);     // returns buffered items
             if (broken == BlockId::Belt) unregisterBelt(tb);  // returns carried item
+            if (isSource(broken)) m_sources.erase(tb);        // its item drops below
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
@@ -515,6 +615,7 @@ void VoxelGame::onUpdate(float dt) {
                 m_world->setBlock(p.x, p.y, p.z, placed);
                 m_inventory.remove(held, 1);
                 if (isMachine(placed)) registerMachine(p, placed);
+                if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
                 if (placed == BlockId::Belt) {
                     // The conduit carries items the way the player is facing.
                     const glm::vec3 f = camera().front();

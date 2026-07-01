@@ -8,7 +8,9 @@
 //  - Equipment:  Generator / Wire / Belt (conduit) / Grinder / Cauldron /
 //                Infuser / Alembic / Miner  (placed from inventory items)
 //  - Resource nodes (mined for raw items): HerbBush / CrystalNode / CopperOre /
-//                SandNode / WaterSource / EssenceVent
+//                SandNode / Spring / EssenceVent
+//  - Sources:    glowing blocks that grow a patch of their resource's nodes
+//                nearby over time; mining one drops its (re-placeable) item
 enum class BlockId : std::uint8_t {
     Air = 0,
     Grass,
@@ -28,14 +30,22 @@ enum class BlockId : std::uint8_t {
     CrystalNode,
     CopperOre,
     SandNode,
-    WaterSource,
+    Spring,
     EssenceVent,
+    // Resource sources (patch spawners)
+    SourceHerb,
+    SourceCrystal,
+    SourceCopper,
+    SourceSand,
+    SourceWater,
+    SourceEssence,
     Count
 };
 
 struct BlockInfo {
-    bool      solid;  // does it occlude neighbors / get meshed?
-    glm::vec3 color;  // flat base color (pre-lighting)
+    bool      solid;    // does it occlude neighbors / get meshed?
+    glm::vec3 color;    // flat base color (pre-lighting)
+    float     emissive; // constant self-illumination (sources glow)
 };
 
 // Static properties for a block type.
@@ -50,3 +60,9 @@ inline bool isSolid(BlockId id) {
 
 // A processing machine (grinder/cauldron/infuser/alembic/miner).
 bool isMachine(BlockId id);
+
+// A resource source (patch spawner).
+bool isSource(BlockId id);
+
+// The node block a source grows (Air if `id` is not a source).
+BlockId sourceSpawnsNode(BlockId id);

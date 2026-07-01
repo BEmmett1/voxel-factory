@@ -43,6 +43,13 @@ enum class ItemId : std::uint8_t {
     InfuserItem,
     AlembicItem,
     MinerItem,
+    // Placeable resource sources (relocatable / end-game craftable)
+    HerbSourceItem,
+    CrystalSourceItem,
+    CopperSourceItem,
+    SandSourceItem,
+    WaterSourceItem,
+    EssenceSourceItem,
     Count
 };
 

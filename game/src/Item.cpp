@@ -37,6 +37,12 @@ namespace {
         /* InfuserItem          */ {"Infuser",             51, true,  BlockId::Infuser},
         /* AlembicItem          */ {"Alembic",             52, true,  BlockId::Alembic},
         /* MinerItem            */ {"Miner",               53, true,  BlockId::Miner},
+        /* HerbSourceItem       */ {"Herb Source",         54, true,  BlockId::SourceHerb},
+        /* CrystalSourceItem    */ {"Crystal Source",      55, true,  BlockId::SourceCrystal},
+        /* CopperSourceItem     */ {"Copper Source",       56, true,  BlockId::SourceCopper},
+        /* SandSourceItem       */ {"Sand Source",         57, true,  BlockId::SourceSand},
+        /* WaterSourceItem      */ {"Water Source",        58, true,  BlockId::SourceWater},
+        /* EssenceSourceItem    */ {"Essence Source",      59, true,  BlockId::SourceEssence},
     }};
 }
 
@@ -51,9 +57,16 @@ ItemStack blockDrop(BlockId id) {
         case BlockId::CrystalNode: return {ItemId::Crystal, 1};
         case BlockId::CopperOre:   return {ItemId::CopperOre, 1};
         case BlockId::SandNode:    return {ItemId::Sand, 1};
-        case BlockId::WaterSource: return {ItemId::SpringWater, 1};
+        case BlockId::Spring:      return {ItemId::SpringWater, 1};
         case BlockId::EssenceVent: return {ItemId::Essence, 1};
         case BlockId::Stone:       return {ItemId::Stone, 1};
+        // Sources -> their placeable item (relocatable).
+        case BlockId::SourceHerb:    return {ItemId::HerbSourceItem, 1};
+        case BlockId::SourceCrystal: return {ItemId::CrystalSourceItem, 1};
+        case BlockId::SourceCopper:  return {ItemId::CopperSourceItem, 1};
+        case BlockId::SourceSand:    return {ItemId::SandSourceItem, 1};
+        case BlockId::SourceWater:   return {ItemId::WaterSourceItem, 1};
+        case BlockId::SourceEssence: return {ItemId::EssenceSourceItem, 1};
         // Placed equipment -> its placeable item back.
         case BlockId::Generator:   return {ItemId::GeneratorItem, 1};
         case BlockId::Wire:        return {ItemId::WireItem, 1};
