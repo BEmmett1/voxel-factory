@@ -188,6 +188,31 @@ void VoxelGame::buildAtlas() {
         fillTile(info.atlasTile, color);
     }
 
+    // Conduit direction arrow: the belt's dark base with a bright arrow
+    // pointing toward +v (down the tile); the mesher rotates UVs per facing.
+    fillTile(Atlas::BeltArrowTile, blockInfo(BlockId::Belt).color);
+    {
+        const int x0 = (Atlas::BeltArrowTile % Atlas::Cols) * Atlas::TilePx;
+        const int y0 = (Atlas::BeltArrowTile / Atlas::Cols) * Atlas::TilePx;
+        auto stamp = [&](int px, int py) {
+            const std::size_t idx =
+                (static_cast<std::size_t>(y0 + py) * Atlas::WidthPx + (x0 + px)) * 4;
+            pixels[idx + 0] = 255;
+            pixels[idx + 1] = 214;
+            pixels[idx + 2] = 51;
+            pixels[idx + 3] = 255;
+        };
+        for (int py = 2; py <= 8; ++py) {   // shaft
+            stamp(7, py);
+            stamp(8, py);
+        }
+        for (int k = 0; k < 5; ++k) {       // chevron head, tip at py = 13
+            for (int px = 3 + k; px <= 12 - k; ++px) {
+                stamp(px, 9 + k);
+            }
+        }
+    }
+
     m_atlas.createFromPixels(Atlas::WidthPx, Atlas::HeightPx, pixels.data());
 }
 
@@ -312,7 +337,7 @@ void VoxelGame::rebuildMesh() {
     std::vector<float> data;
     for (const auto& [coord, chunk] : m_world->chunks()) {
         (void)chunk;
-        ChunkMesher::appendChunk(data, *m_world, coord, m_power);
+        ChunkMesher::appendChunk(data, *m_world, coord, m_power, m_belts);
     }
     m_mesh.upload(data, {3, 3, 2, 1}); // position, normal, uv, emissive
 }

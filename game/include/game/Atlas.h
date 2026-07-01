@@ -12,6 +12,10 @@ namespace Atlas {
     constexpr int Cols   = 8;
     constexpr int Rows   = 12;  // 96 tiles: blocks use 0-31, item icons 32+
     constexpr int TilePx = 16;
+
+    // Special tile: conduit top face with a direction arrow (drawn pointing
+    // toward +v; the mesher rotates UVs to match each belt's facing).
+    constexpr int BeltArrowTile = 31;
     constexpr int WidthPx  = Cols * TilePx;
     constexpr int HeightPx = Rows * TilePx;
 
