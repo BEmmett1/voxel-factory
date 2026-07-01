@@ -290,6 +290,12 @@ void VoxelGame::buildWorld() {
     m_world->setBlock(cxi + 5, dy, dzRow, BlockId::Cauldron);
     registerMachine({cxi + 5, dy, dzRow}, BlockId::Cauldron);
 
+    // Wire spur alongside the belts so the cauldron is powered too (belts are
+    // not power nodes, so the network can't reach it through them).
+    for (int x = cxi + 1; x <= cxi + 5; ++x) {
+        m_world->setBlock(x, dy, dzRow - 1, BlockId::Wire);
+    }
+
     // Scatter glowing resource sources across the island (seeded random),
     // keeping the plateau clear. Each will grow a patch of its node type.
     const BlockId sourceTypes[6] = {BlockId::SourceHerb, BlockId::SourceCopper,
@@ -786,11 +792,11 @@ void VoxelGame::drawMachineUi() {
         if (i < static_cast<int>(recipes.size())) {
             const MachineRecipe& r = *recipes[i];
             label = std::string("LOAD FOR ") + itemName(r.output.id) + "  (";
-            actionable = true;
+            actionable = false; // white if the player can contribute anything
             for (const ItemStack& in : r.inputs) {
                 label += " " + std::string(itemName(in.id));
                 if (in.count > 1) label += " x" + std::to_string(in.count);
-                if (!m_inventory.has(in.id, in.count)) actionable = false;
+                if (m_inventory.has(in.id, 1)) actionable = true;
             }
             label += " )";
         } else {
@@ -897,15 +903,16 @@ void VoxelGame::updateMachineUi() {
         input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
         input().wasMousePressed(SDL_BUTTON_LEFT)) {
         if (m_machineUiSel < static_cast<int>(recipes.size())) {
-            // Move up to kLoadPerAction sets of this recipe's inputs in.
+            // Move each input independently (up to kLoadPerAction sets' worth
+            // of it), so the player can contribute just the ingredient they
+            // carry -- other inputs may already arrive by conduit.
             const MachineRecipe& r = *recipes[m_machineUiSel];
-            int sets = kLoadPerAction;
             for (const ItemStack& in : r.inputs) {
-                sets = std::min(sets, m_inventory.count(in.id) / in.count);
-            }
-            for (const ItemStack& in : r.inputs) {
-                m_inventory.remove(in.id, in.count * sets);
-                mac.input.add(in.id, in.count * sets);
+                const int move = std::min(m_inventory.count(in.id), in.count * kLoadPerAction);
+                if (move > 0) {
+                    m_inventory.remove(in.id, move);
+                    mac.input.add(in.id, move);
+                }
             }
         } else {
             // Take all outputs.
