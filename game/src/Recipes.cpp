@@ -21,6 +21,14 @@ namespace {
         {{{I::MachineFrame, 1}, {I::Crystal, 2}},    {I::TransmuterItem, 1}},
         {{{I::CopperPlate, 2}, {I::Crystal, 1}},     {I::GeneratorItem, 1}},
         {{{I::CopperPlate, 3}, {I::Stone, 2}},       {I::MinerItem, 1}},
+        // End-game: transmute new resource sources from a catalyst + the raw.
+        // This closes the loop -- resource production itself is craftable.
+        {{{I::PhilosophersCatalyst, 1}, {I::Herb, 8}},        {I::HerbSourceItem, 1}},
+        {{{I::PhilosophersCatalyst, 1}, {I::Crystal, 8}},     {I::CrystalSourceItem, 1}},
+        {{{I::PhilosophersCatalyst, 1}, {I::CopperOre, 8}},   {I::CopperSourceItem, 1}},
+        {{{I::PhilosophersCatalyst, 1}, {I::Sand, 8}},        {I::SandSourceItem, 1}},
+        {{{I::PhilosophersCatalyst, 1}, {I::SpringWater, 8}}, {I::WaterSourceItem, 1}},
+        {{{I::PhilosophersCatalyst, 1}, {I::Essence, 8}},     {I::EssenceSourceItem, 1}},
     };
 }
 

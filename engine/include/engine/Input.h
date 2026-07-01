@@ -22,6 +22,9 @@ namespace engine {
         float mouseRelX() const { return m_relX; }
         float mouseRelY() const { return m_relY; }
 
+        // Whole wheel steps this frame (positive = scrolled up/away).
+        int wheelSteps() const { return static_cast<int>(m_wheelY); }
+
     private:
         static constexpr int kMouseButtons = 8;
 
@@ -31,6 +34,7 @@ namespace engine {
         bool  m_mousePrev[kMouseButtons] = {};
         float m_relX = 0.0f;
         float m_relY = 0.0f;
+        float m_wheelY = 0.0f;
     };
 
 } // namespace engine

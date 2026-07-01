@@ -130,11 +130,14 @@ void VoxelGame::onStart() {
     camera().yaw = -90.0f;   // looking toward -Z (the demo row)
     camera().pitch = -20.0f;
 
-    // Placeable hotbar (number keys). All placeables are hand-crafted, so the
-    // player starts with raw materials and a head start of a few of each raw.
-    m_hotbar = {ItemId::Conduit, ItemId::WireItem, ItemId::GeneratorItem,
-                ItemId::GrinderItem, ItemId::CauldronItem, ItemId::InfuserItem,
-                ItemId::AlembicItem, ItemId::MinerItem};
+    // Hotbar: every placeable item, in enum order. Keys 1-9 and 0 jump to the
+    // first ten slots; the mouse wheel cycles through all of them. Everything
+    // placeable is hand-crafted, so the player starts with raw materials.
+    m_hotbar.clear();
+    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        const ItemId id = static_cast<ItemId>(i);
+        if (itemInfo(id).placeable) m_hotbar.push_back(id);
+    }
     m_inventory.add(ItemId::CopperOre, 30);
     m_inventory.add(ItemId::Stone, 12);
     m_inventory.add(ItemId::Sand, 10);
@@ -537,8 +540,7 @@ void VoxelGame::updateTitle() {
     const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
     window().setTitle(std::string("Voxel Factory  —  Holding: ") + itemName(held) +
                       " x" + std::to_string(m_inventory.count(held)) +
-                      "   (LMB mine / RMB place / 1-" + std::to_string(m_hotbar.size()) +
-                      " select)");
+                      "   (LMB mine / RMB place / 1-0 + wheel select)");
 }
 
 void VoxelGame::onUpdate(float dt) {
@@ -576,13 +578,23 @@ void VoxelGame::onUpdate(float dt) {
         cam.position += glm::normalize(dir) * speed * dt;
     }
 
-    // Hotbar selection: number keys pick a placeable item.
-    for (int n = 1; n <= static_cast<int>(m_hotbar.size()); ++n) {
-        const SDL_Scancode sc = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + (n - 1));
+    // Hotbar selection: keys 1-9 and 0 jump to the first ten slots; the mouse
+    // wheel cycles through all of them (scroll up = previous).
+    const int keySlots = std::min(10, static_cast<int>(m_hotbar.size()));
+    for (int n = 0; n < keySlots; ++n) {
+        const SDL_Scancode sc = (n < 9)
+            ? static_cast<SDL_Scancode>(SDL_SCANCODE_1 + n)
+            : SDL_SCANCODE_0;
         if (input().wasKeyPressed(sc)) {
-            m_selectedSlot = n - 1;
+            m_selectedSlot = n;
             updateTitle();
         }
+    }
+    const int wheel = input().wheelSteps();
+    if (wheel != 0 && !m_hotbar.empty()) {
+        const int n = static_cast<int>(m_hotbar.size());
+        m_selectedSlot = ((m_selectedSlot - wheel) % n + n) % n;
+        updateTitle();
     }
 
     // Aim and edit.
@@ -759,10 +771,10 @@ void VoxelGame::drawHud() {
     m_ui.begin(w, h);
 
     const int n = static_cast<int>(m_hotbar.size());
-    const float slot = 64.0f, gap = 8.0f, pad = 7.0f;
+    const float slot = 52.0f, gap = 6.0f, pad = 6.0f;
     const float totalW = n * slot + (n - 1) * gap;
     const float x0 = (static_cast<float>(w) - totalW) * 0.5f;
-    const float y = static_cast<float>(h) - slot - 24.0f;
+    const float y = static_cast<float>(h) - slot - 22.0f;
 
     for (int i = 0; i < n; ++i) {
         const ItemId item = m_hotbar[i];
@@ -777,11 +789,14 @@ void VoxelGame::drawHud() {
         Atlas::uvForTile(itemInfo(item).atlasTile, uv0, uv1);
         m_ui.icon(m_atlas, sx + pad, y + pad, slot - 2 * pad, slot - 2 * pad, uv0, uv1);
 
-        // Slot number (top-left) and inventory count (bottom-right).
-        m_ui.text(sx + 4, y + 4, 12.0f, std::to_string(i + 1), glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
+        // Key label (first ten slots) and inventory count (bottom-right).
+        if (i < 10) {
+            const std::string key = (i < 9) ? std::to_string(i + 1) : "0";
+            m_ui.text(sx + 4, y + 4, 11.0f, key, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
+        }
         const std::string cnt = std::to_string(m_inventory.count(item));
-        const float th = 16.0f;
-        m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 5, y + slot - th - 4, th, cnt,
+        const float th = 14.0f;
+        m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 4, y + slot - th - 4, th, cnt,
                   glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     }
 

@@ -14,7 +14,7 @@ result to expect.
 | Sprint (~3×) | hold **Left Ctrl** |
 | Mine block | **LMB** |
 | Place selected item | **RMB** |
-| Select hotbar slot | **1**–**8** |
+| Select hotbar slot | **1**–**9**, **0** (first ten) · **mouse wheel** cycles all |
 | Open/close crafting menu | **E** |
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
 | Machine: load inputs / take outputs | **F** / **G** (while aiming at it) |
@@ -34,9 +34,10 @@ look-at panel.
    cmake --build out/build/x64-Debug
    ```
 2. Run `out/build/x64-Debug/bin/voxel-factory.exe`.
-   **Expect:** a window titled `Voxel Factory  —  Holding: Conduit x0 …`, a sky-blue
-   background over textured green ground, a centered crosshair, and an 8-slot hotbar along
-   the bottom (all counts 0). No console errors.
+   **Expect:** a window titled `Voxel Factory  —  Holding: Conduit x0 …`, a centered
+   crosshair, and a 16-slot hotbar along the bottom (all counts 0). You spawn on a grassy
+   plateau at the center of a **floating island** in a blue sky. No console errors.
+   The island layout is randomized each launch.
 
 ## 1. Smoke test — watch the demo run (no input)
 
@@ -45,6 +46,11 @@ look-at panel.
    **Expect:** a green progress bar floats above the grinder and fills repeatedly; every
    couple of seconds a small item icon (ground herb) appears on the conduits and travels
    into the cauldron. This one view exercises power + machine processing + transport.
+   Then fly up (**Space**) and look down.
+   **Expect:** a roughly circular island with an irregular coastline floating in open sky,
+   dotted with **clusters** of colored resource nodes, each cluster around one brighter,
+   **glowing source block**. Fly past the coast and look under the island: the stone
+   underside tapers toward the middle.
 
 ## 2. Camera & movement
 
@@ -53,13 +59,15 @@ look-at panel.
 5. **A/D** strafe; **Space** rises; **Left Shift** descends; holding **Left Ctrl** while
    moving is ~3× faster. (**Esc** with no menu open quits — don't press it yet.)
 
-## 3. Mining (LMB) → inventory
+## 3. Mining (LMB) → inventory + patch regrowth
 
-6. Fly over the open ground. Resource nodes are scattered colored blocks: green (herb),
-   copper-brown (copper ore), sandy (sand), violet (crystal), blue (spring), purple
-   (essence).
+6. Fly to a resource cluster. Nodes are colored blocks: green (herb), copper-brown
+   (copper ore), sandy (sand), violet (crystal), blue (spring), purple (essence) — each
+   cluster grows around a glowing **source** block of the same hue.
 7. Center the crosshair on a **copper ore** node and click **LMB**.
-   **Expect:** the block is removed (mined). Mine a few nodes.
+   **Expect:** the block is removed (mined). Mine the whole patch bare (but leave the
+   glowing source), hover nearby for ~15–30 seconds, and **expect new nodes to grow back**
+   near the source. Mining the source itself drops a re-placeable source item instead.
 8. Confirm the drops entered your inventory: press **E** and check that the
    `COPPER INGOT ( COPPER ORE )` row is bright/white (affordable). Mining grass or dirt
    yields nothing. Press **E** to close.
@@ -119,6 +127,18 @@ look-at panel.
     **Expect:** the block breaks, its placeable item returns to your inventory, and any
     buffered or carried items are returned too — nothing is lost.
 
-## 10. Quit
+## 10. End-game — the closed loop (long play or spot-check)
 
-20. With no menu open, press **Esc**. **Expect:** the game closes cleanly.
+20. The full chain: **Distiller** (Elixir of Vigor + Essence → Refined Elixir) and
+    **Transmuter** (Refined Elixir + Crystal Dust → Philosopher's Catalyst; Catalyst +
+    Elixir → Philosopher's Stone) appear in the crafting menu and process like the other
+    machines when powered.
+21. With a Catalyst in inventory, the crafting menu's last six rows craft **new source
+    blocks** (Catalyst + 8 of the raw). Craft one, wheel-select it (it sits past slot 10),
+    and place it on grass.
+    **Expect:** it glows and, within ~15 seconds, begins growing its own node patch —
+    resource production itself is craftable, closing the economy loop.
+
+## 11. Quit
+
+22. With no menu open, press **Esc**. **Expect:** the game closes cleanly.

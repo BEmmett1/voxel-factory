@@ -95,9 +95,22 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   icons. Facing set from the player's look on placement. The generator→grinder→conduit→
   cauldron loop now runs itself.
 
-The core automation loop is complete: mine → hand-craft → build & power → machines process →
-conduits transport. Possible next directions:
+World & closed-loop economy:
+- **Island** — the world is a floating sky island (6×6 chunks): noise-wobbled circular
+  coastline, gentle hills, tapered stone underside, per-launch seed (`m_worldSeed`), and a
+  flattened center plateau holding the demo line + spawn (`buildWorld`).
+- **Living sources** — glowing `Source*` blocks (BlockInfo has an `emissive` field) grow
+  patches of their resource's nodes nearby over time (`updateSources`, cap 5 within r=4,
+  ~7 s cadence, registry `m_sources`). Mining a source drops its placeable item
+  (relocatable). Node `Spring` replaced the old `WaterSource` name.
+- **Philosopher's tier** — Distiller and Transmuter machines complete the reagent chain:
+  Elixir → Refined Elixir → Philosopher's Catalyst → Philosopher's Stone.
+- **Closed loop** — new sources are hand-craftable from a Catalyst + 8 of the raw, so
+  resource production itself is expandable. The hotbar lists all placeables (keys 1-9, 0
+  jump to the first ten; mouse wheel cycles all; `Input::wheelSteps`).
+
+The core loop is complete and closed: mine → hand-craft → build & power → machines
+process → conduits transport → transmute new sources. Possible next directions:
 - Miner block auto-extracts raw from an adjacent resource node (a belt source).
-- Higher tiers (Distiller/Transmuter blocks → refined elixir → philosopher's stone).
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
-- Save/load; procedural terrain; per-chunk meshes (perf).
+- Save/load; per-chunk meshes (perf); player gravity/collision.

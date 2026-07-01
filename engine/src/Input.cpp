@@ -11,6 +11,7 @@ namespace engine {
         }
         m_relX = 0.0f;
         m_relY = 0.0f;
+        m_wheelY = 0.0f;
     }
 
     void Input::handleEvent(const SDL_Event& e) {
@@ -38,6 +39,9 @@ namespace engine {
             case SDL_EVENT_MOUSE_MOTION:
                 m_relX += e.motion.xrel;
                 m_relY += e.motion.yrel;
+                break;
+            case SDL_EVENT_MOUSE_WHEEL:
+                m_wheelY += e.wheel.y;
                 break;
             default:
                 break;
