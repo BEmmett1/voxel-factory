@@ -87,9 +87,11 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   owned counts). The player now starts with raw materials and crafts all placeables.
 - **Econ 4 / M3** — machine block-entities (`Machine.h`: input/output `Inventory` buffers +
   progress) processing the reagent chain (`MachineRecipe` in `Recipes.*`) over time, gated by
-  power, in `onTick()` (20 Hz). RMB on a machine opens its panel (recipes as LOAD rows +
-  TAKE OUTPUTS, buffers, power status, live progress; cursor released — hover/click or
-  W/S+Enter; Shift+RMB places against a machine instead). Floating progress bars + a
+  power, in `onTick()` (20 Hz). RMB on a machine opens its panel (an AUTO row + one MAKE
+  row per recipe — activating a MAKE row locks `Machine::selectedRecipe` and loads the
+  player's matching inputs; a locked machine also rejects belt items outside its recipe —
+  plus TAKE OUTPUTS, buffers, power status, live progress; cursor released — hover/click
+  or W/S+Enter; Shift+RMB places against a machine instead). Floating progress bars + a
   look-at panel show in-world state. `isMachine()` shared by power + game.
 - **Econ 5 / M5** — conduit block-entities (`Belt.h`: facing + one carried item). `beltStep()`
   (sub-tick) pushes into the machine ahead, hops items belt→belt (snapshot + claims prevent

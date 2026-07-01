@@ -63,3 +63,11 @@ namespace {
 const std::vector<MachineRecipe>& machineRecipes() {
     return kMachineRecipes;
 }
+
+std::vector<const MachineRecipe*> recipesForMachine(BlockId type) {
+    std::vector<const MachineRecipe*> out;
+    for (const MachineRecipe& r : kMachineRecipes) {
+        if (r.machine == type) out.push_back(&r);
+    }
+    return out;
+}

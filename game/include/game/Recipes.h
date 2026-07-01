@@ -22,5 +22,9 @@ struct MachineRecipe {
     float                  seconds; // processing time
 };
 
-// The reagent-processing chain (grinder/cauldron/infuser/alembic).
+// The reagent-processing chain (grinder/cauldron/infuser/alembic/...).
 const std::vector<MachineRecipe>& machineRecipes();
+
+// The recipes a given machine type can run, in stable order (the order the
+// machine panel lists them and Machine::selectedRecipe indexes them).
+std::vector<const MachineRecipe*> recipesForMachine(BlockId type);

@@ -108,13 +108,16 @@ look-at panel.
 15. Mine several **herb** bushes first, then aim at your powered grinder.
     **Expect:** a small look-at panel shows `GRINDER`, `IN:`/`OUT:` lines, and `RMB OPEN`.
 16. **Right-click the grinder.** **Expect:** the cursor is released and a panel opens:
-    machine name, `POWERED`/`NO POWER` status, one `LOAD FOR <output> ( inputs )` row per
-    recipe (white when you have the inputs), a `TAKE OUTPUTS` row, `IN:`/`OUT:` buffers,
-    and a live progress bar.
-17. Click (or W/S + Enter) the `LOAD FOR GROUND HERB` row. **Expect:** herb moves from
-    your inventory into `IN:`; if powered, the progress bar fills and `OUT: GROUND HERB xN`
-    grows every ~2s. Activate `TAKE OUTPUTS` and the outputs move to your inventory.
-    Close with **Esc**, **E**, or **RMB**. (An unpowered machine loads but does not run.)
+    machine name, `POWERED`/`NO POWER` status, an `AUTO ( FIRST READY RECIPE )` row, one
+    `MAKE <output> ( inputs )` row per recipe (white when you can contribute an input),
+    a `TAKE OUTPUTS` row, `IN:`/`OUT:` buffers, and a live progress bar. A `>` marker
+    shows the active recipe mode (AUTO by default).
+17. Click (or W/S + Enter) the `MAKE GROUND HERB` row. **Expect:** the `>` marker moves to
+    it (the machine is now locked to that recipe — it also refuses belt deliveries of
+    other ingredients) and your herb moves into `IN:`; if powered, the progress bar fills
+    and `OUT: GROUND HERB xN` grows every ~2s. Activate `TAKE OUTPUTS` to collect; the
+    `AUTO` row returns the machine to first-ready-recipe mode. Close with **Esc**, **E**,
+    or **RMB**. (An unpowered machine loads but does not run.)
 
 ## 8. Conduits — auto-transport
 

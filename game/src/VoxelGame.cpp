@@ -37,11 +37,14 @@ namespace {
     constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
     constexpr int   kPatchCap = 5;             // max live nodes per source patch
 
-    // Does a machine type use `item` as an input in any of its recipes?
-    bool machineAccepts(BlockId type, ItemId item) {
-        for (const MachineRecipe& r : machineRecipes()) {
-            if (r.machine != type) continue;
-            for (const ItemStack& in : r.inputs) {
+    // Does this machine use `item` as an input? A machine locked to a specific
+    // recipe only accepts that recipe's inputs (so belts can't overfill it
+    // with ingredients it will never consume).
+    bool machineAccepts(const Machine& mac, ItemId item) {
+        const auto recipes = recipesForMachine(mac.type);
+        for (std::size_t i = 0; i < recipes.size(); ++i) {
+            if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
+            for (const ItemStack& in : recipes[i]->inputs) {
                 if (in.id == item) return true;
             }
         }
@@ -389,7 +392,7 @@ void VoxelGame::beltStep() {
         if (b.item == ItemId::None) continue;
         const glm::ivec3 front = pos + b.facing;
         const auto mit = m_machines.find(front);
-        if (mit != m_machines.end() && machineAccepts(mit->second.type, b.item)) {
+        if (mit != m_machines.end() && machineAccepts(mit->second, b.item)) {
             mit->second.input.add(b.item, 1);
             b.item = ItemId::None;
         }
@@ -494,13 +497,15 @@ void VoxelGame::onTick() {
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
 
         const MachineRecipe* active = nullptr;
-        for (const MachineRecipe& r : machineRecipes()) {
-            if (r.machine != m.type) continue;
+        const auto candidates = recipesForMachine(m.type);
+        for (std::size_t i = 0; i < candidates.size(); ++i) {
+            // A selected recipe locks the machine to it; -1 = first ready one.
+            if (m.selectedRecipe >= 0 && static_cast<int>(i) != m.selectedRecipe) continue;
             bool ok = true;
-            for (const ItemStack& in : r.inputs) {
+            for (const ItemStack& in : candidates[i]->inputs) {
                 if (!m.input.has(in.id, in.count)) { ok = false; break; }
             }
-            if (ok) { active = &r; break; }
+            if (ok) { active = candidates[i]; break; }
         }
         if (!active) { m.progress = 0.0f; continue; }
 
@@ -757,11 +762,8 @@ void VoxelGame::drawMachineUi() {
     if (mit == m_machines.end()) return;
     const Machine& mac = mit->second;
 
-    std::vector<const MachineRecipe*> recipes;
-    for (const MachineRecipe& r : machineRecipes()) {
-        if (r.machine == mac.type) recipes.push_back(&r);
-    }
-    const int rows = static_cast<int>(recipes.size()) + 1;
+    const auto recipes = recipesForMachine(mac.type);
+    const int rows = static_cast<int>(recipes.size()) + 2;
 
     const int w = window().width();
     const int h = window().height();
@@ -789,9 +791,14 @@ void VoxelGame::drawMachineUi() {
 
         std::string label;
         bool actionable = false;
-        if (i < static_cast<int>(recipes.size())) {
-            const MachineRecipe& r = *recipes[i];
-            label = std::string("LOAD FOR ") + itemName(r.output.id) + "  (";
+        if (i == 0) {
+            label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
+                    "AUTO ( FIRST READY RECIPE )";
+            actionable = true;
+        } else if (i <= static_cast<int>(recipes.size())) {
+            const MachineRecipe& r = *recipes[i - 1];
+            label = std::string(mac.selectedRecipe == i - 1 ? "> " : "  ") +
+                    "MAKE " + itemName(r.output.id) + "  (";
             actionable = false; // white if the player can contribute anything
             for (const ItemStack& in : r.inputs) {
                 label += " " + std::string(itemName(in.id));
@@ -800,7 +807,7 @@ void VoxelGame::drawMachineUi() {
             }
             label += " )";
         } else {
-            label = "TAKE OUTPUTS";
+            label = "  TAKE OUTPUTS";
             for (int k = 1; k < static_cast<int>(ItemId::Count); ++k) {
                 if (mac.output.count(static_cast<ItemId>(k)) > 0) { actionable = true; break; }
             }
@@ -834,7 +841,8 @@ void VoxelGame::drawMachineUi() {
     }
 
     m_ui.text(px + 16, py + panelH - kPanelFooterH + 2, 12.0f,
-              "CLICK OR W/S + ENTER   ESC/E/RMB CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+              "MAKE ROW: SET RECIPE + LOAD   CLICK OR W/S + ENTER   ESC CLOSE",
+              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
 
     m_ui.end();
 }
@@ -871,12 +879,9 @@ void VoxelGame::updateMachineUi() {
     }
     Machine& mac = mit->second;
 
-    // Action rows: one LOAD row per recipe this machine runs, then TAKE.
-    std::vector<const MachineRecipe*> recipes;
-    for (const MachineRecipe& r : machineRecipes()) {
-        if (r.machine == mac.type) recipes.push_back(&r);
-    }
-    const int rows = static_cast<int>(recipes.size()) + 1;
+    // Action rows: AUTO, one MAKE row per recipe, then TAKE OUTPUTS.
+    const auto recipes = recipesForMachine(mac.type);
+    const int rows = static_cast<int>(recipes.size()) + 2;
 
     if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
         m_machineUiSel = (m_machineUiSel - 1 + rows) % rows;
@@ -902,12 +907,21 @@ void VoxelGame::updateMachineUi() {
     if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
         input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
         input().wasMousePressed(SDL_BUTTON_LEFT)) {
-        if (m_machineUiSel < static_cast<int>(recipes.size())) {
-            // Move each input independently (up to kLoadPerAction sets' worth
-            // of it), so the player can contribute just the ingredient they
-            // carry -- other inputs may already arrive by conduit.
-            const MachineRecipe& r = *recipes[m_machineUiSel];
-            for (const ItemStack& in : r.inputs) {
+        if (m_machineUiSel == 0) {
+            // AUTO: run whichever recipe's inputs are ready first.
+            mac.selectedRecipe = -1;
+            mac.progress = 0.0f;
+        } else if (m_machineUiSel <= static_cast<int>(recipes.size())) {
+            // MAKE row: lock the machine to this recipe and load the player's
+            // matching ingredients. Inputs move independently (up to
+            // kLoadPerAction sets' worth each), so the player can contribute
+            // just what they carry -- the rest may arrive by conduit.
+            const int idx = m_machineUiSel - 1;
+            if (mac.selectedRecipe != idx) {
+                mac.selectedRecipe = idx;
+                mac.progress = 0.0f; // switching recipes restarts the craft
+            }
+            for (const ItemStack& in : recipes[idx]->inputs) {
                 const int move = std::min(m_inventory.count(in.id), in.count * kLoadPerAction);
                 if (move > 0) {
                     m_inventory.remove(in.id, move);
