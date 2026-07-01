@@ -11,6 +11,7 @@
 #include "game/Inventory.h"
 #include "game/Recipes.h"
 #include "game/Machine.h"
+#include "game/Belt.h"
 #include "game/HashIVec3.h"
 #include "game/PowerSystem.h"
 
@@ -51,6 +52,9 @@ private:
 
     void registerMachine(const glm::ivec3& pos, BlockId type);
     void unregisterMachine(const glm::ivec3& pos); // returns buffered items
+    void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
+    void unregisterBelt(const glm::ivec3& pos);    // returns carried item
+    void beltStep();                                // advance items along conduits
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
     engine::Shader     m_shader;
@@ -68,6 +72,8 @@ private:
     int                 m_selectedSlot = 0;
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
+    std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
+    int m_beltTimer = 0; // ticks since the last belt step
 
     bool m_menuOpen = false;             // crafting menu visible?
     int  m_menuSelection = 0;

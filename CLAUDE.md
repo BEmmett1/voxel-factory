@@ -89,7 +89,15 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   progress) processing the reagent chain (`MachineRecipe` in `Recipes.*`) over time, gated by
   power, in `onTick()` (20 Hz). F loads inputs / G takes outputs when aiming at a machine;
   floating progress bars + a look-at panel show state. `isMachine()` shared by power + game.
+- **Econ 5 / M5** — conduit block-entities (`Belt.h`: facing + one carried item). `beltStep()`
+  (sub-tick) pushes into the machine ahead, hops items belt→belt (snapshot + claims prevent
+  chaining/merging), and pulls from the machine behind. Carried items render as floating
+  icons. Facing set from the player's look on placement. The generator→grinder→conduit→
+  cauldron loop now runs itself.
 
-Next:
-- **Econ 5 / M5** — conduits move items between machines (and into/out of their buffers),
-  so the chain runs without manual loading.
+The core automation loop is complete: mine → hand-craft → build & power → machines process →
+conduits transport. Possible next directions:
+- Miner block auto-extracts raw from an adjacent resource node (a belt source).
+- Higher tiers (Distiller/Transmuter blocks → refined elixir → philosopher's stone).
+- Multi-item/slot belts; belts needing power; machine output auto-eject.
+- Save/load; procedural terrain; per-chunk meshes (perf).

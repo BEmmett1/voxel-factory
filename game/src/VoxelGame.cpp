@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -23,6 +24,18 @@ namespace {
     constexpr int   kWorldChunks = 4;          // NxN ground chunks => 64x64 area
     constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
     constexpr int   kLoadPerPress = 16;        // items moved into a machine per F press
+    constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
+
+    // Does a machine type use `item` as an input in any of its recipes?
+    bool machineAccepts(BlockId type, ItemId item) {
+        for (const MachineRecipe& r : machineRecipes()) {
+            if (r.machine != type) continue;
+            for (const ItemStack& in : r.inputs) {
+                if (in.id == item) return true;
+            }
+        }
+        return false;
+    }
     const glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
     const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
@@ -83,11 +96,6 @@ void VoxelGame::onStart() {
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
-
-    // The demo grinder is a working machine; pre-load it with herb to grind so
-    // the reagent chain is visible right away.
-    registerMachine({9, 3, 3}, BlockId::Grinder);
-    m_machines[{9, 3, 3}].input.add(ItemId::Herb, 6);
 
     // Stand near the demo structures so blocks are within reach to edit.
     camera().position = {8.0f, 5.0f, 10.0f};
@@ -164,17 +172,22 @@ void VoxelGame::buildWorld() {
         }
     }
 
-    // Automation preview on top of the grass (y = 3):
-    // generator -> wire -> grinder, plus a parallel conduit line.
+    // Automation demo on top of the grass (y = 3): generator -> wire -> grinder,
+    // then a conduit line auto-carries the grinder's ground herb into a cauldron.
     m_world->setBlock(3, 3, 3, BlockId::Generator);
     for (int x = 4; x <= 8; ++x) {
         m_world->setBlock(x, 3, 3, BlockId::Wire);
     }
     m_world->setBlock(9, 3, 3, BlockId::Grinder);
+    registerMachine({9, 3, 3}, BlockId::Grinder);
+    m_machines[{9, 3, 3}].input.add(ItemId::Herb, 20); // fuel for the demo
 
-    for (int x = 3; x <= 9; ++x) {
-        m_world->setBlock(x, 3, 6, BlockId::Belt);
+    for (int x = 10; x <= 12; ++x) {
+        m_world->setBlock(x, 3, 3, BlockId::Belt);
+        registerBelt({x, 3, 3}, {1, 0, 0}); // carry items toward +x
     }
+    m_world->setBlock(13, 3, 3, BlockId::Cauldron);
+    registerMachine({13, 3, 3}, BlockId::Cauldron);
 
     // Scatter mineable resource nodes across the surface, keeping the demo
     // area clear so the power preview stays readable.
@@ -225,6 +238,69 @@ void VoxelGame::unregisterMachine(const glm::ivec3& pos) {
     m_machines.erase(it);
 }
 
+void VoxelGame::registerBelt(const glm::ivec3& pos, const glm::ivec3& facing) {
+    Belt b;
+    b.facing = facing;
+    m_belts[pos] = b;
+}
+
+void VoxelGame::unregisterBelt(const glm::ivec3& pos) {
+    const auto it = m_belts.find(pos);
+    if (it == m_belts.end()) return;
+    if (it->second.item != ItemId::None) m_inventory.add(it->second.item, 1);
+    m_belts.erase(it);
+}
+
+void VoxelGame::beltStep() {
+    // 1. Belts deliver their item into a machine directly ahead (if it accepts).
+    for (auto& [pos, b] : m_belts) {
+        if (b.item == ItemId::None) continue;
+        const glm::ivec3 front = pos + b.facing;
+        const auto mit = m_machines.find(front);
+        if (mit != m_machines.end() && machineAccepts(mit->second.type, b.item)) {
+            mit->second.input.add(b.item, 1);
+            b.item = ItemId::None;
+        }
+    }
+
+    // 2. Hop items belt -> belt. Use a snapshot of pre-step contents so an item
+    //    advances at most one belt, and claim targets so two items never merge.
+    std::unordered_map<glm::ivec3, ItemId, IVec3Hash> before;
+    before.reserve(m_belts.size());
+    for (const auto& [pos, b] : m_belts) before[pos] = b.item;
+
+    std::unordered_set<glm::ivec3, IVec3Hash> claimed;
+    for (auto& [pos, b] : m_belts) {
+        const ItemId carried = before[pos];
+        if (carried == ItemId::None) continue;
+        const glm::ivec3 front = pos + b.facing;
+        const auto tb = m_belts.find(front);
+        if (tb == m_belts.end()) continue;       // ahead is not a belt
+        if (before[front] != ItemId::None) continue; // target was occupied
+        if (claimed.count(front)) continue;       // already filled this step
+        tb->second.item = carried;
+        b.item = ItemId::None;
+        claimed.insert(front);
+    }
+
+    // 3. Empty belts pull one item from a machine's output directly behind them.
+    for (auto& [pos, b] : m_belts) {
+        if (b.item != ItemId::None) continue;
+        const glm::ivec3 back = pos - b.facing;
+        const auto mit = m_machines.find(back);
+        if (mit == m_machines.end()) continue;
+        Inventory& out = mit->second.output;
+        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            const ItemId id = static_cast<ItemId>(i);
+            if (out.count(id) > 0) {
+                out.remove(id, 1);
+                b.item = id;
+                break;
+            }
+        }
+    }
+}
+
 void VoxelGame::onTick() {
     // Powered machines process their input buffer into outputs over time.
     for (auto& [pos, m] : m_machines) {
@@ -250,6 +326,12 @@ void VoxelGame::onTick() {
             m.output.add(active->output.id, active->output.count);
             m.progress = 0.0f;
         }
+    }
+
+    // Advance conduits on a slower cadence so items visibly travel.
+    if (++m_beltTimer >= kBeltStepTicks) {
+        m_beltTimer = 0;
+        beltStep();
     }
 }
 
@@ -367,7 +449,8 @@ void VoxelGame::onUpdate(float dt) {
         // Mine: break the block and collect its drop.
         if (input().wasMousePressed(SDL_BUTTON_LEFT)) {
             const BlockId broken = m_world->getBlock(tb.x, tb.y, tb.z);
-            if (isMachine(broken)) unregisterMachine(tb); // returns buffered items
+            if (isMachine(broken)) unregisterMachine(tb);     // returns buffered items
+            if (broken == BlockId::Belt) unregisterBelt(tb);  // returns carried item
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
@@ -383,6 +466,14 @@ void VoxelGame::onUpdate(float dt) {
                 m_world->setBlock(p.x, p.y, p.z, placed);
                 m_inventory.remove(held, 1);
                 if (isMachine(placed)) registerMachine(p, placed);
+                if (placed == BlockId::Belt) {
+                    // The conduit carries items the way the player is facing.
+                    const glm::vec3 f = camera().front();
+                    const glm::ivec3 facing = (std::abs(f.x) > std::abs(f.z))
+                        ? glm::ivec3(f.x > 0 ? 1 : -1, 0, 0)
+                        : glm::ivec3(0, 0, f.z > 0 ? 1 : -1);
+                    registerBelt(p, facing);
+                }
                 edited = true;
                 updateTitle();
             }
@@ -554,6 +645,18 @@ void VoxelGame::drawHud() {
         m_ui.rect(bx - 1, by - 1, bw + 2, bh + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.7f));
         const float frac = glm::clamp(m.craftTime > 0 ? m.progress / m.craftTime : 0.0f, 0.0f, 1.0f);
         m_ui.rect(bx, by, bw * frac, bh, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+    }
+
+    // Items currently riding on conduits, drawn as floating icons.
+    for (const auto& [pos, b] : m_belts) {
+        if (b.item == ItemId::None) continue;
+        glm::vec2 sp;
+        if (!projectToScreen(glm::vec3(pos) + glm::vec3(0.5f, 0.85f, 0.5f), sp)) continue;
+        const float dist = glm::length(camera().position - (glm::vec3(pos) + glm::vec3(0.5f)));
+        const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f);
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(itemInfo(b.item).atlasTile, uv0, uv1);
+        m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);
     }
 
     // Look-at machine panel (name, input/output buffers, controls).
