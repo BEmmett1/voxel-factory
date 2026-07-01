@@ -42,6 +42,8 @@ enum class ItemId : std::uint8_t {
     CauldronItem,
     InfuserItem,
     AlembicItem,
+    DistillerItem,
+    TransmuterItem,
     MinerItem,
     // Placeable resource sources (relocatable / end-game craftable)
     HerbSourceItem,

@@ -17,6 +17,8 @@ namespace {
         {{{I::CopperPlate, 2}, {I::Crystal, 1}},     {I::MachineFrame, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 1}},      {I::InfuserItem, 1}},
         {{{I::MachineFrame, 1}, {I::Crystal, 1}},    {I::AlembicItem, 1}},
+        {{{I::MachineFrame, 1}, {I::Glass, 2}},      {I::DistillerItem, 1}},
+        {{{I::MachineFrame, 1}, {I::Crystal, 2}},    {I::TransmuterItem, 1}},
         {{{I::CopperPlate, 2}, {I::Crystal, 1}},     {I::GeneratorItem, 1}},
         {{{I::CopperPlate, 3}, {I::Stone, 2}},       {I::MinerItem, 1}},
     };
@@ -43,6 +45,10 @@ namespace {
         {B::Infuser,  {{I::MineralSolution, 1}, {I::Essence, 1}},  {I::ManaVial, 1},        4.0f},
         // Alembic: potions -> elixir
         {B::Alembic,  {{I::HealingDraught, 1}, {I::ManaVial, 1}},  {I::ElixirOfVigor, 1},   5.0f},
+        // Distiller/Transmuter: the philosopher's tier
+        {B::Distiller,  {{I::ElixirOfVigor, 1}, {I::Essence, 1}},        {I::RefinedElixir, 1},        6.0f},
+        {B::Transmuter, {{I::RefinedElixir, 1}, {I::CrystalDust, 1}},    {I::PhilosophersCatalyst, 1}, 8.0f},
+        {B::Transmuter, {{I::PhilosophersCatalyst, 1}, {I::ElixirOfVigor, 1}}, {I::PhilosophersStone, 1}, 10.0f},
     };
 }
 

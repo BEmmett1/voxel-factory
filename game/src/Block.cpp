@@ -17,6 +17,8 @@ namespace {
         /* Cauldron      */ {true,  {0.18f, 0.18f, 0.22f}, 0.0f},
         /* Infuser       */ {true,  {0.40f, 0.62f, 0.60f}, 0.0f},
         /* Alembic       */ {true,  {0.72f, 0.58f, 0.28f}, 0.0f},
+        /* Distiller     */ {true,  {0.58f, 0.30f, 0.55f}, 0.0f},
+        /* Transmuter    */ {true,  {0.85f, 0.75f, 0.35f}, 0.0f},
         /* Miner         */ {true,  {0.35f, 0.40f, 0.46f}, 0.0f},
         /* HerbBush      */ {true,  {0.20f, 0.55f, 0.22f}, 0.0f},
         /* CrystalNode   */ {true,  {0.55f, 0.45f, 0.85f}, 0.0f},
@@ -39,7 +41,9 @@ const BlockInfo& blockInfo(BlockId id) {
 
 bool isMachine(BlockId id) {
     return id == BlockId::Grinder || id == BlockId::Cauldron ||
-           id == BlockId::Infuser || id == BlockId::Alembic || id == BlockId::Miner;
+           id == BlockId::Infuser || id == BlockId::Alembic ||
+           id == BlockId::Distiller || id == BlockId::Transmuter ||
+           id == BlockId::Miner;
 }
 
 bool isSource(BlockId id) {
@@ -71,6 +75,8 @@ const char* blockName(BlockId id) {
         case BlockId::Cauldron:      return "Cauldron";
         case BlockId::Infuser:       return "Infuser";
         case BlockId::Alembic:       return "Alembic";
+        case BlockId::Distiller:     return "Distiller";
+        case BlockId::Transmuter:    return "Transmuter";
         case BlockId::Miner:         return "Miner";
         case BlockId::HerbBush:      return "Herb Bush";
         case BlockId::CrystalNode:   return "Crystal Node";

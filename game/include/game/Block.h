@@ -24,6 +24,8 @@ enum class BlockId : std::uint8_t {
     Cauldron,
     Infuser,
     Alembic,
+    Distiller,
+    Transmuter,
     Miner,
     // Resource nodes
     HerbBush,

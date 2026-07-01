@@ -10,7 +10,7 @@
 // they stay in lockstep.
 namespace Atlas {
     constexpr int Cols   = 8;
-    constexpr int Rows   = 8;   // room for 64 tiles (blocks + item icons)
+    constexpr int Rows   = 12;  // 96 tiles: blocks use 0-31, item icons 32+
     constexpr int TilePx = 16;
     constexpr int WidthPx  = Cols * TilePx;
     constexpr int HeightPx = Rows * TilePx;
