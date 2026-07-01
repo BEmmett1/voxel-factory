@@ -109,8 +109,14 @@ World & closed-loop economy:
   resource production itself is expandable. The hotbar lists all placeables (keys 1-9, 0
   jump to the first ten; mouse wheel cycles all; `Input::wheelSteps`).
 
+UI: an **F1 help overlay** (goal + quickstart + controls) built on `UiRenderer`; the
+bitmap font also supports `>` and `+`. Esc closes help, then the crafting menu, then quits.
+
 The core loop is complete and closed: mine → hand-craft → build & power → machines
 process → conduits transport → transmute new sources. Possible next directions:
 - Miner block auto-extracts raw from an adjacent resource node (a belt source).
+- **Weather + forestry (user's vision):** rain falls occasionally and can be collected as
+  water; buckets are crafted from wood; trees grow from saplings (wood becomes a resource
+  track alongside copper/sand/etc.).
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
 - Save/load; per-chunk meshes (perf); player gravity/collision.

@@ -45,6 +45,7 @@ private:
     void buildCrosshairMesh();   // screen-space '+' at the center
     void drawHud();              // hotbar + machine overlays
     void drawCraftMenu();        // crafting menu overlay
+    void drawHelp();             // F1 how-to-play overlay
     void updateMenu();           // crafting menu navigation + crafting
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
@@ -80,6 +81,7 @@ private:
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
 
     bool m_menuOpen = false;             // crafting menu visible?
+    bool m_helpOpen = false;             // F1 help overlay visible?
     int  m_menuSelection = 0;
 
     bool       m_hasTarget = false;

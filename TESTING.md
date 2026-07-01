@@ -16,6 +16,7 @@ result to expect.
 | Place selected item | **RMB** |
 | Select hotbar slot | **1**–**9**, **0** (first ten) · **mouse wheel** cycles all |
 | Open/close crafting menu | **E** |
+| Help screen | **F1** (F1/Esc closes) |
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
 | Machine: load inputs / take outputs | **F** / **G** (while aiming at it) |
 | Close menu, or quit | **Esc** |

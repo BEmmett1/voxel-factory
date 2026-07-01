@@ -565,11 +565,20 @@ void VoxelGame::updateTitle() {
     const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
     window().setTitle(std::string("Voxel Factory  —  Holding: ") + itemName(held) +
                       " x" + std::to_string(m_inventory.count(held)) +
-                      "   (LMB mine / RMB place / 1-0 + wheel select)");
+                      "   (F1 help / E craft / LMB mine / RMB place)");
 }
 
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
+
+    // Help overlay: toggle with F1. While open it freezes the world.
+    if (input().wasKeyPressed(SDL_SCANCODE_F1)) {
+        m_helpOpen = !m_helpOpen;
+        m_menuOpen = false;
+    }
+    if (m_helpOpen) {
+        return;
+    }
 
     // Crafting menu: toggle with E. While open it owns the input and freezes
     // the world (no look / move / mine / place).
@@ -747,10 +756,13 @@ void VoxelGame::onRender() {
 
     drawHud();
     if (m_menuOpen) drawCraftMenu();
+    if (m_helpOpen) drawHelp();
 }
 
 void VoxelGame::onEscape() {
-    if (m_menuOpen) {
+    if (m_helpOpen) {
+        m_helpOpen = false;
+    } else if (m_menuOpen) {
         m_menuOpen = false;
     } else {
         quit();
@@ -923,6 +935,57 @@ void VoxelGame::drawCraftMenu() {
 
     m_ui.text(px + 16, py + panelH - footerH + 6, 13.0f,
               "W/S SELECT   ENTER CRAFT   E CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+
+    m_ui.end();
+}
+
+void VoxelGame::drawHelp() {
+    const int w = window().width();
+    const int h = window().height();
+
+    // Each line: text + a style (0 heading, 1 body, 2 dim).
+    struct Line { const char* text; int style; };
+    static const Line kLines[] = {
+        {"HOW TO PLAY", 0},
+        {"GOAL: BREW YOUR WAY UP TO THE PHILOSOPHERS STONE, THEN", 1},
+        {"TRANSMUTE NEW RESOURCE SOURCES TO EXPAND YOUR ISLAND.", 1},
+        {"", 1},
+        {"1. MINE NODES (LMB) AT THE GLOWING SOURCE PATCHES. THEY REGROW.", 1},
+        {"2. CRAFT GEAR WITH E:  ORE > INGOT > PLATE > MACHINES.", 1},
+        {"3. PLACE (RMB) A GENERATOR AND RUN WIRE. POWERED BLOCKS GLOW.", 1},
+        {"4. AIM AT A MACHINE:  F LOADS INPUTS,  G TAKES OUTPUTS.", 1},
+        {"5. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS.", 1},
+        {"6. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
+        {"", 1},
+        {"CONTROLS", 0},
+        {"WASD MOVE   SPACE UP   LSHIFT DOWN   LCTRL SPRINT", 1},
+        {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
+        {"E CRAFT MENU   F LOAD   G TAKE   ESC QUIT", 1},
+        {"", 1},
+        {"F1 OR ESC TO CLOSE", 2},
+    };
+    const int n = static_cast<int>(sizeof(kLines) / sizeof(kLines[0]));
+
+    m_ui.begin(w, h);
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.55f));
+
+    const float lineH = 24.0f, padY = 20.0f, panelW = 760.0f;
+    const float panelH = padY * 2.0f + n * lineH;
+    const float px = (static_cast<float>(w) - panelW) * 0.5f;
+    const float py = (static_cast<float>(h) - panelH) * 0.5f;
+
+    m_ui.rect(px, py, panelW, panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+
+    for (int i = 0; i < n; ++i) {
+        const Line& line = kLines[i];
+        if (!line.text[0]) continue;
+        const float ly = py + padY + i * lineH;
+        const float size = line.style == 0 ? 18.0f : 14.0f;
+        const glm::vec4 col = line.style == 0 ? glm::vec4(1.0f, 1.0f, 0.7f, 1.0f)
+                            : line.style == 2 ? glm::vec4(0.65f, 0.65f, 0.7f, 1.0f)
+                                              : glm::vec4(0.9f, 0.9f, 0.92f, 1.0f);
+        m_ui.text(px + 22, ly, size, line.text, col);
+    }
 
     m_ui.end();
 }
