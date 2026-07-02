@@ -53,6 +53,12 @@ look-at panel.
    dotted with **clusters** of colored resource nodes, each cluster around one brighter,
    **glowing source block**. Fly past the coast and look under the island: the stone
    underside tapers toward the middle.
+4. Turn around toward the plateau's south side: a second demo — glowing **herb source** →
+   **miner** (gray) + **generator** (orange) → two conduits.
+   **Expect:** the miner harvests nodes that grow around the source (watch one vanish and
+   its progress bar fill, one node per ~4s within radius 4) and herb rides its conduits —
+   fully automated mining, bounded by the patch's regrowth. Right-click the miner:
+   its panel reads `MINES NEARBY RESOURCE NODES ( RADIUS 4 )` and `OUT:` accumulates herb.
 
 ## 2. Camera & movement
 

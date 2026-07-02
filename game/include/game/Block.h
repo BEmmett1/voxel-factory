@@ -66,5 +66,8 @@ bool isMachine(BlockId id);
 // A resource source (patch spawner).
 bool isSource(BlockId id);
 
+// A harvestable resource node (grown by a source; what Miners collect).
+bool isResourceNode(BlockId id);
+
 // The node block a source grows (Air if `id` is not a source).
 BlockId sourceSpawnsNode(BlockId id);

@@ -50,6 +50,10 @@ bool isSource(BlockId id) {
     return id >= BlockId::SourceHerb && id <= BlockId::SourceEssence;
 }
 
+bool isResourceNode(BlockId id) {
+    return id >= BlockId::HerbBush && id <= BlockId::EssenceVent;
+}
+
 BlockId sourceSpawnsNode(BlockId id) {
     switch (id) {
         case BlockId::SourceHerb:    return BlockId::HerbBush;

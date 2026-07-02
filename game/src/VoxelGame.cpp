@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -143,6 +144,8 @@ namespace {
     constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
     constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
     constexpr int   kPatchCap = 5;             // max live nodes per source patch
+    constexpr float kMineSeconds = 4.0f;       // miner: seconds per harvested node
+    constexpr int   kMineRadius = 4;           // miner reach (matches patch radius)
 
     // Does this machine use `item` as an input? A machine locked to a specific
     // recipe only accepts that recipe's inputs (so belts can't overfill it
@@ -406,6 +409,19 @@ void VoxelGame::buildWorld() {
         m_world->setBlock(x, dy, dzRow - 1, BlockId::Wire);
     }
 
+    // Mining demo on the plateau's south side: a herb source grows a patch,
+    // a powered miner harvests it, and belts carry the herb away.
+    const int mz = static_cast<int>(cz) + 3;
+    m_world->setBlock(cxi - 7, dy, mz, BlockId::SourceHerb);
+    m_sources[{cxi - 7, dy, mz}] = 0.0f;
+    m_world->setBlock(cxi - 5, dy, mz, BlockId::Miner);
+    registerMachine({cxi - 5, dy, mz}, BlockId::Miner);
+    m_world->setBlock(cxi - 4, dy, mz, BlockId::Generator);
+    for (int i = 1; i <= 2; ++i) {
+        m_world->setBlock(cxi - 5, dy, mz - i, BlockId::Belt);
+        registerBelt({cxi - 5, dy, mz - i}, {0, 0, -1}); // carry toward the demo row
+    }
+
     // Scatter glowing resource sources across the island (seeded random),
     // keeping the plateau clear. Each will grow a patch of its node type.
     const BlockId sourceTypes[6] = {BlockId::SourceHerb, BlockId::SourceCopper,
@@ -599,9 +615,46 @@ void VoxelGame::onTick() {
     }
 
     // Powered machines process their input buffer into outputs over time.
+    bool minedNode = false;
     for (auto& [pos, m] : m_machines) {
         m.crafting = false;
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
+
+        // Miners harvest the nearest grown resource node in reach instead of
+        // running recipes; the patch regrows from its source, bounding the rate.
+        if (m.type == BlockId::Miner) {
+            glm::ivec3 best{0};
+            int bestDist2 = INT_MAX;
+            for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
+                for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
+                    for (int dy = -3; dy <= 3; ++dy) {
+                        const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
+                        if (!isResourceNode(m_world->getBlock(c.x, c.y, c.z))) continue;
+                        const int d2 = dx * dx + dy * dy + dz * dz;
+                        if (d2 < bestDist2) {
+                            bestDist2 = d2;
+                            best = c;
+                        }
+                    }
+                }
+            }
+            if (bestDist2 == INT_MAX) {
+                m.progress = 0.0f; // nothing in reach; idle until the patch regrows
+                continue;
+            }
+
+            m.crafting = true;
+            m.craftTime = kMineSeconds;
+            m.progress += kTickSeconds;
+            if (m.progress >= kMineSeconds) {
+                m.progress = 0.0f;
+                const ItemStack drop = blockDrop(m_world->getBlock(best.x, best.y, best.z));
+                m.output.add(drop.id, drop.count);
+                m_world->setBlock(best.x, best.y, best.z, BlockId::Air);
+                minedNode = true;
+            }
+            continue;
+        }
 
         const MachineRecipe* active = nullptr;
         const auto candidates = recipesForMachine(m.type);
@@ -624,6 +677,10 @@ void VoxelGame::onTick() {
             m.output.add(active->output.id, active->output.count);
             m.progress = 0.0f;
         }
+    }
+
+    if (minedNode) {
+        rebuildMesh(); // harvested nodes disappear from the world
     }
 
     // Advance conduits on a slower cadence so items visibly travel.
@@ -906,9 +963,14 @@ void VoxelGame::drawMachineUi() {
         std::string label;
         bool actionable = false;
         if (i == 0) {
-            label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
-                    "AUTO ( FIRST READY RECIPE )";
-            actionable = true;
+            if (recipes.empty()) { // e.g. the Miner: no recipes, just status
+                label = "  MINES NEARBY RESOURCE NODES ( RADIUS 4 )";
+                actionable = true;
+            } else {
+                label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
+                        "AUTO ( FIRST READY RECIPE )";
+                actionable = true;
+            }
         } else if (i <= static_cast<int>(recipes.size())) {
             const MachineRecipe& r = *recipes[i - 1];
             label = std::string(mac.selectedRecipe == i - 1 ? "> " : "  ") +
@@ -1146,9 +1208,10 @@ void VoxelGame::updateMachineUi() {
         (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) || clickOnRows)) {
         if (m_machineUiSel == 0) {
-            // AUTO: run whichever recipe's inputs are ready first.
+            // AUTO: run whichever recipe's inputs are ready first. (For
+            // recipe-less machines like the Miner this row is informational.)
             mac.selectedRecipe = -1;
-            mac.progress = 0.0f;
+            if (!recipes.empty()) mac.progress = 0.0f;
         } else if (m_machineUiSel <= static_cast<int>(recipes.size())) {
             // MAKE row: lock the machine to this recipe and load the player's
             // matching ingredients (each input independently, so the player

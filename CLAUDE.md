@@ -122,9 +122,14 @@ World & closed-loop economy:
 UI: an **F1 help overlay** (goal + quickstart + controls) built on `UiRenderer`; the
 bitmap font also supports `>` and `+`. Esc closes help, then the crafting menu, then quits.
 
-The core loop is complete and closed: mine → hand-craft → build & power → machines
-process → conduits transport → transmute new sources. Possible next directions:
-- Miner block auto-extracts raw from an adjacent resource node (a belt source).
+- **Miner automation** — a powered Miner harvests the nearest grown resource node within
+  radius 4, one per 4 s (`kMineSeconds`/`kMineRadius`, special-cased in `onTick` before
+  recipe lookup), dropping the yield into its output buffer for belts to pull; throughput
+  is bounded by patch regrowth. Recipe-less machines show an info row in their panel. The
+  plateau's south side hosts a demo trio (source + miner + generator + belts).
+
+The core loop is complete, closed, and fully automatable: miners harvest → conduits
+transport → machines process → transmute new sources. Possible next directions:
 - **Weather + forestry (user's vision):** rain falls occasionally and can be collected as
   water; buckets are crafted from wood; trees grow from saplings (wood becomes a resource
   track alongside copper/sand/etc.).
