@@ -83,8 +83,10 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
 - **Econ 2** — `engine::UiRenderer` (orthographic 2D quads + atlas icons + embedded bitmap
   font, digits + A-Z + punctuation) and an on-screen hotbar HUD (icons + counts + selection).
 - **Econ 3** — hand-craft recipe table (`Recipes.*`, the equipment chain) + crafting menu
-  overlay (open with E, W/S to select, Enter to craft; rows show inputs, affordability, and
-  owned counts). The player now starts with raw materials and crafts all placeables.
+  overlay (open with E; cursor released — click/hover/wheel or W/S+Enter; rows show
+  inputs, affordability, and owned counts; an INVENTORY grid with hover tooltips shows
+  materials on hand; layout via `craftLayout()`). The player starts with raw materials
+  and crafts all placeables.
 - **Econ 4 / M3** — machine block-entities (`Machine.h`: input/output `Inventory` buffers +
   progress) processing the reagent chain (`MachineRecipe` in `Recipes.*`) over time, gated by
   power, in `onTick()` (20 Hz). RMB on a machine opens its panel (an AUTO row + one MAKE

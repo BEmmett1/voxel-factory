@@ -99,6 +99,47 @@ namespace {
         }
         return -1;
     }
+
+    // One item cell: dark slab, icon, count (shared by machine panel + menu).
+    void drawItemCell(engine::UiRenderer& ui, const engine::Texture& atlas,
+                      float x, float y, ItemId id, int count) {
+        ui.rect(x, y, PanelLayout::Cell, PanelLayout::Cell, glm::vec4(0.16f, 0.16f, 0.19f, 1.0f));
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(itemInfo(id).atlasTile, uv0, uv1);
+        ui.icon(atlas, x + 4, y + 4, PanelLayout::Cell - 8, PanelLayout::Cell - 8, uv0, uv1);
+        const std::string cnt = std::to_string(count);
+        ui.text(x + PanelLayout::Cell - ui.textWidth(11.0f, cnt) - 3,
+                y + PanelLayout::Cell - 13, 11.0f, cnt, glm::vec4(1.0f));
+    }
+
+    // Crafting-menu layout (rows + a materials grid); shared by update + draw.
+    struct CraftLayout {
+        static constexpr float RowH = 22.0f;
+        float px = 0, py = 0, panelW = 700.0f, panelH = 0;
+        float rowsY = 0;
+        int   rows = 0;
+        float invLabelY = 0, invY = 0;
+        int   invRows = 0;
+        float tooltipY = 0, footerY = 0;
+    };
+
+    CraftLayout craftLayout(int w, int h, int nRecipes, int invCount) {
+        CraftLayout L;
+        L.rows = nRecipes;
+        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+        const float headerH = 40.0f, invLabelH = 20.0f, tooltipH = 16.0f, footerH = 22.0f;
+        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
+        L.panelH = headerH + nRecipes * CraftLayout::RowH + invLabelH + invH +
+                   tooltipH + footerH + 8.0f;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.rowsY = L.py + headerH;
+        L.invLabelY = L.rowsY + nRecipes * CraftLayout::RowH + 2.0f;
+        L.invY = L.invLabelY + invLabelH;
+        L.tooltipY = L.invY + invH + 2.0f;
+        L.footerY = L.py + L.panelH - footerH + 2.0f;
+        return L;
+    }
     constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
     constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
     constexpr int   kPatchCap = 5;             // max live nodes per source patch
@@ -661,16 +702,20 @@ void VoxelGame::onUpdate(float dt) {
     // Help overlay: toggle with F1. While open it freezes the world.
     if (input().wasKeyPressed(SDL_SCANCODE_F1)) {
         m_helpOpen = !m_helpOpen;
-        m_menuOpen = false;
+        if (m_menuOpen) {
+            m_menuOpen = false;
+            window().setRelativeMouse(true);
+        }
     }
     if (m_helpOpen) {
         return;
     }
 
     // Crafting menu: toggle with E. While open it owns the input and freezes
-    // the world (no look / move / mine / place).
+    // the world; the cursor is released for hover/click.
     if (input().wasKeyPressed(SDL_SCANCODE_E)) {
         m_menuOpen = !m_menuOpen;
+        window().setRelativeMouse(!m_menuOpen);
     }
     if (m_menuOpen) {
         updateMenu();
@@ -888,15 +933,8 @@ void VoxelGame::drawMachineUi() {
         m_ui.text(L.px + 16, ry + 5, 14.0f, label, col);
     }
 
-    // One item cell: dark slab, icon, count.
     auto drawCell = [&](float x, float y, ItemId id, int count) {
-        m_ui.rect(x, y, PanelLayout::Cell, PanelLayout::Cell, glm::vec4(0.16f, 0.16f, 0.19f, 1.0f));
-        glm::vec2 uv0, uv1;
-        Atlas::uvForTile(itemInfo(id).atlasTile, uv0, uv1);
-        m_ui.icon(m_atlas, x + 4, y + 4, PanelLayout::Cell - 8, PanelLayout::Cell - 8, uv0, uv1);
-        const std::string cnt = std::to_string(count);
-        m_ui.text(x + PanelLayout::Cell - m_ui.textWidth(11.0f, cnt) - 3,
-                  y + PanelLayout::Cell - 13, 11.0f, cnt, glm::vec4(1.0f));
+        drawItemCell(m_ui, m_atlas, x, y, id, count);
     };
 
     // IN strip (highlighted as the drop target while dragging from inventory).
@@ -978,6 +1016,7 @@ void VoxelGame::onEscape() {
         m_helpOpen = false;
     } else if (m_menuOpen) {
         m_menuOpen = false;
+        window().setRelativeMouse(true);
     } else {
         quit();
     }
@@ -1168,15 +1207,42 @@ void VoxelGame::updateMenu() {
     const int n = static_cast<int>(recipes.size());
     if (n == 0) return;
 
+    const auto invItems = itemsOf(m_inventory);
+    const CraftLayout L = craftLayout(window().width(), window().height(), n,
+                                      static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
+
     if (input().wasKeyPressed(SDL_SCANCODE_UP) || input().wasKeyPressed(SDL_SCANCODE_W)) {
         m_menuSelection = (m_menuSelection - 1 + n) % n;
     }
     if (input().wasKeyPressed(SDL_SCANCODE_DOWN) || input().wasKeyPressed(SDL_SCANCODE_S)) {
         m_menuSelection = (m_menuSelection + 1) % n;
     }
+    const int wheel = input().wheelSteps();
+    if (wheel != 0) {
+        m_menuSelection = ((m_menuSelection - wheel) % n + n) % n;
+    }
+
+    // Hover: while the cursor moves over the rows area, it picks the row.
+    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
+                          my >= L.rowsY && my < L.rowsY + n * CraftLayout::RowH;
+    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
+        m_menuSelection = static_cast<int>((my - L.rowsY) / CraftLayout::RowH);
+    }
+
+    // Enter always crafts the selection; LMB crafts the row it lands on.
     if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
         input().wasKeyPressed(SDL_SCANCODE_KP_ENTER)) {
         tryCraft(recipes[m_menuSelection]);
+    } else if (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows) {
+        m_menuSelection = static_cast<int>((my - L.rowsY) / CraftLayout::RowH);
+        tryCraft(recipes[m_menuSelection]);
+    }
+
+    // RMB also closes (E and Esc are handled elsewhere).
+    if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        m_menuOpen = false;
+        window().setRelativeMouse(true);
     }
 }
 
@@ -1273,28 +1339,27 @@ void VoxelGame::drawCraftMenu() {
     const int h = window().height();
     const auto& recipes = handcraftRecipes();
     const int n = static_cast<int>(recipes.size());
+    const auto invItems = itemsOf(m_inventory);
+    const CraftLayout L = craftLayout(w, h, n, static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
 
     m_ui.begin(w, h);
 
     // Dim the world behind the menu.
     m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.5f));
 
-    const float rowH = 26.0f, headerH = 44.0f, footerH = 30.0f, panelW = 680.0f;
-    const float panelH = headerH + n * rowH + footerH;
-    const float px = (static_cast<float>(w) - panelW) * 0.5f;
-    const float py = (static_cast<float>(h) - panelH) * 0.5f;
-
-    m_ui.rect(px, py, panelW, panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
-    m_ui.text(px + 16, py + 14, 20.0f, "CRAFTING", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+    m_ui.text(L.px + 16, L.py + 12, 18.0f, "CRAFTING", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
 
     for (int i = 0; i < n; ++i) {
         const Recipe& r = recipes[i];
-        const float ry = py + headerH + i * rowH;
+        const float ry = L.rowsY + i * CraftLayout::RowH;
         const bool affordable = canCraft(r);
         const bool selected = (i == m_menuSelection);
 
         if (selected) {
-            m_ui.rect(px + 6, ry - 2, panelW - 12, rowH - 2, glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+            m_ui.rect(L.px + 6, ry - 1, L.panelW - 12, CraftLayout::RowH - 2,
+                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
         }
         const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
                             : affordable ? glm::vec4(0.90f, 0.90f, 0.92f, 1.0f)
@@ -1308,11 +1373,26 @@ void VoxelGame::drawCraftMenu() {
             if (in.count > 1) s += " x" + std::to_string(in.count);
         }
         s += " )   HAVE " + std::to_string(m_inventory.count(r.output.id));
-        m_ui.text(px + 14, ry + 3, 16.0f, s, col);
+        m_ui.text(L.px + 14, ry + 3, 14.0f, s, col);
     }
 
-    m_ui.text(px + 16, py + panelH - footerH + 6, 13.0f,
-              "W/S SELECT   ENTER CRAFT   E CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+    // Materials on hand, with a hover tooltip.
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    for (int i = 0; i < static_cast<int>(invItems.size()); ++i) {
+        drawItemCell(m_ui, m_atlas,
+                     L.px + 16.0f + (i % PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
+                     L.invY + (i / PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
+                     invItems[i].first, invItems[i].second);
+    }
+    const int ci = hitCell(mx, my, L.px + 16.0f, L.invY,
+                           static_cast<int>(invItems.size()), PanelLayout::InvCols);
+    if (ci >= 0) {
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(invItems[ci].first),
+                  glm::vec4(1.0f, 1.0f, 0.8f, 1.0f));
+    }
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f,
+              "CLICK / WHEEL / W/S + ENTER CRAFT   E CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
 
     m_ui.end();
 }

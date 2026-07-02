@@ -76,14 +76,17 @@ look-at panel.
 
 ## 4. Crafting menu (E)
 
-9. Press **E**. **Expect:** the world dims and a `CRAFTING` panel lists recipes, each with
-   its inputs, an affordability color (white = you have the inputs, gray = you don't), and
-   `HAVE n` (how many you own). You start with some raw materials, so several rows are
-   already white.
-10. Use **W/S** (or ↑/↓) to move the yellow selection and **Enter** to craft. Craft
-    `COPPER INGOT`, then select and craft `COPPER PLATE`, then `WIRE`.
-    **Expect:** inputs decrement and `HAVE` increments live; dependent rows change color as
-    you gain their inputs. Close with **E**.
+9. Press **E**. **Expect:** the world dims, the cursor is released, and a `CRAFTING`
+   panel lists recipes, each with its inputs, an affordability color (white = you have
+   the inputs, gray = you don't), and `HAVE n` (how many you own). An `INVENTORY` grid
+   of your materials sits at the bottom (hovering a cell names it). You start with some
+   raw materials, so several rows are already white.
+10. **Click** a recipe row to craft it (hovering highlights; the mouse wheel or **W/S**
+    also move the selection, **Enter** crafts it). Craft `COPPER INGOT`, then
+    `COPPER PLATE`, then `WIRE`.
+    **Expect:** inputs decrement, `HAVE` increments, and the inventory grid updates live;
+    dependent rows change color as you gain their inputs. Close with **E**, **Esc**, or
+    **RMB**.
 11. **Expect:** the **Wire** hotbar slot (slot 2) now shows a non-zero count.
 
 ## 5. Placement (RMB consumes inventory)
