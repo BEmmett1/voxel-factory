@@ -17,6 +17,7 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -36,6 +37,7 @@ protected:
     void onTick() override;      // fixed 20 Hz machine processing
     void onRender() override;
     void onEscape() override;    // closes the crafting menu, else quits
+    void onExit() override;      // save the game on any quit path
 
 private:
     void buildAtlas();           // procedurally generate the block texture atlas
@@ -54,6 +56,9 @@ private:
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
+
+    bool saveGame();             // write the full game state to m_savePath
+    bool loadGame();             // restore it; false = no/invalid save
 
     void registerMachine(const glm::ivec3& pos, BlockId type);
     void unregisterMachine(const glm::ivec3& pos); // returns buffered items
@@ -83,6 +88,7 @@ private:
     int m_beltTimer = 0;           // ticks since the last belt step
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
+    std::string m_savePath;        // save.vxf in the SDL pref dir
 
     bool m_menuOpen = false;             // crafting menu visible?
     bool m_helpOpen = false;             // F1 help overlay visible?

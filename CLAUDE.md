@@ -134,4 +134,12 @@ transport → machines process → transmute new sources. Possible next directio
   water; buckets are crafted from wood; trees grow from saplings (wood becomes a resource
   track alongside copper/sand/etc.).
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
-- Save/load; per-chunk meshes (perf); player gravity/collision.
+- Per-chunk meshes (perf); player gravity/collision.
+
+Persistence:
+- **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
+  `%APPDATA%\benny\voxel-factory\`) holding seed, all chunks, player camera/inventory/
+  slot, machines (type/buffers/recipe/progress), belts (facing/cargo), and source timers.
+  Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
+  the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
+  change — old saves are then discarded rather than misread.

@@ -5,6 +5,7 @@
 #include "game/Raycast.h"
 #include "game/Block.h"
 #include "game/Atlas.h"
+#include "game/SaveSystem.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -234,36 +235,78 @@ void VoxelGame::onStart() {
 
     buildAtlas();
 
-    m_world = std::make_unique<World>();
-    buildWorld();
-    rebuildMesh();
-    buildHighlightMesh();
-    buildCrosshairMesh();
-    m_ui.init();
-
-    // Spawn above the plateau, looking at the demo line.
-    const float center = kWorldChunks * CHUNK_SIZE * 0.5f;
-    camera().position = {center, static_cast<float>(kPlateauY) + 5.0f, center + 6.0f};
-    camera().yaw = -90.0f;   // looking toward -Z (the demo row)
-    camera().pitch = -20.0f;
+    // The save lives in the OS-preferred data directory.
+    if (char* pref = SDL_GetPrefPath("benny", "voxel-factory")) {
+        m_savePath = std::string(pref) + "save.vxf";
+        SDL_free(pref);
+    }
 
     // Hotbar: every placeable item, in enum order. Keys 1-9 and 0 jump to the
-    // first ten slots; the mouse wheel cycles through all of them. Everything
-    // placeable is hand-crafted, so the player starts with raw materials.
+    // first ten slots; the mouse wheel cycles through all of them.
     m_hotbar.clear();
     for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
         const ItemId id = static_cast<ItemId>(i);
         if (itemInfo(id).placeable) m_hotbar.push_back(id);
     }
-    m_inventory.add(ItemId::CopperOre, 30);
-    m_inventory.add(ItemId::Stone, 12);
-    m_inventory.add(ItemId::Sand, 10);
-    m_inventory.add(ItemId::Crystal, 8);
-    m_inventory.add(ItemId::Herb, 6);
-    m_inventory.add(ItemId::SpringWater, 4);
-    m_inventory.add(ItemId::Essence, 2);
+
+    m_world = std::make_unique<World>();
+    if (!loadGame()) {
+        // No (valid) save: fresh island + the starting kit of raw materials.
+        // Everything placeable is hand-crafted from these.
+        buildWorld();
+
+        const float center = kWorldChunks * CHUNK_SIZE * 0.5f;
+        camera().position = {center, static_cast<float>(kPlateauY) + 5.0f, center + 6.0f};
+        camera().yaw = -90.0f;   // looking toward -Z (the demo row)
+        camera().pitch = -20.0f;
+
+        m_inventory.add(ItemId::CopperOre, 30);
+        m_inventory.add(ItemId::Stone, 12);
+        m_inventory.add(ItemId::Sand, 10);
+        m_inventory.add(ItemId::Crystal, 8);
+        m_inventory.add(ItemId::Herb, 6);
+        m_inventory.add(ItemId::SpringWater, 4);
+        m_inventory.add(ItemId::Essence, 2);
+    }
+
+    rebuildMesh();
+    buildHighlightMesh();
+    buildCrosshairMesh();
+    m_ui.init();
 
     updateTitle();
+}
+
+bool VoxelGame::saveGame() {
+    if (m_savePath.empty() || !m_world) return false;
+    int slot = m_selectedSlot;
+    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources,
+               camera().position, camera().yaw, camera().pitch,
+               m_worldSeed, m_sourceRng, slot};
+    return SaveSystem::save(m_savePath, d);
+}
+
+bool VoxelGame::loadGame() {
+    if (m_savePath.empty()) return false;
+    int slot = 0;
+    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources,
+               camera().position, camera().yaw, camera().pitch,
+               m_worldSeed, m_sourceRng, slot};
+    if (!SaveSystem::load(m_savePath, d)) {
+        // A partial read may have dirtied state; start clean.
+        m_world = std::make_unique<World>();
+        m_inventory = Inventory{};
+        m_machines.clear();
+        m_belts.clear();
+        m_sources.clear();
+        return false;
+    }
+    m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
+    return true;
+}
+
+void VoxelGame::onExit() {
+    saveGame(); // runs on every quit path (Esc, window close)
 }
 
 void VoxelGame::buildAtlas() {
@@ -754,6 +797,13 @@ void VoxelGame::onUpdate(float dt) {
     if (m_machineUiOpen) {
         updateMachineUi();
         return;
+    }
+
+    // F5: quick-save (also happens automatically on quit).
+    if (input().wasKeyPressed(SDL_SCANCODE_F5)) {
+        if (saveGame()) {
+            window().setTitle("Voxel Factory  —  SAVED");
+        }
     }
 
     // Help overlay: toggle with F1. While open it freezes the world.
@@ -1481,7 +1531,7 @@ void VoxelGame::drawHelp() {
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE UP   LSHIFT DOWN   LCTRL SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
-        {"E CRAFT MENU   RMB OPEN MACHINE   SHIFT+RMB PLACE ON IT   ESC QUIT", 1},
+        {"E CRAFT MENU   RMB OPEN MACHINE   F5 SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},
         {"F1 OR ESC TO CLOSE", 2},
     };

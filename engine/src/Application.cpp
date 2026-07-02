@@ -40,6 +40,8 @@ namespace engine {
             onRender();
             m_window->swap();
         }
+
+        onExit(); // runs on every quit path (Esc, window close, ...)
     }
 
     void Application::processEvents() {

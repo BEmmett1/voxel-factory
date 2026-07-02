@@ -17,6 +17,7 @@ result to expect.
 | Select hotbar slot | **1**–**9**, **0** (first ten) · **mouse wheel** cycles all |
 | Open/close crafting menu | **E** |
 | Help screen | **F1** (F1/Esc closes) |
+| Quick-save | **F5** (quitting also auto-saves) |
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
 | Open a machine's panel | **RMB** on it (Shift+RMB places against it instead) |
 | In the panel: choose / act / close | hover or **W/S** · click or **Enter** · **Esc/E/RMB** |
@@ -161,6 +162,17 @@ look-at panel.
     **Expect:** it glows and, within ~15 seconds, begins growing its own node patch —
     resource production itself is craftable, closing the economy loop.
 
-## 11. Quit
+## 11. Save / load
 
-22. With no menu open, press **Esc**. **Expect:** the game closes cleanly.
+22. Craft something distinctive (e.g. two Copper Ingots), fly somewhere memorable, then
+    quit with **Esc**.
+    **Expect:** the game closes cleanly and writes
+    `%APPDATA%\benny\voxel-factory\save.vxf`.
+23. Relaunch. **Expect:** the *same* island (identical coastline and source layout), your
+    camera exactly where you left it, machines/belts resuming their work, and the
+    crafting menu showing your ingots (`HAVE 2`). **F5** saves at any time without
+    quitting. Delete `save.vxf` to start a fresh island.
+
+## 12. Quit
+
+24. With no menu open, press **Esc**. **Expect:** the game closes cleanly (and saves).

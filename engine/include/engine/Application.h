@@ -27,6 +27,7 @@ namespace engine {
         virtual void onRender() {}
         virtual void onTick() {}            // fixed 20 Hz simulation step
         virtual void onEscape() { quit(); }
+        virtual void onExit() {}            // after the loop ends (any quit path)
 
         Window& window() { return *m_window; }
         Input&  input()  { return m_input; }
