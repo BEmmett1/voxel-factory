@@ -907,16 +907,37 @@ void VoxelGame::onUpdate(float dt) {
                     if (isMachine(placed)) registerMachine(p, placed);
                     if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
                     if (placed == BlockId::Belt) {
-                        // The conduit carries items the way the player is facing.
+                        // The conduit carries items the way the player is
+                        // facing -- straight up/down when looking steeply.
                         const glm::vec3 f = camera().front();
-                        const glm::ivec3 facing = (std::abs(f.x) > std::abs(f.z))
-                            ? glm::ivec3(f.x > 0 ? 1 : -1, 0, 0)
-                            : glm::ivec3(0, 0, f.z > 0 ? 1 : -1);
+                        glm::ivec3 facing;
+                        if (std::abs(f.y) > 0.7f) {
+                            facing = {0, f.y > 0 ? 1 : -1, 0};
+                        } else if (std::abs(f.x) > std::abs(f.z)) {
+                            facing = {f.x > 0 ? 1 : -1, 0, 0};
+                        } else {
+                            facing = {0, 0, f.z > 0 ? 1 : -1};
+                        }
                         registerBelt(p, facing);
                     }
                     edited = true;
                     updateTitle();
                 }
+            }
+        }
+
+        // Wrench: R re-aims the targeted conduit, cycling six directions.
+        if (input().wasKeyPressed(SDL_SCANCODE_R) && m_inventory.has(ItemId::Wrench)) {
+            const auto bit = m_belts.find(tb);
+            if (bit != m_belts.end()) {
+                static const glm::ivec3 kCycle[6] = {
+                    {1, 0, 0}, {0, 0, 1}, {-1, 0, 0}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}};
+                int cur = 0;
+                for (int i = 0; i < 6; ++i) {
+                    if (bit->second.facing == kCycle[i]) { cur = i; break; }
+                }
+                bit->second.facing = kCycle[(cur + 1) % 6];
+                edited = true; // re-mesh so the arrow re-aims
             }
         }
     }
@@ -1527,6 +1548,7 @@ void VoxelGame::drawHelp() {
         {"4. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
         {"5. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS.", 1},
         {"6. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
+        {"7. CONDUITS ALSO RUN UP / DOWN. CRAFT A WRENCH, AIM, PRESS R TO RE-AIM.", 1},
         {"", 1},
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE UP   LSHIFT DOWN   LCTRL SPRINT", 1},

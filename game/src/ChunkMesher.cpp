@@ -71,25 +71,43 @@ namespace ChunkMesher {
                         const glm::ivec3 n = w + f.offset;
                         if (isSolid(world.getBlock(n.x, n.y, n.z))) continue;
 
-                        // Belt top faces show a direction arrow rotated to the
-                        // belt's facing: each corner's UV is its offset from
-                        // the block center expressed in (right, forward) axes.
+                        // Belt direction arrows. Horizontal belts show the
+                        // arrow on the top face, rotated to the facing (each
+                        // corner's UV is its offset from the block center in
+                        // right/forward axes). Vertical belts show it on all
+                        // four side faces, pointing up or down the block.
                         glm::vec2 faceUv[4] = {uv[0], uv[1], uv[2], uv[3]};
-                        if (id == BlockId::Belt && f.normal.y > 0.5f) {
+                        if (id == BlockId::Belt) {
                             const auto bit = belts.find(w);
                             if (bit != belts.end()) {
+                                const glm::ivec3& bf = bit->second.facing;
                                 glm::vec2 aMin, aMax;
                                 Atlas::uvForTile(Atlas::BeltArrowTile, aMin, aMax);
-                                const glm::vec2 fwd(static_cast<float>(bit->second.facing.x),
-                                                    static_cast<float>(bit->second.facing.z));
-                                const glm::vec2 right(-fwd.y, fwd.x);
-                                for (int k = 0; k < 4; ++k) {
-                                    const glm::vec2 p(f.corners[k].x - 0.5f,
-                                                      f.corners[k].z - 0.5f);
-                                    const float u = 0.5f + glm::dot(p, right);
-                                    const float v = 0.5f + glm::dot(p, fwd);
-                                    faceUv[k] = {glm::mix(aMin.x, aMax.x, u),
-                                                 glm::mix(aMin.y, aMax.y, v)};
+                                if (bf.y == 0 && f.normal.y > 0.5f) {
+                                    const glm::vec2 fwd(static_cast<float>(bf.x),
+                                                        static_cast<float>(bf.z));
+                                    const glm::vec2 right(-fwd.y, fwd.x);
+                                    for (int k = 0; k < 4; ++k) {
+                                        const glm::vec2 p(f.corners[k].x - 0.5f,
+                                                          f.corners[k].z - 0.5f);
+                                        const float u = 0.5f + glm::dot(p, right);
+                                        const float v = 0.5f + glm::dot(p, fwd);
+                                        faceUv[k] = {glm::mix(aMin.x, aMax.x, u),
+                                                     glm::mix(aMin.y, aMax.y, v)};
+                                    }
+                                } else if (bf.y != 0 && f.normal.y == 0.0f) {
+                                    // Side face: u along the face's horizontal
+                                    // axis, v along y scaled by the facing sign.
+                                    const bool xVaries = (f.normal.x == 0.0f);
+                                    for (int k = 0; k < 4; ++k) {
+                                        const float h = xVaries ? f.corners[k].x
+                                                                : f.corners[k].z;
+                                        const float u = h;
+                                        const float v = 0.5f +
+                                            (f.corners[k].y - 0.5f) * static_cast<float>(bf.y);
+                                        faceUv[k] = {glm::mix(aMin.x, aMax.x, u),
+                                                     glm::mix(aMin.y, aMax.y, v)};
+                                    }
                                 }
                             }
                         }

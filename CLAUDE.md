@@ -133,6 +133,9 @@ transport → machines process → transmute new sources. Possible next directio
 - **Weather + forestry (user's vision):** rain falls occasionally and can be collected as
   water; buckets are crafted from wood; trees grow from saplings (wood becomes a resource
   track alongside copper/sand/etc.).
+- **Generator tiers + fuel (user's vision):** multiple kinds of generators, each needing
+  fuel to run — wood from trees is the first fuel, tying into the forestry track. (The
+  current Generator would become the free/basic tier or gain a fuel requirement.)
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
 - Per-chunk meshes (perf); player gravity/collision.
 

@@ -18,6 +18,7 @@ result to expect.
 | Open/close crafting menu | **E** |
 | Help screen | **F1** (F1/Esc closes) |
 | Quick-save | **F5** (quitting also auto-saves) |
+| Re-aim a conduit | **R** while aiming at it (requires a crafted Wrench) |
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
 | Open a machine's panel | **RMB** on it (Shift+RMB places against it instead) |
 | In the panel: choose / act / close | hover or **W/S** · click or **Enter** · **Esc/E/RMB** |
@@ -143,6 +144,18 @@ look-at panel.
     placed it.) Extend the line with more conduits and put a **Cauldron** at the end.
     **Expect:** ground herb the grinder produces rides the conduits (small floating icons)
     and is delivered into the cauldron with no manual loading.
+
+## 8b. Vertical conduits, the wrench, and terrain collection
+
+18b. Mine a **grass** block (LMB). **Expect:** the hotbar's Grass slot (last of 18)
+    gains 1; Dirt collects the same way. Both place back with RMB — terrain holes are
+    repairable with the material you collected.
+18c. Look **steeply down** (or up) and place a Conduit. **Expect:** it faces vertically —
+    no arrow on its top; its exposed *side* faces show the arrow pointing down (or up).
+    Vertical conduits move items between floors exactly like horizontal ones.
+18d. Craft a **Wrench** (Copper Plate x2), aim at any conduit, and press **R**.
+    **Expect:** each press re-aims it through six directions (+x, +z, -x, -z, up, down),
+    the arrow updating instantly. Without a wrench in inventory, R does nothing.
 
 ## 9. Break & recover
 

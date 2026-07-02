@@ -52,6 +52,11 @@ enum class ItemId : std::uint8_t {
     SandSourceItem,
     WaterSourceItem,
     EssenceSourceItem,
+    // Tools
+    Wrench,
+    // Collected terrain (placeable back; conserves the island's material)
+    DirtItem,
+    GrassItem,
     Count
 };
 

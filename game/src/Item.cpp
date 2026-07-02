@@ -46,6 +46,9 @@ namespace {
         /* SandSourceItem       */ {"Sand Source",         67, true,  BlockId::SourceSand},
         /* WaterSourceItem      */ {"Water Source",        68, true,  BlockId::SourceWater},
         /* EssenceSourceItem    */ {"Essence Source",      69, true,  BlockId::SourceEssence},
+        /* Wrench               */ {"Wrench",              70, false, BlockId::Air},
+        /* DirtItem             */ {"Dirt",                71, true,  BlockId::Dirt},
+        /* GrassItem            */ {"Grass",               72, true,  BlockId::Grass},
     }};
 }
 
@@ -81,7 +84,11 @@ ItemStack blockDrop(BlockId id) {
         case BlockId::Distiller:   return {ItemId::DistillerItem, 1};
         case BlockId::Transmuter:  return {ItemId::TransmuterItem, 1};
         case BlockId::Miner:       return {ItemId::MinerItem, 1};
-        // Grass / Dirt / Air -> nothing.
+        // Terrain is collectable (and placeable back) -- the island's material
+        // is conserved rather than lost.
+        case BlockId::Dirt:        return {ItemId::DirtItem, 1};
+        case BlockId::Grass:       return {ItemId::GrassItem, 1};
+        // Air -> nothing.
         default:                   return {ItemId::None, 0};
     }
 }
