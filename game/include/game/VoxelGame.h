@@ -114,6 +114,7 @@ private:
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};
 
-    float m_velY = 0.0f;      // vertical velocity (gravity/jump)
-    bool  m_grounded = false; // standing on something this frame?
+    float     m_velY = 0.0f;      // vertical velocity (gravity/jump)
+    glm::vec3 m_velXZ{0.0f};      // horizontal velocity (accel/friction; y unused)
+    bool      m_grounded = false; // standing on something this frame?
 };

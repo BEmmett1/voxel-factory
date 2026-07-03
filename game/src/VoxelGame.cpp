@@ -25,7 +25,9 @@ namespace {
     // ---- Player physics: the feel knobs. Tune freely. ----
     constexpr float kWalkSpeed    = 4.5f;   // blocks per second
     constexpr float kSprintMult   = 1.6f;   // LCtrl multiplier
-    constexpr float kGravity      = 24.0f;  // blocks per second^2
+    constexpr float kAccel        = 40.0f;  // blocks/s^2 spin-up toward wanted speed
+    constexpr float kDecel        = 30.0f;  // blocks/s^2 friction when no input
+    constexpr float kGravity      = 28.8f;  // blocks per second^2
     constexpr float kJumpSpeed    = 8.5f;   // initial jump velocity (~1.3 block jump)
     constexpr float kTerminalVel  = 50.0f;  // max fall speed
     constexpr float kPlayerHalfW  = 0.30f;  // half width of the player's box
@@ -896,10 +898,21 @@ void VoxelGame::onUpdate(float dt) {
     if (input().isKeyDown(SDL_SCANCODE_S)) wish -= flatFront;
     if (input().isKeyDown(SDL_SCANCODE_D)) wish += cam.right();
     if (input().isKeyDown(SDL_SCANCODE_A)) wish -= cam.right();
+    float targetSpeed = 0.0f;
     if (glm::dot(wish, wish) > 0.0f) {
-        float speed = kWalkSpeed;
-        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) speed *= kSprintMult; // sprint
-        wish = glm::normalize(wish) * speed;
+        targetSpeed = kWalkSpeed;
+        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) targetSpeed *= kSprintMult; // sprint
+        wish = glm::normalize(wish);
+    }
+
+    // Momentum: accelerate toward the wanted velocity; friction to a stop
+    // when there's no input.
+    const glm::vec3 targetVel = wish * targetSpeed;
+    const glm::vec3 delta = targetVel - m_velXZ;
+    const float deltaLen = glm::length(delta);
+    if (deltaLen > 0.0001f) {
+        const float rate = (targetSpeed > 0.0f) ? kAccel : kDecel;
+        m_velXZ += delta * (std::min(rate * dt, deltaLen) / deltaLen);
     }
 
     if (m_grounded && input().isKeyDown(SDL_SCANCODE_SPACE)) {
@@ -910,11 +923,13 @@ void VoxelGame::onUpdate(float dt) {
     // Axis-separated move-and-slide against the voxel grid.
     glm::vec3 feet = cam.position - glm::vec3(0.0f, kEyeHeight, 0.0f);
     glm::vec3 next = feet;
-    next.x += wish.x * dt;
+    next.x += m_velXZ.x * dt;
     if (!boxCollides(*m_world, next)) feet.x = next.x;
+    else m_velXZ.x = 0.0f; // ran into a wall
     next = feet;
-    next.z += wish.z * dt;
+    next.z += m_velXZ.z * dt;
     if (!boxCollides(*m_world, next)) feet.z = next.z;
+    else m_velXZ.z = 0.0f;
 
     m_grounded = false;
     next = feet;
@@ -934,6 +949,7 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory = Inventory{};
         feet = spawnFeet();
         m_velY = 0.0f;
+        m_velXZ = glm::vec3(0.0f);
         window().setTitle("Voxel Factory  —  YOU FELL. YOUR PACK IS LOST.");
     }
 
