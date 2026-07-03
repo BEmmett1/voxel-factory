@@ -128,11 +128,24 @@ bitmap font also supports `>` and `+`. Esc closes help, then the crafting menu, 
   is bounded by patch regrowth. Recipe-less machines show an info row in their panel. The
   plateau's south side hosts a demo trio (source + miner + generator + belts).
 
+Forestry (saplings → trees → wood):
+- **Trees** — a 3-log trunk + 14-leaf canopy, defined once in `treeCells()`/`placeTree()`
+  (VoxelGame.cpp) and shared by world-gen, growth, and the grow-space check. Exactly one
+  grown tree spawns near the plateau each game — the starting sapling supply.
+- **Renewable loop** — chopping a Log yields Wood; chopping Leaves has a
+  `kSaplingDropChance` sapling drop with a pity guarantee (`m_leafPity`, every
+  `kSaplingPityLeaves`th dry leaf), so felling a whole tree can't strand the player.
+  Saplings place on Grass/Dirt only and grow after `kTreeGrowSeconds` via `m_saplings`
+  timers (`updateSaplings`; a blocked or player-overlapped spot retries each tick).
+  Leaves with no Log within `kLeafReach` decay staggered (`updateLeafDecay`,
+  `kLeafDecaySeconds`/`kLeafDecayChance`); decayed leaves drop nothing. All knobs sit
+  with the other cadence constants in VoxelGame.cpp.
+- **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
+
 The core loop is complete, closed, and fully automatable: miners harvest → conduits
 transport → machines process → transmute new sources. Possible next directions:
-- **Weather + forestry (user's vision):** rain falls occasionally and can be collected as
-  water; buckets are crafted from wood; trees grow from saplings (wood becomes a resource
-  track alongside copper/sand/etc.).
+- **Weather (user's vision):** rain falls occasionally and can be collected as water in
+  the (already craftable) wooden buckets.
 - **Generator tiers + fuel (user's vision):** multiple kinds of generators, each needing
   fuel to run — wood from trees is the first fuel, tying into the forestry track. (The
   current Generator would become the free/basic tier or gain a fuel requirement.)
@@ -155,7 +168,8 @@ Player physics (pressure & pull):
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
   `%APPDATA%\benny\voxel-factory\`) holding seed, all chunks, player camera/inventory/
-  slot, machines (type/buffers/recipe/progress), belts (facing/cargo), and source timers.
+  slot, machines (type/buffers/recipe/progress), belts (facing/cargo), and source +
+  sapling timers.
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
   change — old saves are then discarded rather than misread.
