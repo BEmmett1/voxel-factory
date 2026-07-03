@@ -10,7 +10,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 3;         // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 4;         // bump when enums/layout change
 
     template <typename T>
     void writePod(std::ofstream& out, const T& v) {

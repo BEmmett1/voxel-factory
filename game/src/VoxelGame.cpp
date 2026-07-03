@@ -161,6 +161,44 @@ namespace {
     constexpr float kMineSeconds = 4.0f;       // miner: seconds per harvested node
     constexpr int   kMineRadius = 4;           // miner reach (matches patch radius)
 
+    // Forestry. Chopped leaves are the sapling supply; the pity counter
+    // guarantees a drop before a whole canopy can come up empty-handed.
+    constexpr float kSaplingDropChance = 0.25f; // sapling chance per chopped leaf
+    constexpr int   kSaplingPityLeaves = 4;     // guaranteed drop after N dry leaves
+
+    // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
+    // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.
+    // Single source of truth for world-gen, sapling growth, and space checks.
+    struct TreeCell {
+        glm::ivec3 offset;
+        BlockId    block;
+    };
+
+    const std::vector<TreeCell>& treeCells() {
+        static const std::vector<TreeCell> cells = [] {
+            std::vector<TreeCell> c;
+            for (int y = 0; y <= 2; ++y) c.push_back({{0, y, 0}, BlockId::Log});
+            for (int dz = -1; dz <= 1; ++dz) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx != 0 || dz != 0) c.push_back({{dx, 2, dz}, BlockId::Leaves});
+                    c.push_back({{dx, 3, dz}, BlockId::Leaves});
+                }
+            }
+            const glm::ivec3 cap[5] = {{0, 4, 0}, {1, 4, 0}, {-1, 4, 0}, {0, 4, 1}, {0, 4, -1}};
+            for (const glm::ivec3& o : cap) c.push_back({o, BlockId::Leaves});
+            return c;
+        }();
+        return cells;
+    }
+
+    // Stamp a grown tree whose trunk base is at `base` (the sapling cell).
+    void placeTree(World& world, const glm::ivec3& base) {
+        for (const TreeCell& c : treeCells()) {
+            world.setBlock(base.x + c.offset.x, base.y + c.offset.y,
+                           base.z + c.offset.z, c.block);
+        }
+    }
+
     // The first raw item in a miner's input buffer; None = unfiltered (mine
     // anything nearby). The filter item is a reference sample, never consumed.
     ItemId minerFilter(const Machine& mac) {
@@ -548,6 +586,35 @@ void VoxelGame::buildWorld() {
             m_sources[{x, gy + 1, z}] = 0.0f;
             ++placed;
         }
+    }
+
+    // One grown tree near the middle seeds forestry: chopping its leaves is
+    // the only starting supply of saplings. Seeded random spot on plateau
+    // grass, clear of the demo rows and the spawn point.
+    const glm::vec3 spawn = spawnFeet();
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        const std::uint32_t h = hash2(attempt * 53 + 11, attempt * 197 + 3,
+                                      m_worldSeed ^ 0x07EE5EEDu);
+        const int tx = cxi + static_cast<int>(h % 17u) - 8;
+        const int tz = static_cast<int>(cz) + static_cast<int>((h >> 8) % 17u) - 8;
+        if (std::abs(tz - dzRow) <= 1 || std::abs(tz - mz) <= 1) continue;
+        if (std::abs(tx - static_cast<int>(spawn.x)) <= 1 &&
+            std::abs(tz - static_cast<int>(spawn.z)) <= 1) continue;
+
+        const int ty = kPlateauY + 1;
+        if (m_world->getBlock(tx, ty - 1, tz) != BlockId::Grass) continue;
+        bool clear = true;
+        for (const TreeCell& c : treeCells()) {
+            if (m_world->getBlock(tx + c.offset.x, ty + c.offset.y,
+                                  tz + c.offset.z) != BlockId::Air) {
+                clear = false;
+                break;
+            }
+        }
+        if (!clear) continue;
+
+        placeTree(*m_world, {tx, ty, tz});
+        break;
     }
 
     // Pre-grow each patch a little so raws are minable immediately.
@@ -991,6 +1058,16 @@ void VoxelGame::onUpdate(float dt) {
             if (isSource(broken)) m_sources.erase(tb);        // its item drops below
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
+            if (broken == BlockId::Leaves) {
+                const std::uint32_t h = hash2(tb.x * 31 + tb.y, tb.z * 17,
+                                              m_worldSeed + m_sourceRng++);
+                const bool lucky = (h % 100u) <
+                    static_cast<std::uint32_t>(kSaplingDropChance * 100.0f + 0.5f);
+                if (lucky || ++m_leafPity >= kSaplingPityLeaves) {
+                    m_leafPity = 0;
+                    m_inventory.add(ItemId::SaplingItem, 1);
+                }
+            }
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
             edited = true;
             updateTitle();
@@ -1012,7 +1089,11 @@ void VoxelGame::onUpdate(float dt) {
                     static_cast<float>(p.z) < feet.z + kPlayerHalfW &&
                     static_cast<float>(p.y + 1) > feet.y &&
                     static_cast<float>(p.y) < feet.y + kPlayerHeight;
-                if (m_inventory.has(held) && !insidePlayer &&
+                // Saplings only take root in soil.
+                const BlockId under = m_world->getBlock(p.x, p.y - 1, p.z);
+                const bool soilOk = itemInfo(held).placesBlock != BlockId::Sapling ||
+                                    under == BlockId::Grass || under == BlockId::Dirt;
+                if (m_inventory.has(held) && !insidePlayer && soilOk &&
                     !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
                     const BlockId placed = itemInfo(held).placesBlock;
                     m_world->setBlock(p.x, p.y, p.z, placed);

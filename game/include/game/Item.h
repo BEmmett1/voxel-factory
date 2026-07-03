@@ -59,6 +59,10 @@ enum class ItemId : std::uint8_t {
     GrassItem,
     // Structural
     ScaffoldItem,
+    // Forestry (wood is the raw; saplings replant; buckets await the rains)
+    Wood,
+    SaplingItem,
+    Bucket,
     Count
 };
 

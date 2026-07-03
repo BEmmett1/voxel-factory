@@ -33,6 +33,9 @@ namespace {
         /* SourceWater   */ {true,  {0.30f, 0.65f, 1.00f}, 0.6f},
         /* SourceEssence */ {true,  {0.85f, 0.35f, 1.00f}, 0.6f},
         /* Scaffold      */ {true,  {0.68f, 0.62f, 0.48f}, 0.0f},
+        /* Sapling       */ {true,  {0.45f, 0.72f, 0.28f}, 0.0f},
+        /* Log           */ {true,  {0.45f, 0.33f, 0.18f}, 0.0f},
+        /* Leaves        */ {true,  {0.18f, 0.50f, 0.16f}, 0.0f},
     }};
 }
 
@@ -96,6 +99,9 @@ const char* blockName(BlockId id) {
         case BlockId::SourceWater:   return "Water Source";
         case BlockId::SourceEssence: return "Essence Source";
         case BlockId::Scaffold:      return "Scaffold";
+        case BlockId::Sapling:       return "Sapling";
+        case BlockId::Log:           return "Log";
+        case BlockId::Leaves:        return "Leaves";
         default:                     return "?";
     }
 }

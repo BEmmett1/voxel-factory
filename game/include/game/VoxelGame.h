@@ -86,6 +86,7 @@ private:
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources; // pos -> spawn timer
     int m_beltTimer = 0;           // ticks since the last belt step
+    int m_leafPity = 0;            // chopped leaves since the last sapling drop
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

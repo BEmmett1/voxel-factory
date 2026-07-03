@@ -43,6 +43,10 @@ enum class BlockId : std::uint8_t {
     SourceEssence,
     // Cheap structural block for building up/across (no flight!)
     Scaffold,
+    // Forestry: a planted sapling grows into a log trunk + leaf canopy
+    Sapling,
+    Log,
+    Leaves,
     Count
 };
 

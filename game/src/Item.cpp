@@ -50,6 +50,9 @@ namespace {
         /* DirtItem             */ {"Dirt",                71, true,  BlockId::Dirt},
         /* GrassItem            */ {"Grass",               72, true,  BlockId::Grass},
         /* ScaffoldItem         */ {"Scaffold",            73, true,  BlockId::Scaffold},
+        /* Wood                 */ {"Wood",                74, false, BlockId::Air},
+        /* SaplingItem          */ {"Sapling",             75, true,  BlockId::Sapling},
+        /* Bucket               */ {"Bucket",              76, false, BlockId::Air},
     }};
 }
 
@@ -102,6 +105,10 @@ ItemStack blockDrop(BlockId id) {
         case BlockId::Dirt:        return {ItemId::DirtItem, 1};
         case BlockId::Grass:       return {ItemId::GrassItem, 1};
         case BlockId::Scaffold:    return {ItemId::ScaffoldItem, 1};
+        // Forestry: logs yield wood; leaves drop nothing here (the chance
+        // sapling drop is rolled at the mining site, not in this table).
+        case BlockId::Sapling:     return {ItemId::SaplingItem, 1};
+        case BlockId::Log:         return {ItemId::Wood, 1};
         // Air -> nothing.
         default:                   return {ItemId::None, 0};
     }
