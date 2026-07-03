@@ -148,10 +148,24 @@ namespace {
     constexpr float kMineSeconds = 4.0f;       // miner: seconds per harvested node
     constexpr int   kMineRadius = 4;           // miner reach (matches patch radius)
 
+    // The first raw item in a miner's input buffer; None = unfiltered (mine
+    // anything nearby). The filter item is a reference sample, never consumed.
+    ItemId minerFilter(const Machine& mac) {
+        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            const ItemId id = static_cast<ItemId>(i);
+            if (mac.input.count(id) > 0 && nodeForRaw(id) != BlockId::Air) return id;
+        }
+        return ItemId::None;
+    }
+
     // Does this machine use `item` as an input? A machine locked to a specific
     // recipe only accepts that recipe's inputs (so belts can't overfill it
     // with ingredients it will never consume).
     bool machineAccepts(const Machine& mac, ItemId item) {
+        // Miners take raw items as mining filters (not consumed).
+        if (mac.type == BlockId::Miner) {
+            return nodeForRaw(item) != BlockId::Air;
+        }
         const auto recipes = recipesForMachine(mac.type);
         for (std::size_t i = 0; i < recipes.size(); ++i) {
             if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
@@ -666,13 +680,19 @@ void VoxelGame::onTick() {
         // Miners harvest the nearest grown resource node in reach instead of
         // running recipes; the patch regrows from its source, bounding the rate.
         if (m.type == BlockId::Miner) {
+            // A raw item in the input buffer acts as a filter: mine only that
+            // node type. Empty input = mine anything nearby.
+            const BlockId filterNode = nodeForRaw(minerFilter(m));
+
             glm::ivec3 best{0};
             int bestDist2 = INT_MAX;
             for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
                 for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
                     for (int dy = -3; dy <= 3; ++dy) {
                         const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
-                        if (!isResourceNode(m_world->getBlock(c.x, c.y, c.z))) continue;
+                        const BlockId node = m_world->getBlock(c.x, c.y, c.z);
+                        if (!isResourceNode(node)) continue;
+                        if (filterNode != BlockId::Air && node != filterNode) continue;
                         const int d2 = dx * dx + dy * dy + dz * dz;
                         if (d2 < bestDist2) {
                             bestDist2 = d2;
@@ -1034,8 +1054,11 @@ void VoxelGame::drawMachineUi() {
         std::string label;
         bool actionable = false;
         if (i == 0) {
-            if (recipes.empty()) { // e.g. the Miner: no recipes, just status
-                label = "  MINES NEARBY RESOURCE NODES ( RADIUS 4 )";
+            if (recipes.empty()) { // the Miner: status row shows its filter
+                const ItemId filter = minerFilter(mac);
+                label = (filter == ItemId::None)
+                    ? "  MINES: ANY NEARBY NODE ( RADIUS 4 )"
+                    : std::string("  MINES: ") + itemName(filter) + " ONLY ( RADIUS 4 )";
                 actionable = true;
             } else {
                 label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +

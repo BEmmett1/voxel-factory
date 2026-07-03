@@ -78,3 +78,8 @@ inline const char* itemName(ItemId id) { return itemInfo(id).name; }
 
 // What a block yields when mined ({None,0} if nothing).
 ItemStack blockDrop(BlockId id);
+
+// The resource-node block that yields this raw item (Air if `id` is not a
+// mineable raw). Used by the Miner's filter: put a raw in its input and it
+// mines only that node type.
+BlockId nodeForRaw(ItemId id);

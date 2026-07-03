@@ -56,6 +56,18 @@ const ItemInfo& itemInfo(ItemId id) {
     return kItems[static_cast<std::size_t>(id)];
 }
 
+BlockId nodeForRaw(ItemId id) {
+    switch (id) {
+        case ItemId::Herb:        return BlockId::HerbBush;
+        case ItemId::Crystal:     return BlockId::CrystalNode;
+        case ItemId::CopperOre:   return BlockId::CopperOre;
+        case ItemId::Sand:        return BlockId::SandNode;
+        case ItemId::SpringWater: return BlockId::Spring;
+        case ItemId::Essence:     return BlockId::EssenceVent;
+        default:                  return BlockId::Air;
+    }
+}
+
 ItemStack blockDrop(BlockId id) {
     switch (id) {
         // Resource nodes -> raw materials.
