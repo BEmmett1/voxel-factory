@@ -41,6 +41,8 @@ enum class BlockId : std::uint8_t {
     SourceSand,
     SourceWater,
     SourceEssence,
+    // Cheap structural block for building up/across (no flight!)
+    Scaffold,
     Count
 };
 

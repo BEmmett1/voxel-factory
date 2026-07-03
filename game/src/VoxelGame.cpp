@@ -21,8 +21,19 @@
 
 namespace {
     constexpr float kLookSensitivity = 0.12f; // degrees per pixel
-    constexpr float kMoveSpeed = 14.0f;        // blocks per second
-    constexpr float kBoostMultiplier = 3.0f;
+
+    // ---- Player physics: the feel knobs. Tune freely. ----
+    constexpr float kWalkSpeed    = 4.5f;   // blocks per second
+    constexpr float kSprintMult   = 1.6f;   // LCtrl multiplier
+    constexpr float kGravity      = 24.0f;  // blocks per second^2
+    constexpr float kJumpSpeed    = 8.5f;   // initial jump velocity (~1.3 block jump)
+    constexpr float kTerminalVel  = 50.0f;  // max fall speed
+    constexpr float kPlayerHalfW  = 0.30f;  // half width of the player's box
+    constexpr float kPlayerHeight = 1.80f;
+    constexpr float kEyeHeight    = 1.62f;  // camera above the feet
+    constexpr float kVoidY        = -8.0f;  // fall below this: pack lost, respawn
+    // -------------------------------------------------------
+
     constexpr float kReach = 8.0f;             // how far you can target blocks
     constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area
     constexpr float kIslandRadius = 34.0f;     // base coastline radius (noise-wobbled)
@@ -175,7 +186,6 @@ namespace {
         }
         return false;
     }
-    const glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
     const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
     // Cheap deterministic per-texel noise for the procedural atlas.
@@ -212,6 +222,30 @@ namespace {
         const float c = lattice(x0, z0 + 1);
         const float d = lattice(x0 + 1, z0 + 1);
         return glm::mix(glm::mix(a, b, sx), glm::mix(c, d, sx), sz);
+    }
+
+    // Does the player's box (feet at `feet`) overlap any solid block?
+    bool boxCollides(const World& w, const glm::vec3& feet) {
+        const int x0 = static_cast<int>(std::floor(feet.x - kPlayerHalfW));
+        const int x1 = static_cast<int>(std::floor(feet.x + kPlayerHalfW));
+        const int y0 = static_cast<int>(std::floor(feet.y));
+        const int y1 = static_cast<int>(std::floor(feet.y + kPlayerHeight));
+        const int z0 = static_cast<int>(std::floor(feet.z - kPlayerHalfW));
+        const int z1 = static_cast<int>(std::floor(feet.z + kPlayerHalfW));
+        for (int y = y0; y <= y1; ++y) {
+            for (int z = z0; z <= z1; ++z) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (isSolid(w.getBlock(x, y, z))) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Where the player stands after spawning or falling off the island.
+    glm::vec3 spawnFeet() {
+        const float c = kWorldChunks * CHUNK_SIZE * 0.5f;
+        return {c, static_cast<float>(kPlateauY) + 1.0f, c + 6.0f};
     }
 
     // HSV (h,s,v in [0,1]) -> RGB, for distinct material icon colors.
@@ -269,10 +303,9 @@ void VoxelGame::onStart() {
         // Everything placeable is hand-crafted from these.
         buildWorld();
 
-        const float center = kWorldChunks * CHUNK_SIZE * 0.5f;
-        camera().position = {center, static_cast<float>(kPlateauY) + 5.0f, center + 6.0f};
+        camera().position = spawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
         camera().yaw = -90.0f;   // looking toward -Z (the demo row)
-        camera().pitch = -20.0f;
+        camera().pitch = -15.0f;
 
         m_inventory.add(ItemId::CopperOre, 30);
         m_inventory.add(ItemId::Stone, 12);
@@ -853,23 +886,58 @@ void VoxelGame::onUpdate(float dt) {
     cam.addLook(input().mouseRelX() * kLookSensitivity,
                 -input().mouseRelY() * kLookSensitivity);
 
-    // Movement: horizontal on WASD, vertical on Space (up) / Left Shift (down).
+    // Walking physics: WASD on the ground plane, gravity, Space to jump.
+    // There is no flight -- verticality is scaffolds, hills, and falling.
     glm::vec3 flatFront(cam.front().x, 0.0f, cam.front().z);
     if (glm::dot(flatFront, flatFront) > 1e-6f) flatFront = glm::normalize(flatFront);
 
-    glm::vec3 dir(0.0f);
-    if (input().isKeyDown(SDL_SCANCODE_W)) dir += flatFront;
-    if (input().isKeyDown(SDL_SCANCODE_S)) dir -= flatFront;
-    if (input().isKeyDown(SDL_SCANCODE_D)) dir += cam.right();
-    if (input().isKeyDown(SDL_SCANCODE_A)) dir -= cam.right();
-    if (input().isKeyDown(SDL_SCANCODE_SPACE))  dir += kWorldUp; // up
-    if (input().isKeyDown(SDL_SCANCODE_LSHIFT)) dir -= kWorldUp; // down
-
-    if (glm::dot(dir, dir) > 0.0f) {
-        float speed = kMoveSpeed;
-        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) speed *= kBoostMultiplier; // sprint
-        cam.position += glm::normalize(dir) * speed * dt;
+    glm::vec3 wish(0.0f);
+    if (input().isKeyDown(SDL_SCANCODE_W)) wish += flatFront;
+    if (input().isKeyDown(SDL_SCANCODE_S)) wish -= flatFront;
+    if (input().isKeyDown(SDL_SCANCODE_D)) wish += cam.right();
+    if (input().isKeyDown(SDL_SCANCODE_A)) wish -= cam.right();
+    if (glm::dot(wish, wish) > 0.0f) {
+        float speed = kWalkSpeed;
+        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) speed *= kSprintMult; // sprint
+        wish = glm::normalize(wish) * speed;
     }
+
+    if (m_grounded && input().isKeyDown(SDL_SCANCODE_SPACE)) {
+        m_velY = kJumpSpeed;
+    }
+    m_velY = std::max(m_velY - kGravity * dt, -kTerminalVel);
+
+    // Axis-separated move-and-slide against the voxel grid.
+    glm::vec3 feet = cam.position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+    glm::vec3 next = feet;
+    next.x += wish.x * dt;
+    if (!boxCollides(*m_world, next)) feet.x = next.x;
+    next = feet;
+    next.z += wish.z * dt;
+    if (!boxCollides(*m_world, next)) feet.z = next.z;
+
+    m_grounded = false;
+    next = feet;
+    next.y += m_velY * dt;
+    if (!boxCollides(*m_world, next)) {
+        feet.y = next.y;
+    } else if (m_velY <= 0.0f) {
+        feet.y = std::floor(next.y) + 1.0f; // land: snap feet onto the block top
+        m_velY = 0.0f;
+        m_grounded = true;
+    } else {
+        m_velY = 0.0f; // bumped our head
+    }
+
+    // Fell off the island: everything in your pack is gone.
+    if (feet.y < kVoidY) {
+        m_inventory = Inventory{};
+        feet = spawnFeet();
+        m_velY = 0.0f;
+        window().setTitle("Voxel Factory  —  YOU FELL. YOUR PACK IS LOST.");
+    }
+
+    cam.position = feet + glm::vec3(0.0f, kEyeHeight, 0.0f);
 
     // Hotbar selection: keys 1-9 and 0 jump to the first ten slots; the mouse
     // wheel cycles through all of them (scroll up = previous).
@@ -920,7 +988,16 @@ void VoxelGame::onUpdate(float dt) {
             } else {
                 const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
                 const glm::ivec3 p = aim.block + aim.normal;
-                if (m_inventory.has(held) && !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
+                const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+                const bool insidePlayer =
+                    static_cast<float>(p.x + 1) > feet.x - kPlayerHalfW &&
+                    static_cast<float>(p.x) < feet.x + kPlayerHalfW &&
+                    static_cast<float>(p.z + 1) > feet.z - kPlayerHalfW &&
+                    static_cast<float>(p.z) < feet.z + kPlayerHalfW &&
+                    static_cast<float>(p.y + 1) > feet.y &&
+                    static_cast<float>(p.y) < feet.y + kPlayerHeight;
+                if (m_inventory.has(held) && !insidePlayer &&
+                    !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
                     const BlockId placed = itemInfo(held).placesBlock;
                     m_world->setBlock(p.x, p.y, p.z, placed);
                     m_inventory.remove(held, 1);
@@ -1572,9 +1649,11 @@ void VoxelGame::drawHelp() {
         {"5. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS.", 1},
         {"6. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
         {"7. CONDUITS ALSO RUN UP / DOWN. CRAFT A WRENCH, AIM, PRESS R TO RE-AIM.", 1},
+        {"8. NO FLYING. BUILD WITH CHEAP SCAFFOLD ( STONE ) TO CLIMB.", 1},
+        {"9. FALL OFF THE ISLAND AND YOUR WHOLE PACK IS LOST. MIND THE EDGE.", 2},
         {"", 1},
         {"CONTROLS", 0},
-        {"WASD MOVE   SPACE UP   LSHIFT DOWN   LCTRL SPRINT", 1},
+        {"WASD MOVE   SPACE JUMP   LCTRL SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
         {"E CRAFT MENU   RMB OPEN MACHINE   F5 SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},

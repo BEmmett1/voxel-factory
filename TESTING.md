@@ -9,9 +9,9 @@ result to expect.
 | Action | Input |
 |---|---|
 | Look | Mouse |
-| Move (horizontal plane) | **W A S D** |
-| Up / Down | **Space** / **Left Shift** |
-| Sprint (~3×) | hold **Left Ctrl** |
+| Walk | **W A S D** (no flying!) |
+| Jump | **Space** |
+| Sprint | hold **Left Ctrl** |
 | Mine block | **LMB** |
 | Place selected item | **RMB** |
 | Select hotbar slot | **1**–**9**, **0** (first ten) · **mouse wheel** cycles all |
@@ -62,12 +62,17 @@ look-at panel.
    fully automated mining, bounded by the patch's regrowth. Right-click the miner:
    its panel reads `MINES NEARBY RESOURCE NODES ( RADIUS 4 )` and `OUT:` accumulates herb.
 
-## 2. Camera & movement
+## 2. Camera & movement (walking physics)
 
-4. Move the mouse to look around, then hold **W** while looking up and down.
-   **Expect:** you move on the horizontal plane only — your altitude does not change.
-5. **A/D** strafe; **Space** rises; **Left Shift** descends; holding **Left Ctrl** while
-   moving is ~3× faster. (**Esc** with no menu open quits — don't press it yet.)
+4. Move the mouse to look around; **WASD** walks, **Space** jumps (~1.3 blocks),
+   **Left Ctrl** sprints. **Expect:** gravity holds you to the ground, one-block walls
+   stop you, and you can jump onto single blocks. There is **no flying** — build with
+   cheap **Scaffold** (Stone ×1 → Scaffold ×4) to climb; mine the block under your feet
+   and you fall into the hole.
+5. Walk off the island's edge (empty your pockets first if you value them!).
+   **Expect:** you fall past the underside, your **entire inventory is wiped**, and you
+   respawn on the plateau. The edge is the game's first real danger.
+   (**Esc** with no menu open quits — don't press it yet.)
 
 ## 3. Mining (LMB) → inventory + patch regrowth
 

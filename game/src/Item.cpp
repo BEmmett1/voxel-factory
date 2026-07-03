@@ -49,6 +49,7 @@ namespace {
         /* Wrench               */ {"Wrench",              70, false, BlockId::Air},
         /* DirtItem             */ {"Dirt",                71, true,  BlockId::Dirt},
         /* GrassItem            */ {"Grass",               72, true,  BlockId::Grass},
+        /* ScaffoldItem         */ {"Scaffold",            73, true,  BlockId::Scaffold},
     }};
 }
 
@@ -100,6 +101,7 @@ ItemStack blockDrop(BlockId id) {
         // is conserved rather than lost.
         case BlockId::Dirt:        return {ItemId::DirtItem, 1};
         case BlockId::Grass:       return {ItemId::GrassItem, 1};
+        case BlockId::Scaffold:    return {ItemId::ScaffoldItem, 1};
         // Air -> nothing.
         default:                   return {ItemId::None, 0};
     }

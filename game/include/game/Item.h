@@ -57,6 +57,8 @@ enum class ItemId : std::uint8_t {
     // Collected terrain (placeable back; conserves the island's material)
     DirtItem,
     GrassItem,
+    // Structural
+    ScaffoldItem,
     Count
 };
 

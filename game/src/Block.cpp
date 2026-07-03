@@ -32,6 +32,7 @@ namespace {
         /* SourceSand    */ {true,  {1.00f, 0.92f, 0.55f}, 0.6f},
         /* SourceWater   */ {true,  {0.30f, 0.65f, 1.00f}, 0.6f},
         /* SourceEssence */ {true,  {0.85f, 0.35f, 1.00f}, 0.6f},
+        /* Scaffold      */ {true,  {0.68f, 0.62f, 0.48f}, 0.0f},
     }};
 }
 
@@ -94,6 +95,7 @@ const char* blockName(BlockId id) {
         case BlockId::SourceSand:    return "Sand Source";
         case BlockId::SourceWater:   return "Water Source";
         case BlockId::SourceEssence: return "Essence Source";
+        case BlockId::Scaffold:      return "Scaffold";
         default:                     return "?";
     }
 }

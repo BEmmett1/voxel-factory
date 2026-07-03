@@ -11,6 +11,7 @@ namespace {
         {{{I::CopperPlate, 1}},                      {I::WireItem, 2}},
         {{{I::CopperPlate, 2}},                      {I::Conduit, 2}},
         {{{I::CopperPlate, 2}},                      {I::Wrench, 1}},
+        {{{I::Stone, 1}},                            {I::ScaffoldItem, 4}},
         {{{I::Sand, 1}},                             {I::Glass, 1}},
         {{{I::Glass, 1}},                            {I::Vial, 1}},
         {{{I::CopperPlate, 2}, {I::Stone, 1}},       {I::GrinderItem, 1}},

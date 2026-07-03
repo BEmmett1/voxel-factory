@@ -137,7 +137,20 @@ transport → machines process → transmute new sources. Possible next directio
   fuel to run — wood from trees is the first fuel, tying into the forestry track. (The
   current Generator would become the free/basic tier or gain a fuel requirement.)
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
-- Per-chunk meshes (perf); player gravity/collision.
+- Per-chunk meshes (perf).
+- **Flight stone (user's vision):** flight is deliberately absent; a late-game alchemy
+  relic will grant it as an earned power.
+
+Player physics (pressure & pull):
+- **Walking only** — AABB player vs. voxels (axis-separated move-and-slide in
+  `onUpdate`), gravity + Space jump, LCtrl sprint, no flight by design. Feel knobs are
+  grouped at the top of `VoxelGame.cpp` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
+  tuned by hands-on play, not scripted verification.
+- **Falling off the island wipes the entire inventory** and respawns the player on the
+  plateau (`kVoidY`); machines/belts keep their buffers. Hardcore by user decision.
+- **Scaffold** — a cheap structural block (Stone ×1 → Scaffold ×4) for climbing and
+  bridging, since verticality must be built, not flown.
+- Blocks can't be placed overlapping the player's box.
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
