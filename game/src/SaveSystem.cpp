@@ -10,7 +10,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 4;         // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 5;         // bump when enums/layout change
 
     template <typename T>
     void writePod(std::ofstream& out, const T& v) {
@@ -116,6 +116,15 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, timer);
     }
 
+    // Saplings.
+    writePod(out, static_cast<std::uint32_t>(d.saplings.size()));
+    for (const auto& [pos, timer] : d.saplings) {
+        writePod(out, static_cast<std::int32_t>(pos.x));
+        writePod(out, static_cast<std::int32_t>(pos.y));
+        writePod(out, static_cast<std::int32_t>(pos.z));
+        writePod(out, timer);
+    }
+
     return out.good();
 }
 
@@ -198,6 +207,17 @@ bool load(const std::string& path, SaveData& d) {
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
         if (!readPod(in, timer)) return false;
         d.sources[{x, y, z}] = timer;
+    }
+
+    // Saplings.
+    std::uint32_t saplingCount = 0;
+    if (!readPod(in, saplingCount) || saplingCount > 100000u) return false;
+    for (std::uint32_t i = 0; i < saplingCount; ++i) {
+        std::int32_t x = 0, y = 0, z = 0;
+        float timer = 0.0f;
+        if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
+        if (!readPod(in, timer)) return false;
+        d.saplings[{x, y, z}] = timer;
     }
 
     return true;

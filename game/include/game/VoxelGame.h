@@ -66,6 +66,9 @@ private:
     void unregisterBelt(const glm::ivec3& pos);    // returns carried item
     void beltStep();                                // advance items along conduits
     bool updateSources();                           // grow patches; true if a node spawned
+    bool updateSaplings();                          // grow planted saplings into trees
+    bool updateLeafDecay();                         // wither leaves cut off from logs
+    bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
     engine::Shader     m_shader;
@@ -84,9 +87,11 @@ private:
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
-    std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources; // pos -> spawn timer
+    std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources;  // pos -> spawn timer
+    std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
+    float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

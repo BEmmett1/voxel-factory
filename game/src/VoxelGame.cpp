@@ -165,6 +165,10 @@ namespace {
     // guarantees a drop before a whole canopy can come up empty-handed.
     constexpr float kSaplingDropChance = 0.25f; // sapling chance per chopped leaf
     constexpr int   kSaplingPityLeaves = 4;     // guaranteed drop after N dry leaves
+    constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
+    constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
+    constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)
+    constexpr int   kLeafReach        = 2;      // leaves survive within this of a log
 
     // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
     // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.
@@ -367,7 +371,7 @@ void VoxelGame::onStart() {
 bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
-    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources,
+    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     return SaveSystem::save(m_savePath, d);
@@ -376,7 +380,7 @@ bool VoxelGame::saveGame() {
 bool VoxelGame::loadGame() {
     if (m_savePath.empty()) return false;
     int slot = 0;
-    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources,
+    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     if (!SaveSystem::load(m_savePath, d)) {
@@ -386,6 +390,7 @@ bool VoxelGame::loadGame() {
         m_machines.clear();
         m_belts.clear();
         m_sources.clear();
+        m_saplings.clear();
         return false;
     }
     m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
@@ -767,9 +772,108 @@ bool VoxelGame::updateSources() {
     return anySpawned;
 }
 
+// Would a solid block in this cell intersect the player's box?
+bool VoxelGame::cellOverlapsPlayer(const glm::ivec3& p) {
+    const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+    return static_cast<float>(p.x + 1) > feet.x - kPlayerHalfW &&
+           static_cast<float>(p.x) < feet.x + kPlayerHalfW &&
+           static_cast<float>(p.z + 1) > feet.z - kPlayerHalfW &&
+           static_cast<float>(p.z) < feet.z + kPlayerHalfW &&
+           static_cast<float>(p.y + 1) > feet.y &&
+           static_cast<float>(p.y) < feet.y + kPlayerHeight;
+}
+
+bool VoxelGame::updateSaplings() {
+    bool anyGrown = false;
+    std::vector<glm::ivec3> done;
+
+    for (auto& [pos, timer] : m_saplings) {
+        if (timer < kTreeGrowSeconds) {
+            timer += kTickSeconds;
+            continue;
+        }
+        if (m_world->getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
+            done.push_back(pos); // the block went away; drop the stale timer
+            continue;
+        }
+
+        // Grow only into open space -- and never onto the player, who must
+        // not wake up entombed in a canopy.
+        bool clear = true;
+        for (const TreeCell& c : treeCells()) {
+            const glm::ivec3 cell = pos + c.offset;
+            if (cell != pos && m_world->getBlock(cell.x, cell.y, cell.z) != BlockId::Air) {
+                clear = false;
+                break;
+            }
+            if (cellOverlapsPlayer(cell)) {
+                clear = false;
+                break;
+            }
+        }
+        if (!clear) continue; // blocked: stay ripe and retry next tick
+
+        placeTree(*m_world, pos);
+        done.push_back(pos);
+        anyGrown = true;
+    }
+
+    for (const glm::ivec3& p : done) m_saplings.erase(p);
+    return anyGrown;
+}
+
+bool VoxelGame::updateLeafDecay() {
+    m_leafDecayTimer += kTickSeconds;
+    if (m_leafDecayTimer < kLeafDecaySeconds) return false;
+    m_leafDecayTimer = 0.0f;
+
+    // Leaves with no log in reach wither, a random fraction per pass so a
+    // felled canopy crumbles away rather than popping. Collect first: the
+    // chunk map must not grow mid-iteration.
+    std::vector<glm::ivec3> dying;
+    for (const auto& [coord, chunk] : m_world->chunks()) {
+        for (int z = 0; z < CHUNK_SIZE; ++z) {
+            for (int y = 0; y < CHUNK_SIZE; ++y) {
+                for (int x = 0; x < CHUNK_SIZE; ++x) {
+                    if (chunk->get(x, y, z) != BlockId::Leaves) continue;
+                    const glm::ivec3 p = coord * CHUNK_SIZE + glm::ivec3(x, y, z);
+
+                    bool nearLog = false;
+                    for (int dy = -kLeafReach; dy <= kLeafReach && !nearLog; ++dy) {
+                        for (int dz = -kLeafReach; dz <= kLeafReach && !nearLog; ++dz) {
+                            for (int dx = -kLeafReach; dx <= kLeafReach && !nearLog; ++dx) {
+                                if (m_world->getBlock(p.x + dx, p.y + dy, p.z + dz) ==
+                                    BlockId::Log) {
+                                    nearLog = true;
+                                }
+                            }
+                        }
+                    }
+                    if (nearLog) continue;
+
+                    const std::uint32_t h =
+                        hash2(p.x * 31 + p.y, p.z * 17, m_worldSeed + m_sourceRng++);
+                    if (h % 100u <
+                        static_cast<std::uint32_t>(kLeafDecayChance * 100.0f + 0.5f)) {
+                        dying.push_back(p);
+                    }
+                }
+            }
+        }
+    }
+
+    for (const glm::ivec3& p : dying) {
+        m_world->setBlock(p.x, p.y, p.z, BlockId::Air); // decayed leaves drop nothing
+    }
+    return !dying.empty();
+}
+
 void VoxelGame::onTick() {
-    // Grow resource patches around sources.
-    if (updateSources()) {
+    // Grow resource patches, pop ripe saplings, wither orphaned leaves.
+    bool worldChanged = updateSources();
+    worldChanged |= updateSaplings();
+    worldChanged |= updateLeafDecay();
+    if (worldChanged) {
         rebuildMesh();
     }
 
@@ -1056,6 +1160,7 @@ void VoxelGame::onUpdate(float dt) {
             if (isMachine(broken)) unregisterMachine(tb);     // returns buffered items
             if (broken == BlockId::Belt) unregisterBelt(tb);  // returns carried item
             if (isSource(broken)) m_sources.erase(tb);        // its item drops below
+            if (broken == BlockId::Sapling) m_saplings.erase(tb);
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
             if (broken == BlockId::Leaves) {
@@ -1081,14 +1186,7 @@ void VoxelGame::onUpdate(float dt) {
             } else {
                 const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
                 const glm::ivec3 p = aim.block + aim.normal;
-                const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
-                const bool insidePlayer =
-                    static_cast<float>(p.x + 1) > feet.x - kPlayerHalfW &&
-                    static_cast<float>(p.x) < feet.x + kPlayerHalfW &&
-                    static_cast<float>(p.z + 1) > feet.z - kPlayerHalfW &&
-                    static_cast<float>(p.z) < feet.z + kPlayerHalfW &&
-                    static_cast<float>(p.y + 1) > feet.y &&
-                    static_cast<float>(p.y) < feet.y + kPlayerHeight;
+                const bool insidePlayer = cellOverlapsPlayer(p);
                 // Saplings only take root in soil.
                 const BlockId under = m_world->getBlock(p.x, p.y - 1, p.z);
                 const bool soilOk = itemInfo(held).placesBlock != BlockId::Sapling ||
@@ -1100,6 +1198,7 @@ void VoxelGame::onUpdate(float dt) {
                     m_inventory.remove(held, 1);
                     if (isMachine(placed)) registerMachine(p, placed);
                     if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
+                    if (placed == BlockId::Sapling) m_saplings[p] = 0.0f; // starts the grow timer
                     if (placed == BlockId::Belt) {
                         // The conduit carries items the way the player is
                         // facing -- straight up/down when looking steeply.

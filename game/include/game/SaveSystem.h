@@ -21,6 +21,7 @@ struct SaveData {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash>& machines;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>& belts;
     std::unordered_map<glm::ivec3, float, IVec3Hash>& sources;
+    std::unordered_map<glm::ivec3, float, IVec3Hash>& saplings;
     glm::vec3& camPos;
     float& camYaw;
     float& camPitch;
