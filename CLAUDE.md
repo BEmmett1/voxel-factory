@@ -73,8 +73,8 @@ Done:
 - **M1** — multi-chunk `World` (sparse chunk map, world-coord get/set; raycast/power/mesher
   all operate across chunk boundaries), a block texture atlas (`Atlas.*` +
   `engine::Texture`; see **Textures** below for its current form), and a screen-space
-  crosshair. The world currently renders as one combined buffer rebuilt on edit;
-  per-chunk meshes are a future perf step.
+  crosshair. The world renders as one mesh per chunk, rebuilt only when dirty
+  (see **Performance** below).
 
 Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → automate):
 - **Econ 1** — items + inventory (`Item.*`, `Inventory.h`); resource-node blocks + machines
@@ -142,6 +142,25 @@ Forestry (saplings → trees → wood):
   with the other cadence constants in VoxelGame.cpp.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
 
+Performance (measured with the **F3 overlay**: frame avg/worst ms, remesh/solve
+costs and per-second counts):
+- **Per-chunk dirty-driven meshing** — each chunk owns an `engine::Mesh`
+  (`m_chunkMeshes`); `remeshDirtyChunks()` at the top of `onRender` rebuilds only
+  chunks whose `Chunk::dirty` flag is set, so all tick/edit mutations of a frame
+  coalesce. `World::setBlock` skips no-op writes and marks face-neighbor chunks
+  when an edge block changes; `World::markDirtyAt` covers non-block mesh state
+  (wrench re-aims, power glow). Never call a full-world rebuild — there isn't one.
+- **Power solves only on edits** — `solvePowerAndMarkDirty()` runs when a
+  placed/broken block `isPowerNode`; the energized-set diff dirties exactly the
+  chunks whose glow flipped. Simulation (node spawns, trees, harvests) never
+  touches power.
+- **Mesher fast path** — `appendChunk` reads its own chunk's array and six
+  prefetched neighbor chunks; no hash lookups per cell. Miners cache their
+  target node (`Machine::hasTarget`, transient) instead of scanning every tick.
+- Baseline → result on a large save: worst frame 100 ms → ~4.5 ms; remesh
+  100 ms/47 chunks → ~1 ms/1 chunk. Frustum culling was evaluated and dropped:
+  frames are pacing-bound, not render-bound, at this world size.
+
 Textures:
 - **Paintable atlas** — `game/assets/atlas.png` (256×128, a 16×8 grid of 16px tiles;
   map in `game/assets/ATLAS.md`) is loaded at startup (`engine::loadImage`, vendored
@@ -162,7 +181,6 @@ transport → machines process → transmute new sources. Possible next directio
   fuel to run — wood from trees is the first fuel, tying into the forestry track. (The
   current Generator would become the free/basic tier or gain a fuel requirement.)
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
-- Per-chunk meshes (perf).
 - **Flight stone (user's vision):** flight is deliberately absent; a late-game alchemy
   relic will grant it as an earned power.
 
