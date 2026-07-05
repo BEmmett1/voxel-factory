@@ -68,7 +68,7 @@ enum class ItemId : std::uint8_t {
 
 struct ItemInfo {
     const char* name;
-    int         atlasTile;   // icon tile in the texture atlas (used by the HUD later)
+    int         atlasTile;   // icon tile for materials; -1 for placeables (see iconTile)
     bool        placeable;   // can it be placed in the world?
     BlockId     placesBlock; // which block it places (Air if not placeable)
 };
@@ -81,6 +81,10 @@ struct ItemStack {
 const ItemInfo& itemInfo(ItemId id);
 
 inline const char* itemName(ItemId id) { return itemInfo(id).name; }
+
+// The atlas tile to draw for this item in UI. Placeable items borrow their
+// block's side tile so icons always match the world; materials own an icon.
+int iconTile(ItemId id);
 
 // What a block yields when mined ({None,0} if nothing).
 ItemStack blockDrop(BlockId id);

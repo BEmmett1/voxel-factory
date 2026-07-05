@@ -1,5 +1,6 @@
 #include "engine/GL.h" // GL calls in onStart/onRender
 
+#include "engine/Image.h"
 #include "game/VoxelGame.h"
 #include "game/ChunkMesher.h"
 #include "game/Raycast.h"
@@ -120,7 +121,7 @@ namespace {
                       float x, float y, ItemId id, int count) {
         ui.rect(x, y, PanelLayout::Cell, PanelLayout::Cell, glm::vec4(0.16f, 0.16f, 0.19f, 1.0f));
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(itemInfo(id).atlasTile, uv0, uv1);
+        Atlas::uvForTile(iconTile(id), uv0, uv1);
         ui.icon(atlas, x + 4, y + 4, PanelLayout::Cell - 8, PanelLayout::Cell - 8, uv0, uv1);
         const std::string cnt = std::to_string(count);
         ui.text(x + PanelLayout::Cell - ui.textWidth(11.0f, cnt) - 3,
@@ -402,6 +403,22 @@ void VoxelGame::onExit() {
 }
 
 void VoxelGame::buildAtlas() {
+    // Prefer the hand-paintable atlas file; fall back to generated color
+    // swatches so the game always runs (and a broken PNG is loud, not fatal).
+    {
+        const char* base = SDL_GetBasePath(); // owned by SDL, do not free
+        const std::string path = (base ? std::string(base) : "") + "assets/atlas.png";
+        engine::Image img;
+        if (engine::loadImage(path, img)) {
+            if (img.width == Atlas::WidthPx && img.height == Atlas::HeightPx) {
+                m_atlas.createFromPixels(img.width, img.height, img.rgba.data());
+                return;
+            }
+            SDL_Log("assets/atlas.png is %dx%d, want %dx%d -- using generated tiles",
+                    img.width, img.height, Atlas::WidthPx, Atlas::HeightPx);
+        }
+    }
+
     std::vector<unsigned char> pixels(static_cast<std::size_t>(Atlas::WidthPx) * Atlas::HeightPx * 4, 0);
 
     // Fill one atlas tile with a noisy, edge-darkened swatch of `baseColor`.
@@ -425,19 +442,23 @@ void VoxelGame::buildAtlas() {
         }
     };
 
-    // Block tiles (indexed by block enum value).
+    // Block tiles: every face tile gets the block's color (a tile shared by
+    // several faces or blocks is just filled more than once).
     for (int id = 1; id < static_cast<int>(BlockId::Count); ++id) {
-        fillTile(id, blockInfo(static_cast<BlockId>(id)).color);
+        const Atlas::BlockTiles& t = Atlas::tilesForBlock(static_cast<BlockId>(id));
+        const glm::vec3 color = blockInfo(static_cast<BlockId>(id)).color;
+        fillTile(t.top, color);
+        fillTile(t.side, color);
+        fillTile(t.bottom, color);
     }
 
-    // Item icon tiles: placeables reuse their block color; materials get a
-    // distinct hue spaced around the wheel.
+    // Material icon tiles get a distinct hue spaced around the wheel
+    // (placeables have no tile of their own; iconTile() borrows the block's).
     for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
         const ItemInfo& info = itemInfo(static_cast<ItemId>(i));
-        const glm::vec3 color = info.placeable
-            ? blockInfo(info.placesBlock).color
-            : hsvColor(std::fmod(static_cast<float>(i) * 0.61803398875f, 1.0f), 0.55f, 0.85f);
-        fillTile(info.atlasTile, color);
+        if (info.atlasTile < 0) continue;
+        fillTile(info.atlasTile,
+                 hsvColor(std::fmod(static_cast<float>(i) * 0.61803398875f, 1.0f), 0.55f, 0.85f));
     }
 
     // Conduit direction arrow: the belt's dark base with a bright arrow
@@ -1424,7 +1445,7 @@ void VoxelGame::drawMachineUi() {
     // Drag payload rides the cursor, drawn last so it sits on top.
     if (m_drag.active()) {
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(itemInfo(m_drag.id).atlasTile, uv0, uv1);
+        Atlas::uvForTile(iconTile(m_drag.id), uv0, uv1);
         const float s = 34.0f;
         m_ui.icon(m_atlas, mx - s * 0.5f, my - s * 0.5f, s, s, uv0, uv1);
         m_ui.text(mx + s * 0.35f, my + s * 0.2f, 12.0f, std::to_string(m_drag.count),
@@ -1697,7 +1718,7 @@ void VoxelGame::drawHud() {
         m_ui.rect(sx, y, slot, slot, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
 
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(itemInfo(item).atlasTile, uv0, uv1);
+        Atlas::uvForTile(iconTile(item), uv0, uv1);
         m_ui.icon(m_atlas, sx + pad, y + pad, slot - 2 * pad, slot - 2 * pad, uv0, uv1);
 
         // Key label (first ten slots) and inventory count (bottom-right).
@@ -1731,7 +1752,7 @@ void VoxelGame::drawHud() {
         const float dist = glm::length(camera().position - (glm::vec3(pos) + glm::vec3(0.5f)));
         const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f);
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(itemInfo(b.item).atlasTile, uv0, uv1);
+        Atlas::uvForTile(iconTile(b.item), uv0, uv1);
         m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);
     }
 

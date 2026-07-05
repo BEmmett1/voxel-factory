@@ -1,59 +1,70 @@
 #include "game/Item.h"
 
+#include "game/Atlas.h"
+
 #include <array>
 
 namespace {
     // Indexed by ItemId. Keep in sync with the enum order.
     // Fields: name, atlasTile, placeable, placesBlock.
-    // Item icon tiles live at 32+ in the atlas; tiles 0-31 belong to blocks.
+    // Material icons live in atlas rows 4-5 (tiles 64+; see assets/ATLAS.md).
+    // Placeables carry -1: their icon is the placed block's side tile.
     const std::array<ItemInfo, static_cast<std::size_t>(ItemId::Count)> kItems = {{
-        /* None                 */ {"-",                     0, false, BlockId::Air},
-        /* Stone                */ {"Stone",               32, false, BlockId::Air},
-        /* CopperOre            */ {"Copper Ore",          33, false, BlockId::Air},
-        /* Sand                 */ {"Sand",                34, false, BlockId::Air},
-        /* Herb                 */ {"Herb",                35, false, BlockId::Air},
-        /* Crystal              */ {"Crystal",             36, false, BlockId::Air},
-        /* SpringWater          */ {"Spring Water",        37, false, BlockId::Air},
-        /* Essence              */ {"Essence",             38, false, BlockId::Air},
-        /* CopperIngot          */ {"Copper Ingot",        39, false, BlockId::Air},
-        /* CopperPlate          */ {"Copper Plate",        40, false, BlockId::Air},
-        /* Glass                */ {"Glass",               41, false, BlockId::Air},
-        /* Vial                 */ {"Vial",                42, false, BlockId::Air},
-        /* MachineFrame         */ {"Machine Frame",       43, false, BlockId::Air},
-        /* GroundHerb           */ {"Ground Herb",         44, false, BlockId::Air},
-        /* CrystalDust          */ {"Crystal Dust",        45, false, BlockId::Air},
-        /* HerbalTincture       */ {"Herbal Tincture",     46, false, BlockId::Air},
-        /* MineralSolution      */ {"Mineral Solution",    47, false, BlockId::Air},
-        /* HealingDraught       */ {"Healing Draught",     48, false, BlockId::Air},
-        /* ManaVial             */ {"Mana Vial",           49, false, BlockId::Air},
-        /* ElixirOfVigor        */ {"Elixir of Vigor",     50, false, BlockId::Air},
-        /* RefinedElixir        */ {"Refined Elixir",      51, false, BlockId::Air},
-        /* PhilosophersCatalyst */ {"Philosopher's Catalyst", 52, false, BlockId::Air},
-        /* PhilosophersStone    */ {"Philosopher's Stone", 53, false, BlockId::Air},
-        /* Conduit              */ {"Conduit",             54, true,  BlockId::Belt},
-        /* WireItem             */ {"Wire",                55, true,  BlockId::Wire},
-        /* GeneratorItem        */ {"Generator",           56, true,  BlockId::Generator},
-        /* GrinderItem          */ {"Grinder",             57, true,  BlockId::Grinder},
-        /* CauldronItem         */ {"Cauldron",            58, true,  BlockId::Cauldron},
-        /* InfuserItem          */ {"Infuser",             59, true,  BlockId::Infuser},
-        /* AlembicItem          */ {"Alembic",             60, true,  BlockId::Alembic},
-        /* DistillerItem        */ {"Distiller",           61, true,  BlockId::Distiller},
-        /* TransmuterItem       */ {"Transmuter",          62, true,  BlockId::Transmuter},
-        /* MinerItem            */ {"Miner",               63, true,  BlockId::Miner},
-        /* HerbSourceItem       */ {"Herb Source",         64, true,  BlockId::SourceHerb},
-        /* CrystalSourceItem    */ {"Crystal Source",      65, true,  BlockId::SourceCrystal},
-        /* CopperSourceItem     */ {"Copper Source",       66, true,  BlockId::SourceCopper},
-        /* SandSourceItem       */ {"Sand Source",         67, true,  BlockId::SourceSand},
-        /* WaterSourceItem      */ {"Water Source",        68, true,  BlockId::SourceWater},
-        /* EssenceSourceItem    */ {"Essence Source",      69, true,  BlockId::SourceEssence},
-        /* Wrench               */ {"Wrench",              70, false, BlockId::Air},
-        /* DirtItem             */ {"Dirt",                71, true,  BlockId::Dirt},
-        /* GrassItem            */ {"Grass",               72, true,  BlockId::Grass},
-        /* ScaffoldItem         */ {"Scaffold",            73, true,  BlockId::Scaffold},
-        /* Wood                 */ {"Wood",                74, false, BlockId::Air},
-        /* SaplingItem          */ {"Sapling",             75, true,  BlockId::Sapling},
-        /* Bucket               */ {"Bucket",              76, false, BlockId::Air},
+        /* None                 */ {"-",                    -1, false, BlockId::Air},
+        /* Stone                */ {"Stone",                64, false, BlockId::Air},
+        /* CopperOre            */ {"Copper Ore",           65, false, BlockId::Air},
+        /* Sand                 */ {"Sand",                 66, false, BlockId::Air},
+        /* Herb                 */ {"Herb",                 67, false, BlockId::Air},
+        /* Crystal              */ {"Crystal",              68, false, BlockId::Air},
+        /* SpringWater          */ {"Spring Water",         69, false, BlockId::Air},
+        /* Essence              */ {"Essence",              70, false, BlockId::Air},
+        /* CopperIngot          */ {"Copper Ingot",         71, false, BlockId::Air},
+        /* CopperPlate          */ {"Copper Plate",         72, false, BlockId::Air},
+        /* Glass                */ {"Glass",                73, false, BlockId::Air},
+        /* Vial                 */ {"Vial",                 74, false, BlockId::Air},
+        /* MachineFrame         */ {"Machine Frame",        75, false, BlockId::Air},
+        /* GroundHerb           */ {"Ground Herb",          80, false, BlockId::Air},
+        /* CrystalDust          */ {"Crystal Dust",         81, false, BlockId::Air},
+        /* HerbalTincture       */ {"Herbal Tincture",      82, false, BlockId::Air},
+        /* MineralSolution      */ {"Mineral Solution",     83, false, BlockId::Air},
+        /* HealingDraught       */ {"Healing Draught",      84, false, BlockId::Air},
+        /* ManaVial             */ {"Mana Vial",            85, false, BlockId::Air},
+        /* ElixirOfVigor        */ {"Elixir of Vigor",      86, false, BlockId::Air},
+        /* RefinedElixir        */ {"Refined Elixir",       87, false, BlockId::Air},
+        /* PhilosophersCatalyst */ {"Philosopher's Catalyst", 88, false, BlockId::Air},
+        /* PhilosophersStone    */ {"Philosopher's Stone",  89, false, BlockId::Air},
+        /* Conduit              */ {"Conduit",              -1, true,  BlockId::Belt},
+        /* WireItem             */ {"Wire",                 -1, true,  BlockId::Wire},
+        /* GeneratorItem        */ {"Generator",            -1, true,  BlockId::Generator},
+        /* GrinderItem          */ {"Grinder",              -1, true,  BlockId::Grinder},
+        /* CauldronItem         */ {"Cauldron",             -1, true,  BlockId::Cauldron},
+        /* InfuserItem          */ {"Infuser",              -1, true,  BlockId::Infuser},
+        /* AlembicItem          */ {"Alembic",              -1, true,  BlockId::Alembic},
+        /* DistillerItem        */ {"Distiller",            -1, true,  BlockId::Distiller},
+        /* TransmuterItem       */ {"Transmuter",           -1, true,  BlockId::Transmuter},
+        /* MinerItem            */ {"Miner",                -1, true,  BlockId::Miner},
+        /* HerbSourceItem       */ {"Herb Source",          -1, true,  BlockId::SourceHerb},
+        /* CrystalSourceItem    */ {"Crystal Source",       -1, true,  BlockId::SourceCrystal},
+        /* CopperSourceItem     */ {"Copper Source",        -1, true,  BlockId::SourceCopper},
+        /* SandSourceItem       */ {"Sand Source",          -1, true,  BlockId::SourceSand},
+        /* WaterSourceItem      */ {"Water Source",         -1, true,  BlockId::SourceWater},
+        /* EssenceSourceItem    */ {"Essence Source",       -1, true,  BlockId::SourceEssence},
+        /* Wrench               */ {"Wrench",               78, false, BlockId::Air},
+        /* DirtItem             */ {"Dirt",                 -1, true,  BlockId::Dirt},
+        /* GrassItem            */ {"Grass",                -1, true,  BlockId::Grass},
+        /* ScaffoldItem         */ {"Scaffold",             -1, true,  BlockId::Scaffold},
+        /* Wood                 */ {"Wood",                 76, false, BlockId::Air},
+        /* SaplingItem          */ {"Sapling",              -1, true,  BlockId::Sapling},
+        /* Bucket               */ {"Bucket",               77, false, BlockId::Air},
     }};
+}
+
+int iconTile(ItemId id) {
+    const ItemInfo& info = itemInfo(id);
+    if (info.placeable) {
+        return Atlas::tilesForBlock(info.placesBlock).side;
+    }
+    return info.atlasTile;
 }
 
 const ItemInfo& itemInfo(ItemId id) {

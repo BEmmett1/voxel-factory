@@ -25,6 +25,15 @@ add_custom_command(TARGET voxel-factory POST_BUILD
     COMMENT "Copying shaders to output directory"
 )
 
+# Copy assets (the paintable texture atlas) next to the executable. The game
+# falls back to generated tiles when assets/atlas.png is absent.
+add_custom_command(TARGET voxel-factory POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:voxel-factory>/assets
+    COMMENT "Copying assets to output directory"
+)
+
 # Copy SDL3.dll next to the executable on Windows so it runs in place.
 add_custom_command(TARGET voxel-factory POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

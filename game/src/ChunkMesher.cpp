@@ -60,16 +60,20 @@ namespace ChunkMesher {
                         ? kEnergizedEmissive
                         : blockInfo(id).emissive;
 
-                    glm::vec2 uvMin, uvMax;
-                    Atlas::uvForBlock(id, uvMin, uvMax);
-                    const glm::vec2 uv[4] = {
-                        {uvMin.x, uvMin.y}, {uvMax.x, uvMin.y}, {uvMax.x, uvMax.y}, {uvMin.x, uvMax.y}};
-
                     const glm::vec3 base(w);
 
                     for (const Face& f : kFaces) {
                         const glm::ivec3 n = w + f.offset;
                         if (isSolid(world.getBlock(n.x, n.y, n.z))) continue;
+
+                        // Blocks can wear a different tile per face
+                        // (grass top vs. side, log rings vs. bark, ...).
+                        glm::vec2 uvMin, uvMax;
+                        Atlas::uvForBlockFace(id, f.normal, uvMin, uvMax);
+                        const glm::vec2 uv[4] = {{uvMin.x, uvMin.y},
+                                                 {uvMax.x, uvMin.y},
+                                                 {uvMax.x, uvMax.y},
+                                                 {uvMin.x, uvMax.y}};
 
                         // Belt direction arrows. Horizontal belts show the
                         // arrow on the top face, rotated to the facing (each
