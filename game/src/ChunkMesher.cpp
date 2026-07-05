@@ -70,17 +70,36 @@ namespace ChunkMesher {
                         // (grass top vs. side, log rings vs. bark, ...).
                         glm::vec2 uvMin, uvMax;
                         Atlas::uvForBlockFace(id, f.normal, uvMin, uvMax);
-                        const glm::vec2 uv[4] = {{uvMin.x, uvMin.y},
-                                                 {uvMax.x, uvMin.y},
-                                                 {uvMax.x, uvMax.y},
-                                                 {uvMin.x, uvMax.y}};
+
+                        glm::vec2 faceUv[4];
+                        if (f.normal.y == 0.0f) {
+                            // Side faces stand upright: u runs along the face
+                            // horizontally, v runs down from the block's top,
+                            // so a tile's top row (grass lip, machine rim) is
+                            // at the top on all four sides. Opposing faces are
+                            // mirror images of each other, which the art
+                            // doesn't mind.
+                            for (int k = 0; k < 4; ++k) {
+                                const float h = (f.normal.x != 0.0f)
+                                    ? f.corners[k].z
+                                    : f.corners[k].x;
+                                faceUv[k] = {glm::mix(uvMin.x, uvMax.x, h),
+                                             glm::mix(uvMin.y, uvMax.y,
+                                                      1.0f - f.corners[k].y)};
+                            }
+                        } else {
+                            // Top/bottom: plain rect in corner order.
+                            faceUv[0] = {uvMin.x, uvMin.y};
+                            faceUv[1] = {uvMax.x, uvMin.y};
+                            faceUv[2] = {uvMax.x, uvMax.y};
+                            faceUv[3] = {uvMin.x, uvMax.y};
+                        }
 
                         // Belt direction arrows. Horizontal belts show the
                         // arrow on the top face, rotated to the facing (each
                         // corner's UV is its offset from the block center in
                         // right/forward axes). Vertical belts show it on all
                         // four side faces, pointing up or down the block.
-                        glm::vec2 faceUv[4] = {uv[0], uv[1], uv[2], uv[3]};
                         if (id == BlockId::Belt) {
                             const auto bit = belts.find(w);
                             if (bit != belts.end()) {
