@@ -71,10 +71,10 @@ Done:
   blocks; satisfied networks (production >= demand) render energized via a per-vertex
   emissive term (`PowerSystem.*`, `ChunkMesher`, `voxel.frag`). Recomputed on each edit.
 - **M1** — multi-chunk `World` (sparse chunk map, world-coord get/set; raycast/power/mesher
-  all operate across chunk boundaries), a procedurally generated block texture atlas
-  (`Atlas.*` + `engine::Texture`, no art assets), and a screen-space crosshair. The world
-  currently renders as one combined buffer rebuilt on edit; per-chunk meshes are a future
-  perf step.
+  all operate across chunk boundaries), a block texture atlas (`Atlas.*` +
+  `engine::Texture`; see **Textures** below for its current form), and a screen-space
+  crosshair. The world currently renders as one combined buffer rebuilt on edit;
+  per-chunk meshes are a future perf step.
 
 Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → automate):
 - **Econ 1** — items + inventory (`Item.*`, `Inventory.h`); resource-node blocks + machines
@@ -141,6 +141,18 @@ Forestry (saplings → trees → wood):
   `kLeafDecaySeconds`/`kLeafDecayChance`); decayed leaves drop nothing. All knobs sit
   with the other cadence constants in VoxelGame.cpp.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
+
+Textures:
+- **Paintable atlas** — `game/assets/atlas.png` (256×128, a 16×8 grid of 16px tiles;
+  map in `game/assets/ATLAS.md`) is loaded at startup (`engine::loadImage`, vendored
+  stb_image in `third_party/stb/`); if missing or mis-sized the game falls back to
+  generated flat-color tiles, so the PNG is never required. Blocks map to tiles via
+  `Atlas::tilesForBlock()` (`{top, side, bottom}` — grass tops, log rings, machine
+  lids); the mesher picks per face. Material items own icon tiles (`ItemInfo::
+  atlasTile`); placeables borrow their block's side tile (`iconTile()`). Repaint the
+  PNG in any pixel editor and rebuild (an always-run CMake target copies assets), or
+  regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
+  overwrites hand edits!).
 
 The core loop is complete, closed, and fully automatable: miners harvest → conduits
 transport → machines process → transmute new sources. Possible next directions:
