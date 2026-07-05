@@ -48,6 +48,7 @@ private:
     void drawHud();              // hotbar + machine overlays
     void drawCraftMenu();        // crafting menu overlay
     void drawHelp();             // F1 how-to-play overlay
+    void drawDebugOverlay();     // F3 perf readout
     void updateMenu();           // crafting menu navigation + crafting
     void openMachineUi(const glm::ivec3& pos);
     void closeMachineUi();
@@ -98,7 +99,23 @@ private:
 
     bool m_menuOpen = false;             // crafting menu visible?
     bool m_helpOpen = false;             // F1 help overlay visible?
+    bool m_debugOpen = false;            // F3 perf overlay visible?
     int  m_menuSelection = 0;
+
+    // Rolling frame times + costs of the heavy passes, shown by F3.
+    struct PerfStats {
+        static constexpr int Window = 120;   // ~2 s of frames
+        float frameMs[Window] = {};
+        int   frameIdx = 0;
+        float avgMs = 0.0f, worstMs = 0.0f;  // over the window
+        float lastRemeshMs = 0.0f;
+        int   chunksRemeshed = 0;            // chunks rebuilt by the last remesh
+        float lastSolveMs = 0.0f;
+        int   remeshCount = 0, solveCount = 0;      // accumulating this second
+        int   remeshesPerSec = 0, solvesPerSec = 0; // latched once per second
+        float secondTimer = 0.0f;
+    };
+    PerfStats m_perf;
 
     bool       m_machineUiOpen = false;  // machine panel (RMB on a machine)
     glm::ivec3 m_machineUiPos{0};

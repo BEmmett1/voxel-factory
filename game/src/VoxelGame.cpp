@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -239,6 +240,12 @@ namespace {
                           static_cast<std::uint32_t>(py) * 19349663u ^
                           static_cast<std::uint32_t>(id) * 83492791u;
         return (static_cast<float>(h % 1000u) / 1000.0f - 0.5f) * 0.25f;
+    }
+
+    // Milliseconds between two SDL performance-counter readings.
+    float msBetween(std::uint64_t t0, std::uint64_t t1) {
+        return static_cast<float>(t1 - t0) * 1000.0f /
+               static_cast<float>(SDL_GetPerformanceFrequency());
     }
 
     // Deterministic hash of a 2D lattice point and a seed.
@@ -653,14 +660,23 @@ void VoxelGame::buildWorld() {
 void VoxelGame::rebuildMesh() {
     // Power state depends only on topology, so recompute it whenever geometry
     // changes. One combined buffer holds the whole world for now.
+    const std::uint64_t t0 = SDL_GetPerformanceCounter();
     m_power = PowerSystem::solve(*m_world);
+    const std::uint64_t t1 = SDL_GetPerformanceCounter();
+    m_perf.lastSolveMs = msBetween(t0, t1);
+    ++m_perf.solveCount;
 
     std::vector<float> data;
+    int chunks = 0;
     for (const auto& [coord, chunk] : m_world->chunks()) {
         (void)chunk;
         ChunkMesher::appendChunk(data, *m_world, coord, m_power, m_belts);
+        ++chunks;
     }
     m_mesh.upload(data, {3, 3, 2, 1}); // position, normal, uv, emissive
+    m_perf.lastRemeshMs = msBetween(t1, SDL_GetPerformanceCounter());
+    m_perf.chunksRemeshed = chunks;
+    ++m_perf.remeshCount;
 }
 
 void VoxelGame::registerMachine(const glm::ivec3& pos, BlockId type) {
@@ -1040,6 +1056,28 @@ void VoxelGame::updateTitle() {
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
 
+    // Perf bookkeeping runs every frame, even while menus own the input.
+    m_perf.frameMs[m_perf.frameIdx] = dt * 1000.0f;
+    m_perf.frameIdx = (m_perf.frameIdx + 1) % PerfStats::Window;
+    float sum = 0.0f, worst = 0.0f;
+    for (float ms : m_perf.frameMs) {
+        sum += ms;
+        worst = std::max(worst, ms);
+    }
+    m_perf.avgMs = sum / static_cast<float>(PerfStats::Window);
+    m_perf.worstMs = worst;
+    m_perf.secondTimer += dt;
+    if (m_perf.secondTimer >= 1.0f) {
+        m_perf.secondTimer = 0.0f;
+        m_perf.remeshesPerSec = m_perf.remeshCount;
+        m_perf.solvesPerSec = m_perf.solveCount;
+        m_perf.remeshCount = 0;
+        m_perf.solveCount = 0;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_F3)) {
+        m_debugOpen = !m_debugOpen;
+    }
+
     // Machine panel: owns all input while open.
     if (m_machineUiOpen) {
         updateMachineUi();
@@ -1308,6 +1346,30 @@ void VoxelGame::onRender() {
     if (m_menuOpen) drawCraftMenu();
     if (m_helpOpen) drawHelp();
     if (m_machineUiOpen) drawMachineUi();
+    if (m_debugOpen) drawDebugOverlay();
+}
+
+void VoxelGame::drawDebugOverlay() {
+    const int w = window().width();
+    const int h = window().height();
+
+    char line[96];
+    m_ui.begin(w, h);
+    m_ui.rect(8, 8, 360, 70, glm::vec4(0.05f, 0.05f, 0.08f, 0.82f));
+
+    std::snprintf(line, sizeof(line), "FRAME AVG %5.1f MS  WORST %6.1f MS",
+                  m_perf.avgMs, m_perf.worstMs);
+    m_ui.text(16, 16, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
+
+    std::snprintf(line, sizeof(line), "REMESH %6.1f MS  %d CHUNKS  X%d PER S",
+                  m_perf.lastRemeshMs, m_perf.chunksRemeshed, m_perf.remeshesPerSec);
+    m_ui.text(16, 34, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
+
+    std::snprintf(line, sizeof(line), "POWER  %6.1f MS  X%d PER S",
+                  m_perf.lastSolveMs, m_perf.solvesPerSec);
+    m_ui.text(16, 52, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
+
+    m_ui.end();
 }
 
 void VoxelGame::drawMachineUi() {
