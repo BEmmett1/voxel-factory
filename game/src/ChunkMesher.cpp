@@ -43,16 +43,24 @@ namespace {
 namespace ChunkMesher {
 
     void appendChunk(std::vector<float>& out, const World& world,
-                     const glm::ivec3& chunkCoord, const PowerState& power,
-                     const BeltMap& belts) {
+                     const Chunk& chunk, const glm::ivec3& chunkCoord,
+                     const PowerState& power, const BeltMap& belts) {
         constexpr float kEnergizedEmissive = 0.7f;
         const glm::ivec3 originBlock = chunkCoord * CHUNK_SIZE;
+
+        // Prefetch the six neighbor chunks once so every occlusion test is a
+        // plain array read instead of a hash-map lookup.
+        const Chunk* neighbors[6];
+        for (int fi = 0; fi < 6; ++fi) {
+            const auto it = world.chunks().find(chunkCoord + kFaces[fi].offset);
+            neighbors[fi] = it != world.chunks().end() ? it->second.get() : nullptr;
+        }
 
         for (int lz = 0; lz < CHUNK_SIZE; ++lz) {
             for (int ly = 0; ly < CHUNK_SIZE; ++ly) {
                 for (int lx = 0; lx < CHUNK_SIZE; ++lx) {
                     const glm::ivec3 w = originBlock + glm::ivec3(lx, ly, lz);
-                    const BlockId id = world.getBlock(w.x, w.y, w.z);
+                    const BlockId id = chunk.get(lx, ly, lz);
                     if (!isSolid(id)) continue;
 
                     // Powered network glow or the block's own glow (sources).
@@ -62,9 +70,22 @@ namespace ChunkMesher {
 
                     const glm::vec3 base(w);
 
-                    for (const Face& f : kFaces) {
-                        const glm::ivec3 n = w + f.offset;
-                        if (isSolid(world.getBlock(n.x, n.y, n.z))) continue;
+                    for (int fi = 0; fi < 6; ++fi) {
+                        const Face& f = kFaces[fi];
+                        const glm::ivec3 nl = glm::ivec3(lx, ly, lz) + f.offset;
+                        BlockId nb;
+                        if (chunk.inBounds(nl.x, nl.y, nl.z)) {
+                            nb = chunk.get(nl.x, nl.y, nl.z);
+                        } else if (const Chunk* nc = neighbors[fi]) {
+                            // Exactly one component stepped out; wrap it into
+                            // the neighbor's local space.
+                            nb = nc->get((nl.x + CHUNK_SIZE) % CHUNK_SIZE,
+                                         (nl.y + CHUNK_SIZE) % CHUNK_SIZE,
+                                         (nl.z + CHUNK_SIZE) % CHUNK_SIZE);
+                        } else {
+                            nb = BlockId::Air; // ungenerated space
+                        }
+                        if (isSolid(nb)) continue;
 
                         // Blocks can wear a different tile per face
                         // (grass top vs. side, log rings vs. bark, ...).

@@ -41,7 +41,8 @@ namespace engine {
         m_vertexCount = 0;
     }
 
-    void Mesh::upload(const std::vector<float>& data, const std::vector<int>& attributeSizes) {
+    void Mesh::upload(const std::vector<float>& data, const std::vector<int>& attributeSizes,
+                      GLenum usage) {
         const int stride = std::accumulate(attributeSizes.begin(), attributeSizes.end(), 0);
         if (stride <= 0) {
             release();
@@ -56,7 +57,7 @@ namespace engine {
         glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
         glBufferData(GL_ARRAY_BUFFER,
                      static_cast<GLsizeiptr>(data.size() * sizeof(float)),
-                     data.data(), GL_STATIC_DRAW);
+                     data.data(), usage);
 
         const GLsizei strideBytes = stride * static_cast<GLsizei>(sizeof(float));
         std::size_t offset = 0;

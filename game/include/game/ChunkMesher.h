@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
+class Chunk;
 class World;
 
 // Builds renderable geometry by emitting a quad only where a solid block
@@ -20,8 +21,10 @@ class World;
 namespace ChunkMesher {
     using BeltMap = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
 
-    // Append the visible faces of the chunk at chunkCoord into `out`.
+    // Append the visible faces of `chunk` (at chunkCoord) into `out`. Block
+    // reads stay inside the chunk's array; only boundary occlusion tests look
+    // at (prefetched) neighbor chunks.
     void appendChunk(std::vector<float>& out, const World& world,
-                     const glm::ivec3& chunkCoord, const PowerState& power,
-                     const BeltMap& belts);
+                     const Chunk& chunk, const glm::ivec3& chunkCoord,
+                     const PowerState& power, const BeltMap& belts);
 }

@@ -162,6 +162,7 @@ namespace {
     constexpr int   kPatchCap = 5;             // max live nodes per source patch
     constexpr float kMineSeconds = 4.0f;       // miner: seconds per harvested node
     constexpr int   kMineRadius = 4;           // miner reach (matches patch radius)
+    constexpr int   kMinerIdleRescanTicks = 5; // ticks between reach scans while idle
 
     // Forestry. Chopped leaves are the sapling supply; the pity counter
     // guarantees a drop before a whole canopy can come up empty-handed.
@@ -668,9 +669,10 @@ void VoxelGame::remeshDirtyChunks() {
     for (const auto& [coord, chunk] : m_world->chunks()) {
         if (!chunk->dirty()) continue;
         m_meshScratch.clear();
-        ChunkMesher::appendChunk(m_meshScratch, *m_world, coord, m_power, m_belts);
+        ChunkMesher::appendChunk(m_meshScratch, *m_world, *chunk, coord, m_power, m_belts);
         // Empty chunks keep their (vertexless) entry; draw() skips them.
-        m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}); // pos, normal, uv, emissive
+        m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
+                                    GL_DYNAMIC_DRAW);
         chunk->clearDirty();
         ++chunks;
     }
@@ -933,26 +935,46 @@ void VoxelGame::onTick() {
             // node type. Empty input = mine anything nearby.
             const BlockId filterNode = nodeForRaw(minerFilter(m));
 
-            glm::ivec3 best{0};
-            int bestDist2 = INT_MAX;
-            for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
-                for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
-                    for (int dy = -3; dy <= 3; ++dy) {
-                        const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
-                        const BlockId node = m_world->getBlock(c.x, c.y, c.z);
-                        if (!isResourceNode(node)) continue;
-                        if (filterNode != BlockId::Air && node != filterNode) continue;
-                        const int d2 = dx * dx + dy * dy + dz * dz;
-                        if (d2 < bestDist2) {
-                            bestDist2 = d2;
-                            best = c;
+            // The miner commits to one node per harvest. One cheap read per
+            // tick validates it (it may be mined away or the filter changed);
+            // the full reach scan runs only to acquire, every few ticks.
+            if (m.hasTarget) {
+                const BlockId t = m_world->getBlock(m.target.x, m.target.y, m.target.z);
+                if (!isResourceNode(t) ||
+                    (filterNode != BlockId::Air && t != filterNode)) {
+                    m.hasTarget = false;
+                }
+            }
+            if (!m.hasTarget) {
+                if (--m.rescanCooldown > 0) {
+                    m.progress = 0.0f;
+                    continue;
+                }
+                m.rescanCooldown = kMinerIdleRescanTicks;
+
+                glm::ivec3 best{0};
+                int bestDist2 = INT_MAX;
+                for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
+                    for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
+                        for (int dy = -3; dy <= 3; ++dy) {
+                            const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
+                            const BlockId node = m_world->getBlock(c.x, c.y, c.z);
+                            if (!isResourceNode(node)) continue;
+                            if (filterNode != BlockId::Air && node != filterNode) continue;
+                            const int d2 = dx * dx + dy * dy + dz * dz;
+                            if (d2 < bestDist2) {
+                                bestDist2 = d2;
+                                best = c;
+                            }
                         }
                     }
                 }
-            }
-            if (bestDist2 == INT_MAX) {
-                m.progress = 0.0f; // nothing in reach; idle until the patch regrows
-                continue;
+                if (bestDist2 == INT_MAX) {
+                    m.progress = 0.0f; // nothing in reach; idle until the patch regrows
+                    continue;
+                }
+                m.target = best;
+                m.hasTarget = true;
             }
 
             m.crafting = true;
@@ -960,9 +982,10 @@ void VoxelGame::onTick() {
             m.progress += kTickSeconds;
             if (m.progress >= kMineSeconds) {
                 m.progress = 0.0f;
-                const ItemStack drop = blockDrop(m_world->getBlock(best.x, best.y, best.z));
+                const ItemStack drop = blockDrop(m_world->getBlock(m.target.x, m.target.y, m.target.z));
                 m.output.add(drop.id, drop.count);
-                m_world->setBlock(best.x, best.y, best.z, BlockId::Air);
+                m_world->setBlock(m.target.x, m.target.y, m.target.z, BlockId::Air);
+                m.hasTarget = false;
             }
             continue;
         }

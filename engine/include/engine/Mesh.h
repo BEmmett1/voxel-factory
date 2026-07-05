@@ -19,7 +19,10 @@ namespace engine {
         Mesh(Mesh&& other) noexcept;
         Mesh& operator=(Mesh&& other) noexcept;
 
-        void upload(const std::vector<float>& data, const std::vector<int>& attributeSizes);
+        // `usage` hints the driver how often the buffer will be re-uploaded
+        // (GL_DYNAMIC_DRAW for meshes rebuilt during play, e.g. chunks).
+        void upload(const std::vector<float>& data, const std::vector<int>& attributeSizes,
+                    GLenum usage = GL_STATIC_DRAW);
         void draw(GLenum mode = GL_TRIANGLES) const;
 
         bool empty() const { return m_vertexCount == 0; }
