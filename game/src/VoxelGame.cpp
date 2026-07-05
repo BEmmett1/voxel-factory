@@ -368,7 +368,9 @@ void VoxelGame::onStart() {
         m_inventory.add(ItemId::Essence, 2);
     }
 
-    rebuildMesh();
+    // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of
+    // the first onRender) builds every mesh; power just needs one seed solve.
+    m_power = PowerSystem::solve(*m_world);
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
@@ -657,26 +659,42 @@ void VoxelGame::buildWorld() {
     }
 }
 
-void VoxelGame::rebuildMesh() {
-    // Power state depends only on topology, so recompute it whenever geometry
-    // changes. One combined buffer holds the whole world for now.
+// Rebuild only the chunks whose contents changed. Runs once per frame (top of
+// onRender), so any number of tick/edit mutations in the frame collapse into
+// at most one rebuild per touched chunk.
+void VoxelGame::remeshDirtyChunks() {
     const std::uint64_t t0 = SDL_GetPerformanceCounter();
-    m_power = PowerSystem::solve(*m_world);
-    const std::uint64_t t1 = SDL_GetPerformanceCounter();
-    m_perf.lastSolveMs = msBetween(t0, t1);
-    ++m_perf.solveCount;
-
-    std::vector<float> data;
     int chunks = 0;
     for (const auto& [coord, chunk] : m_world->chunks()) {
-        (void)chunk;
-        ChunkMesher::appendChunk(data, *m_world, coord, m_power, m_belts);
+        if (!chunk->dirty()) continue;
+        m_meshScratch.clear();
+        ChunkMesher::appendChunk(m_meshScratch, *m_world, coord, m_power, m_belts);
+        // Empty chunks keep their (vertexless) entry; draw() skips them.
+        m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}); // pos, normal, uv, emissive
+        chunk->clearDirty();
         ++chunks;
     }
-    m_mesh.upload(data, {3, 3, 2, 1}); // position, normal, uv, emissive
-    m_perf.lastRemeshMs = msBetween(t1, SDL_GetPerformanceCounter());
-    m_perf.chunksRemeshed = chunks;
-    ++m_perf.remeshCount;
+    if (chunks > 0) {
+        m_perf.lastRemeshMs = msBetween(t0, SDL_GetPerformanceCounter());
+        m_perf.chunksRemeshed = chunks;
+        ++m_perf.remeshCount;
+    }
+}
+
+// Recompute the power network -- only edits that add/remove a power block can
+// change it -- and queue a remesh for every chunk whose energized glow flips.
+void VoxelGame::solvePowerAndMarkDirty() {
+    const std::uint64_t t0 = SDL_GetPerformanceCounter();
+    PowerState next = PowerSystem::solve(*m_world);
+    for (const glm::ivec3& c : next.cells()) {
+        if (!m_power.energized(c.x, c.y, c.z)) m_world->markDirtyAt(c.x, c.y, c.z);
+    }
+    for (const glm::ivec3& c : m_power.cells()) {
+        if (!next.energized(c.x, c.y, c.z)) m_world->markDirtyAt(c.x, c.y, c.z);
+    }
+    m_power = std::move(next);
+    m_perf.lastSolveMs = msBetween(t0, SDL_GetPerformanceCounter());
+    ++m_perf.solveCount;
 }
 
 void VoxelGame::registerMachine(const glm::ivec3& pos, BlockId type) {
@@ -760,9 +778,7 @@ void VoxelGame::beltStep() {
     }
 }
 
-bool VoxelGame::updateSources() {
-    bool anySpawned = false;
-
+void VoxelGame::updateSources() {
     for (auto& [pos, timer] : m_sources) {
         timer += kTickSeconds;
         if (timer < kSourceSpawnSeconds) continue;
@@ -799,14 +815,11 @@ bool VoxelGame::updateSources() {
                     m_world->getBlock(x, y + 1, z) == BlockId::Air) {
                     m_world->setBlock(x, y + 1, z, node);
                     placedNode = true;
-                    anySpawned = true;
                     break;
                 }
             }
         }
     }
-
-    return anySpawned;
 }
 
 // Would a solid block in this cell intersect the player's box?
@@ -820,8 +833,7 @@ bool VoxelGame::cellOverlapsPlayer(const glm::ivec3& p) {
            static_cast<float>(p.y) < feet.y + kPlayerHeight;
 }
 
-bool VoxelGame::updateSaplings() {
-    bool anyGrown = false;
+void VoxelGame::updateSaplings() {
     std::vector<glm::ivec3> done;
 
     for (auto& [pos, timer] : m_saplings) {
@@ -852,16 +864,14 @@ bool VoxelGame::updateSaplings() {
 
         placeTree(*m_world, pos);
         done.push_back(pos);
-        anyGrown = true;
     }
 
     for (const glm::ivec3& p : done) m_saplings.erase(p);
-    return anyGrown;
 }
 
-bool VoxelGame::updateLeafDecay() {
+void VoxelGame::updateLeafDecay() {
     m_leafDecayTimer += kTickSeconds;
-    if (m_leafDecayTimer < kLeafDecaySeconds) return false;
+    if (m_leafDecayTimer < kLeafDecaySeconds) return;
     m_leafDecayTimer = 0.0f;
 
     // Leaves with no log in reach wither, a random fraction per pass so a
@@ -902,20 +912,16 @@ bool VoxelGame::updateLeafDecay() {
     for (const glm::ivec3& p : dying) {
         m_world->setBlock(p.x, p.y, p.z, BlockId::Air); // decayed leaves drop nothing
     }
-    return !dying.empty();
 }
 
 void VoxelGame::onTick() {
-    // Grow resource patches, pop ripe saplings, wither orphaned leaves.
-    bool worldChanged = updateSources();
-    worldChanged |= updateSaplings();
-    worldChanged |= updateLeafDecay();
-    if (worldChanged) {
-        rebuildMesh();
-    }
+    // Grow resource patches, pop ripe saplings, wither orphaned leaves. Any
+    // change marks its chunk dirty; the per-frame sweep picks it up.
+    updateSources();
+    updateSaplings();
+    updateLeafDecay();
 
     // Powered machines process their input buffer into outputs over time.
-    bool minedNode = false;
     for (auto& [pos, m] : m_machines) {
         m.crafting = false;
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
@@ -957,7 +963,6 @@ void VoxelGame::onTick() {
                 const ItemStack drop = blockDrop(m_world->getBlock(best.x, best.y, best.z));
                 m.output.add(drop.id, drop.count);
                 m_world->setBlock(best.x, best.y, best.z, BlockId::Air);
-                minedNode = true;
             }
             continue;
         }
@@ -983,10 +988,6 @@ void VoxelGame::onTick() {
             m.output.add(active->output.id, active->output.count);
             m.progress = 0.0f;
         }
-    }
-
-    if (minedNode) {
-        rebuildMesh(); // harvested nodes disappear from the world
     }
 
     // Advance conduits on a slower cadence so items visibly travel.
@@ -1209,7 +1210,6 @@ void VoxelGame::onUpdate(float dt) {
     m_hasTarget = aim.hit;
     m_targetBlock = aim.block;
 
-    bool edited = false;
     if (aim.hit) {
         const glm::ivec3 tb = aim.block;
 
@@ -1233,7 +1233,7 @@ void VoxelGame::onUpdate(float dt) {
                 }
             }
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
-            edited = true;
+            if (PowerSystem::isPowerNode(broken)) solvePowerAndMarkDirty();
             updateTitle();
         }
         // RMB: on a machine, open its panel (Shift+RMB to place against it
@@ -1272,7 +1272,7 @@ void VoxelGame::onUpdate(float dt) {
                         }
                         registerBelt(p, facing);
                     }
-                    edited = true;
+                    if (PowerSystem::isPowerNode(placed)) solvePowerAndMarkDirty();
                     updateTitle();
                 }
             }
@@ -1289,17 +1289,17 @@ void VoxelGame::onUpdate(float dt) {
                     if (bit->second.facing == kCycle[i]) { cur = i; break; }
                 }
                 bit->second.facing = kCycle[(cur + 1) % 6];
-                edited = true; // re-mesh so the arrow re-aims
+                // No block changed, but the arrow UVs did: queue a remesh.
+                m_world->markDirtyAt(tb.x, tb.y, tb.z);
             }
         }
-    }
-
-    if (edited) {
-        rebuildMesh();
     }
 }
 
 void VoxelGame::onRender() {
+    // Everything the ticks and the update dirtied this frame, in one sweep.
+    remeshDirtyChunks();
+
     glClearColor(0.53f, 0.81f, 0.92f, 1.0f); // sky
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1309,10 +1309,12 @@ void VoxelGame::onRender() {
     m_shader.setVec3("uLightDir", kLightDir);
     m_atlas.bind(0);
 
-    // World: textured + lit.
+    // World: textured + lit, one small draw per chunk (world-space vertices).
     m_shader.setInt("uUseFlatColor", 0);
     m_shader.setMat4("uModel", glm::mat4(1.0f));
-    m_mesh.draw();
+    for (auto& [coord, mesh] : m_chunkMeshes) {
+        mesh.draw();
+    }
 
     // Target outline: flat wireframe cube around the aimed block.
     if (m_hasTarget) {

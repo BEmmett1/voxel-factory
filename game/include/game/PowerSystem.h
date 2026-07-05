@@ -17,6 +17,9 @@ public:
     }
     void setEnergized(const glm::ivec3& c) { m_energized.insert(c); }
 
+    // All energized cells, for diffing two states against each other.
+    const std::unordered_set<glm::ivec3, IVec3Hash>& cells() const { return m_energized; }
+
     bool operator==(const PowerState& other) const { return m_energized == other.m_energized; }
     bool operator!=(const PowerState& other) const { return !(*this == other); }
 

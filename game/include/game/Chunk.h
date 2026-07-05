@@ -18,6 +18,7 @@ public:
 
     bool dirty() const { return m_dirty; }
     void clearDirty() { m_dirty = false; }
+    void markDirty() { m_dirty = true; } // e.g. a neighbor's face was exposed
 
 private:
     static int index(int x, int y, int z) {

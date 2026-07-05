@@ -40,9 +40,10 @@ protected:
     void onExit() override;      // save the game on any quit path
 
 private:
-    void buildAtlas();           // procedurally generate the block texture atlas
+    void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildWorld();           // generate terrain + the demo structures
-    void rebuildMesh();          // recompute power and rebuild the combined mesh
+    void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
+    void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
     void drawHud();              // hotbar + machine overlays
@@ -66,15 +67,16 @@ private:
     void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
     void unregisterBelt(const glm::ivec3& pos);    // returns carried item
     void beltStep();                                // advance items along conduits
-    bool updateSources();                           // grow patches; true if a node spawned
-    bool updateSaplings();                          // grow planted saplings into trees
-    bool updateLeafDecay();                         // wither leaves cut off from logs
+    void updateSources();                           // grow patches around sources
+    void updateSaplings();                          // grow planted saplings into trees
+    void updateLeafDecay();                         // wither leaves cut off from logs
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
     engine::Shader     m_shader;
     engine::Texture    m_atlas;
-    engine::Mesh       m_mesh;          // whole world, one combined buffer
+    std::unordered_map<glm::ivec3, engine::Mesh, IVec3Hash> m_chunkMeshes;
+    std::vector<float> m_meshScratch;   // reused vertex staging buffer
     engine::Mesh       m_highlightMesh;
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;

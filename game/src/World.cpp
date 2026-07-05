@@ -31,9 +31,29 @@ BlockId World::getBlock(int wx, int wy, int wz) const {
 }
 
 void World::setBlock(int wx, int wy, int wz, BlockId id) {
-    Chunk& chunk = getOrCreateChunk(toChunkCoord(wx, wy, wz));
+    const glm::ivec3 c = toChunkCoord(wx, wy, wz);
+    Chunk& chunk = getOrCreateChunk(c);
     const glm::ivec3 l = toLocalCoord(wx, wy, wz);
+    if (chunk.get(l.x, l.y, l.z) == id) return; // no-op write: stay clean
     chunk.set(l.x, l.y, l.z, id);
+
+    // A block on a chunk face changes the neighbor's occlusion too; queue the
+    // adjacent chunk(s) for a remesh (never create chunks just to mark them).
+    const auto touch = [this, &c](int dx, int dy, int dz) {
+        const auto it = m_chunks.find(c + glm::ivec3(dx, dy, dz));
+        if (it != m_chunks.end()) it->second->markDirty();
+    };
+    if (l.x == 0) touch(-1, 0, 0);
+    if (l.x == CHUNK_SIZE - 1) touch(1, 0, 0);
+    if (l.y == 0) touch(0, -1, 0);
+    if (l.y == CHUNK_SIZE - 1) touch(0, 1, 0);
+    if (l.z == 0) touch(0, 0, -1);
+    if (l.z == CHUNK_SIZE - 1) touch(0, 0, 1);
+}
+
+void World::markDirtyAt(int wx, int wy, int wz) {
+    const auto it = m_chunks.find(toChunkCoord(wx, wy, wz));
+    if (it != m_chunks.end()) it->second->markDirty();
 }
 
 Chunk& World::getOrCreateChunk(const glm::ivec3& coord) {

@@ -17,6 +17,10 @@ public:
     BlockId getBlock(int wx, int wy, int wz) const; // Air where no chunk exists
     void    setBlock(int wx, int wy, int wz, BlockId id);
 
+    // Queue the owning chunk for a remesh without changing any block (used
+    // when non-block state baked into the mesh changes: belt facing, power).
+    void markDirtyAt(int wx, int wy, int wz);
+
     const ChunkMap& chunks() const { return m_chunks; }
 
     // World -> chunk/local coordinate split (handles negatives correctly).
