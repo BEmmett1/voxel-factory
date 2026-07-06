@@ -32,14 +32,12 @@ enum class BlockId : std::uint8_t {
     CrystalNode,
     CopperOre,
     SandNode,
-    Spring,
     EssenceVent,
     // Resource sources (patch spawners)
     SourceHerb,
     SourceCrystal,
     SourceCopper,
     SourceSand,
-    SourceWater,
     SourceEssence,
     // Cheap structural block for building up/across (no flight!)
     Scaffold,
@@ -47,6 +45,9 @@ enum class BlockId : std::uint8_t {
     Sapling,
     Log,
     Leaves,
+    // Collects rain water into its output buffer (there are no springs --
+    // rain is the island's only water)
+    RainBarrel,
     Count
 };
 

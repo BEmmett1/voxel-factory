@@ -129,8 +129,10 @@ ESSENCE = (153, 71, 184)
 
 SOURCES = {  # tile -> glow color (matches the Source* block colors)
     54: (77, 242, 77), 55: (191, 140, 255), 56: (255, 140, 64),
-    57: (255, 235, 140), 58: (77, 166, 255), 59: (217, 89, 255),
+    57: (255, 235, 140), 59: (217, 89, 255),
 }
+
+BARREL = (102, 71, 38)  # rain-barrel staves
 
 GOLD = (255, 214, 51)
 DARK = (25, 25, 30)
@@ -461,12 +463,22 @@ def nodes_and_sources():
             t.px(x, yy, shade(SAND, 0.8))
     t.speckle(shade(SAND, 1.25), 6, seed=17)
 
-    t = paint(52)                                    # spring
-    t.fill(WATER, noise=0.10)
-    for r in (2, 5):
-        t.ring(8, 8, r, shade(WATER, 1.35))
-    t.px(4, 4, (235, 245, 255))
-    t.speckle(shade(WATER, 0.75), 4, seed=18)
+    t = paint(52)                                    # rain-barrel top: open water
+    t.fill(BARREL, noise=0.10)
+    t.outline(shade(BARREL, 0.55))
+    t.rect(2, 2, 13, 13, shade(WATER, 0.85))         # water surface inside the rim
+    t.ring(8, 8, 3, shade(WATER, 1.3))               # ripple
+    t.px(5, 4, (225, 240, 255))
+    t.speckle(shade(WATER, 1.15), 4, seed=18)
+
+    t = paint(58)                                    # rain-barrel sides: staves
+    t.fill(BARREL, noise=0.10)
+    for x in (3, 7, 11):                             # stave seams
+        t.vline(x, 0, 15, shade(BARREL, 0.65))
+    for y in (3, 12):                                # iron hoops
+        t.hline(y, 0, 15, (140, 140, 150))
+        t.hline(y + 1, 0, 15, (90, 90, 100))
+    t.speckle(shade(BARREL, 1.3), 4, seed=19)
 
     t = paint(53)                                    # essence vent
     t.fill(shade(ESSENCE, 0.5), noise=0.12, edge=0.25)

@@ -26,18 +26,17 @@ namespace {
         /* CrystalNode   */ {49, 49, 49},
         /* CopperOre     */ {50, 50, 50},
         /* SandNode      */ {51, 51, 51},
-        /* Spring        */ {52, 52, 52},
         /* EssenceVent   */ {53, 53, 53},
         /* SourceHerb    */ {54, 54, 54},
         /* SourceCrystal */ {55, 55, 55},
         /* SourceCopper  */ {56, 56, 56},
         /* SourceSand    */ {57, 57, 57},
-        /* SourceWater   */ {58, 58, 58},
         /* SourceEssence */ {59, 59, 59},
         /* Scaffold      */ {4, 4, 4},
         /* Sapling       */ {5, 5, 5},
         /* Log           */ {6, 7, 6},
         /* Leaves        */ {8, 8, 8},
+        /* RainBarrel    */ {52, 58, 58}, // open water top, stave sides
     }};
 
 } // namespace

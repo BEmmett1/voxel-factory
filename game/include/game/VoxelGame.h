@@ -75,6 +75,7 @@ private:
     bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
     void buildRainMesh();                           // per-frame falling streaks
     void updateGeneratorsAndBarrels();              // burn fuel / collect rain
+    void updateBucketFill();                        // held bucket catches rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
@@ -107,6 +108,7 @@ private:
     bool  m_weatherRaining = false;
     float m_weatherTimer = 120.0f; // seconds left in the current weather phase
     float m_rainIntensity = 0.0f;  // smoothed 0..1; gameplay uses the bool
+    float m_bucketFill = 0.0f;     // held-bucket rain-collection progress
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

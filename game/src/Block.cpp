@@ -24,18 +24,17 @@ namespace {
         /* CrystalNode   */ {true,  {0.55f, 0.45f, 0.85f}, 0.0f},
         /* CopperOre     */ {true,  {0.70f, 0.45f, 0.30f}, 0.0f},
         /* SandNode      */ {true,  {0.85f, 0.78f, 0.55f}, 0.0f},
-        /* Spring        */ {true,  {0.25f, 0.50f, 0.85f}, 0.0f},
         /* EssenceVent   */ {true,  {0.60f, 0.28f, 0.72f}, 0.0f},
         /* SourceHerb    */ {true,  {0.30f, 0.95f, 0.30f}, 0.6f},
         /* SourceCrystal */ {true,  {0.75f, 0.55f, 1.00f}, 0.6f},
         /* SourceCopper  */ {true,  {1.00f, 0.55f, 0.25f}, 0.6f},
         /* SourceSand    */ {true,  {1.00f, 0.92f, 0.55f}, 0.6f},
-        /* SourceWater   */ {true,  {0.30f, 0.65f, 1.00f}, 0.6f},
         /* SourceEssence */ {true,  {0.85f, 0.35f, 1.00f}, 0.6f},
         /* Scaffold      */ {true,  {0.68f, 0.62f, 0.48f}, 0.0f},
         /* Sapling       */ {true,  {0.45f, 0.72f, 0.28f}, 0.0f},
         /* Log           */ {true,  {0.45f, 0.33f, 0.18f}, 0.0f},
         /* Leaves        */ {true,  {0.18f, 0.50f, 0.16f}, 0.0f},
+        /* RainBarrel    */ {true,  {0.40f, 0.28f, 0.15f}, 0.0f},
     }};
 }
 
@@ -47,7 +46,8 @@ bool isMachine(BlockId id) {
     return id == BlockId::Grinder || id == BlockId::Cauldron ||
            id == BlockId::Infuser || id == BlockId::Alembic ||
            id == BlockId::Distiller || id == BlockId::Transmuter ||
-           id == BlockId::Miner || id == BlockId::Generator;
+           id == BlockId::Miner || id == BlockId::Generator ||
+           id == BlockId::RainBarrel;
 }
 
 bool isSource(BlockId id) {
@@ -64,7 +64,6 @@ BlockId sourceSpawnsNode(BlockId id) {
         case BlockId::SourceCrystal: return BlockId::CrystalNode;
         case BlockId::SourceCopper:  return BlockId::CopperOre;
         case BlockId::SourceSand:    return BlockId::SandNode;
-        case BlockId::SourceWater:   return BlockId::Spring;
         case BlockId::SourceEssence: return BlockId::EssenceVent;
         default:                     return BlockId::Air;
     }
@@ -90,18 +89,17 @@ const char* blockName(BlockId id) {
         case BlockId::CrystalNode:   return "Crystal Node";
         case BlockId::CopperOre:     return "Copper Ore";
         case BlockId::SandNode:      return "Sand";
-        case BlockId::Spring:        return "Spring";
         case BlockId::EssenceVent:   return "Essence Vent";
         case BlockId::SourceHerb:    return "Herb Source";
         case BlockId::SourceCrystal: return "Crystal Source";
         case BlockId::SourceCopper:  return "Copper Source";
         case BlockId::SourceSand:    return "Sand Source";
-        case BlockId::SourceWater:   return "Water Source";
         case BlockId::SourceEssence: return "Essence Source";
         case BlockId::Scaffold:      return "Scaffold";
         case BlockId::Sapling:       return "Sapling";
         case BlockId::Log:           return "Log";
         case BlockId::Leaves:        return "Leaves";
+        case BlockId::RainBarrel:    return "Rain Barrel";
         default:                     return "?";
     }
 }

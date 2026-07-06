@@ -184,6 +184,9 @@ namespace {
     constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
     constexpr float kWoodBurnSeconds = 20.0f;   // generator burn time per Wood
     constexpr int   kDemoFuelWood    = 8;       // wood preloaded in demo generators
+    constexpr float kBarrelFillSeconds = 12.0f; // rain-to-water cadence per barrel
+    constexpr int   kBarrelCap       = 10;      // max water buffered in a barrel
+    constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
 
     constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
@@ -237,9 +240,13 @@ namespace {
     // recipe only accepts that recipe's inputs (so belts can't overfill it
     // with ingredients it will never consume).
     bool machineAccepts(const Machine& mac, ItemId item) {
-        // Generators take fuel; miners take raw items as filters (not consumed).
+        // Generators take fuel; barrels take nothing (rain fills them);
+        // miners take raw items as filters (not consumed).
         if (mac.type == BlockId::Generator) {
             return item == ItemId::Wood;
+        }
+        if (mac.type == BlockId::RainBarrel) {
+            return false;
         }
         if (mac.type == BlockId::Miner) {
             return nodeForRaw(item) != BlockId::Air;
@@ -367,7 +374,9 @@ void VoxelGame::onStart() {
     m_hotbar.clear();
     for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
         const ItemId id = static_cast<ItemId>(i);
-        if (itemInfo(id).placeable) m_hotbar.push_back(id);
+        // The bucket rides in the hotbar as a tool: hold it in the rain to
+        // collect water. (The place path guards on `placeable`.)
+        if (itemInfo(id).placeable || id == ItemId::Bucket) m_hotbar.push_back(id);
     }
 
     m_world = std::make_unique<World>();
@@ -385,7 +394,6 @@ void VoxelGame::onStart() {
         m_inventory.add(ItemId::Sand, 10);
         m_inventory.add(ItemId::Crystal, 8);
         m_inventory.add(ItemId::Herb, 6);
-        m_inventory.add(ItemId::SpringWater, 4);
         m_inventory.add(ItemId::Essence, 2);
     }
 
@@ -403,7 +411,7 @@ bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-               m_weatherRaining, m_weatherTimer,
+               m_weatherRaining, m_weatherTimer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     return SaveSystem::save(m_savePath, d);
@@ -413,7 +421,7 @@ bool VoxelGame::loadGame() {
     if (m_savePath.empty()) return false;
     int slot = 0;
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-               m_weatherRaining, m_weatherTimer,
+               m_weatherRaining, m_weatherTimer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     if (!SaveSystem::load(m_savePath, d)) {
@@ -426,6 +434,7 @@ bool VoxelGame::loadGame() {
         m_saplings.clear();
         m_weatherRaining = false;
         m_weatherTimer = 120.0f;
+        m_bucketFill = 0.0f;
         return false;
     }
     m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
@@ -601,6 +610,13 @@ void VoxelGame::buildWorld() {
         m_world->setBlock(x, dy, dzRow - 1, BlockId::Wire);
     }
 
+    // A rain barrel feeds the cauldron water whenever the sky opens up --
+    // rain is the island's only water.
+    m_world->setBlock(cxi + 7, dy, dzRow, BlockId::RainBarrel);
+    registerMachine({cxi + 7, dy, dzRow}, BlockId::RainBarrel);
+    m_world->setBlock(cxi + 6, dy, dzRow, BlockId::Belt);
+    registerBelt({cxi + 6, dy, dzRow}, {-1, 0, 0}); // carry toward the cauldron
+
     // Mining demo on the plateau's south side: a herb source grows a patch,
     // a powered miner harvests it, and belts carry the herb away.
     const int mz = static_cast<int>(cz) + 3;
@@ -618,12 +634,12 @@ void VoxelGame::buildWorld() {
 
     // Scatter glowing resource sources across the island (seeded random),
     // keeping the plateau clear. Each will grow a patch of its node type.
-    const BlockId sourceTypes[6] = {BlockId::SourceHerb, BlockId::SourceCopper,
+    const BlockId sourceTypes[5] = {BlockId::SourceHerb, BlockId::SourceCopper,
                                     BlockId::SourceSand, BlockId::SourceCrystal,
-                                    BlockId::SourceWater, BlockId::SourceEssence};
-    const int sourceCounts[6] = {4, 4, 3, 3, 2, 2};
+                                    BlockId::SourceEssence};
+    const int sourceCounts[5] = {4, 4, 3, 3, 2};
 
-    for (int t = 0; t < 6; ++t) {
+    for (int t = 0; t < 5; ++t) {
         int placed = 0;
         for (int attempt = 0; attempt < 500 && placed < sourceCounts[t]; ++attempt) {
             const std::uint32_t h = hash2(t * 977 + attempt, attempt * 131 + 7,
@@ -725,22 +741,57 @@ void VoxelGame::buildRainMesh() {
 void VoxelGame::updateGeneratorsAndBarrels() {
     bool powerChanged = false;
     for (auto& [pos, m] : m_machines) {
-        if (m.type != BlockId::Generator) continue;
-        const bool wasBurning = m.progress > 0.0f;
-        if (m.progress > 0.0f) {
-            m.progress = std::max(0.0f, m.progress - kTickSeconds);
+        if (m.type == BlockId::Generator) {
+            const bool wasBurning = m.progress > 0.0f;
+            if (m.progress > 0.0f) {
+                m.progress = std::max(0.0f, m.progress - kTickSeconds);
+            }
+            if (m.progress <= 0.0f && m_hungryGenerators.count(pos) > 0 &&
+                m.input.count(ItemId::Wood) > 0) {
+                m.input.remove(ItemId::Wood, 1);
+                m.progress = kWoodBurnSeconds;
+            }
+            m.crafting = m.progress > 0.0f;
+            m.craftTime = kWoodBurnSeconds;
+            if ((m.progress > 0.0f) != wasBurning) powerChanged = true;
+        } else if (m.type == BlockId::RainBarrel) {
+            // Barrels need no power -- just rain and open sky above.
+            const bool filling = m_weatherRaining &&
+                m.output.count(ItemId::SpringWater) < kBarrelCap &&
+                skyVisible(pos.x, pos.y, pos.z);
+            m.crafting = filling;
+            m.craftTime = kBarrelFillSeconds;
+            if (filling) {
+                m.progress += kTickSeconds;
+                if (m.progress >= kBarrelFillSeconds) {
+                    m.progress = 0.0f;
+                    m.output.add(ItemId::SpringWater, 1);
+                }
+            }
         }
-        if (m.progress <= 0.0f && m_hungryGenerators.count(pos) > 0 &&
-            m.input.count(ItemId::Wood) > 0) {
-            m.input.remove(ItemId::Wood, 1);
-            m.progress = kWoodBurnSeconds;
-        }
-        m.crafting = m.progress > 0.0f;
-        m.craftTime = kWoodBurnSeconds;
-        if ((m.progress > 0.0f) != wasBurning) powerChanged = true;
     }
     if (powerChanged) {
         solvePowerAndMarkDirty();
+    }
+}
+
+// Holding a bucket under open sky while it rains slowly collects water.
+void VoxelGame::updateBucketFill() {
+    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+    const bool collecting = m_weatherRaining && held == ItemId::Bucket &&
+        m_inventory.has(ItemId::Bucket) &&
+        skyVisible(static_cast<int>(std::floor(feet.x)),
+                   static_cast<int>(std::floor(feet.y + kPlayerHeight)),
+                   static_cast<int>(std::floor(feet.z)));
+    if (!collecting) {
+        m_bucketFill = 0.0f;
+        return;
+    }
+    m_bucketFill += kTickSeconds;
+    if (m_bucketFill >= kBucketFillSeconds) {
+        m_bucketFill = 0.0f;
+        m_inventory.add(ItemId::SpringWater, 1);
     }
 }
 
@@ -1029,12 +1080,13 @@ void VoxelGame::onTick() {
     updateSaplings();
     updateLeafDecay();
     updateGeneratorsAndBarrels();
+    updateBucketFill();
 
     // Powered machines process their input buffer into outputs over time.
     for (auto& [pos, m] : m_machines) {
-        // Generators run in the pre-pass above (their energized state depends
-        // on their own fuel, and the recipe fallthrough would zero progress).
-        if (m.type == BlockId::Generator) continue;
+        // Generators and barrels run in the pre-pass above (their state does
+        // not gate on power, and the recipe fallthrough would zero progress).
+        if (m.type == BlockId::Generator || m.type == BlockId::RainBarrel) continue;
         m.crafting = false;
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
 
@@ -1392,7 +1444,8 @@ void VoxelGame::onUpdate(float dt) {
                 const BlockId under = m_world->getBlock(p.x, p.y - 1, p.z);
                 const bool soilOk = itemInfo(held).placesBlock != BlockId::Sapling ||
                                     under == BlockId::Grass || under == BlockId::Dirt;
-                if (m_inventory.has(held) && !insidePlayer && soilOk &&
+                if (itemInfo(held).placeable && m_inventory.has(held) &&
+                    !insidePlayer && soilOk &&
                     !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
                     const BlockId placed = itemInfo(held).placesBlock;
                     m_world->setBlock(p.x, p.y, p.z, placed);
@@ -1561,6 +1614,13 @@ void VoxelGame::drawMachineUi() {
                             : hungry  ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f)
                                       : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
         m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, status, col);
+    } else if (mac.type == BlockId::RainBarrel) {
+        const bool full = mac.output.count(ItemId::SpringWater) >= kBarrelCap;
+        const char* status = full ? "FULL" : mac.crafting ? "COLLECTING" : "WAITING FOR RAIN";
+        const glm::vec4 col = full ? glm::vec4(1.0f, 0.85f, 0.3f, 1.0f)
+                            : mac.crafting ? glm::vec4(0.45f, 0.7f, 0.95f, 1.0f)
+                                           : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
+        m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status, col);
     } else {
         const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
         m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
@@ -1583,6 +1643,9 @@ void VoxelGame::drawMachineUi() {
                 label = "  BURNS WOOD ( " +
                         std::to_string(static_cast<int>(kWoodBurnSeconds)) +
                         "S PER WOOD, ONLY WHILE A NETWORK NEEDS POWER )";
+                actionable = true;
+            } else if (mac.type == BlockId::RainBarrel) {
+                label = "  COLLECTS RAIN WATER ( NEEDS OPEN SKY ABOVE )";
                 actionable = true;
             } else if (recipes.empty()) { // the Miner: status row shows its filter
                 const ItemId filter = minerFilter(mac);
@@ -1966,6 +2029,17 @@ void VoxelGame::drawHud() {
         const float th = 14.0f;
         m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 4, y + slot - th - 4, th, cnt,
                   glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    // Held-bucket rain collection: a small fill bar above the hotbar.
+    if (m_bucketFill > 0.0f) {
+        const float bw = 180.0f;
+        const float bx = (static_cast<float>(w) - bw) * 0.5f;
+        const float by = y - 30.0f;
+        m_ui.text(bx, by - 16, 12.0f, "COLLECTING RAIN", glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+        m_ui.rect(bx, by, bw, 8, glm::vec4(0.10f, 0.10f, 0.14f, 0.9f));
+        m_ui.rect(bx, by, bw * (m_bucketFill / kBucketFillSeconds), 8,
+                  glm::vec4(0.35f, 0.6f, 0.95f, 1.0f));
     }
 
     // Floating progress bars over actively-crafting machines.

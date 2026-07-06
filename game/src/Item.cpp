@@ -16,7 +16,7 @@ namespace {
         /* Sand                 */ {"Sand",                 66, false, BlockId::Air},
         /* Herb                 */ {"Herb",                 67, false, BlockId::Air},
         /* Crystal              */ {"Crystal",              68, false, BlockId::Air},
-        /* SpringWater          */ {"Spring Water",         69, false, BlockId::Air},
+        /* SpringWater          */ {"Rain Water",           69, false, BlockId::Air},
         /* Essence              */ {"Essence",              70, false, BlockId::Air},
         /* CopperIngot          */ {"Copper Ingot",         71, false, BlockId::Air},
         /* CopperPlate          */ {"Copper Plate",         72, false, BlockId::Air},
@@ -47,7 +47,6 @@ namespace {
         /* CrystalSourceItem    */ {"Crystal Source",       -1, true,  BlockId::SourceCrystal},
         /* CopperSourceItem     */ {"Copper Source",        -1, true,  BlockId::SourceCopper},
         /* SandSourceItem       */ {"Sand Source",          -1, true,  BlockId::SourceSand},
-        /* WaterSourceItem      */ {"Water Source",         -1, true,  BlockId::SourceWater},
         /* EssenceSourceItem    */ {"Essence Source",       -1, true,  BlockId::SourceEssence},
         /* Wrench               */ {"Wrench",               78, false, BlockId::Air},
         /* DirtItem             */ {"Dirt",                 -1, true,  BlockId::Dirt},
@@ -56,6 +55,7 @@ namespace {
         /* Wood                 */ {"Wood",                 76, false, BlockId::Air},
         /* SaplingItem          */ {"Sapling",              -1, true,  BlockId::Sapling},
         /* Bucket               */ {"Bucket",               77, false, BlockId::Air},
+        /* RainBarrelItem       */ {"Rain Barrel",          -1, true,  BlockId::RainBarrel},
     }};
 }
 
@@ -77,7 +77,6 @@ BlockId nodeForRaw(ItemId id) {
         case ItemId::Crystal:     return BlockId::CrystalNode;
         case ItemId::CopperOre:   return BlockId::CopperOre;
         case ItemId::Sand:        return BlockId::SandNode;
-        case ItemId::SpringWater: return BlockId::Spring;
         case ItemId::Essence:     return BlockId::EssenceVent;
         default:                  return BlockId::Air;
     }
@@ -90,7 +89,6 @@ ItemStack blockDrop(BlockId id) {
         case BlockId::CrystalNode: return {ItemId::Crystal, 1};
         case BlockId::CopperOre:   return {ItemId::CopperOre, 1};
         case BlockId::SandNode:    return {ItemId::Sand, 1};
-        case BlockId::Spring:      return {ItemId::SpringWater, 1};
         case BlockId::EssenceVent: return {ItemId::Essence, 1};
         case BlockId::Stone:       return {ItemId::Stone, 1};
         // Sources -> their placeable item (relocatable).
@@ -98,7 +96,6 @@ ItemStack blockDrop(BlockId id) {
         case BlockId::SourceCrystal: return {ItemId::CrystalSourceItem, 1};
         case BlockId::SourceCopper:  return {ItemId::CopperSourceItem, 1};
         case BlockId::SourceSand:    return {ItemId::SandSourceItem, 1};
-        case BlockId::SourceWater:   return {ItemId::WaterSourceItem, 1};
         case BlockId::SourceEssence: return {ItemId::EssenceSourceItem, 1};
         // Placed equipment -> its placeable item back.
         case BlockId::Generator:   return {ItemId::GeneratorItem, 1};
@@ -120,6 +117,7 @@ ItemStack blockDrop(BlockId id) {
         // sapling drop is rolled at the mining site, not in this table).
         case BlockId::Sapling:     return {ItemId::SaplingItem, 1};
         case BlockId::Log:         return {ItemId::Wood, 1};
+        case BlockId::RainBarrel:  return {ItemId::RainBarrelItem, 1};
         // Air -> nothing.
         default:                   return {ItemId::None, 0};
     }

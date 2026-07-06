@@ -19,13 +19,15 @@ namespace PowerSystem {
     } // namespace
 
     bool isPowerNode(BlockId id) {
-        return id == BlockId::Generator || id == BlockId::Wire || isMachine(id);
+        // Rain barrels are machines (panel, belts, save) but run unpowered
+        // and must not conduct or glow.
+        return id == BlockId::Generator || id == BlockId::Wire ||
+               (isMachine(id) && id != BlockId::RainBarrel);
     }
 
     int demand(BlockId id) {
-        // Generators are machines now (fuel buffer, panel, belts) but produce
-        // rather than consume -- they must not demand power from themselves.
-        if (id == BlockId::Generator) return 0;
+        // Generators produce rather than consume; rain barrels run unpowered.
+        if (id == BlockId::Generator || id == BlockId::RainBarrel) return 0;
         return isMachine(id) ? kMachineDemand : 0;
     }
 

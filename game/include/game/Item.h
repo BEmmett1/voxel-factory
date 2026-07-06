@@ -50,7 +50,6 @@ enum class ItemId : std::uint8_t {
     CrystalSourceItem,
     CopperSourceItem,
     SandSourceItem,
-    WaterSourceItem,
     EssenceSourceItem,
     // Tools
     Wrench,
@@ -59,10 +58,12 @@ enum class ItemId : std::uint8_t {
     GrassItem,
     // Structural
     ScaffoldItem,
-    // Forestry (wood is the raw; saplings replant; buckets await the rains)
+    // Forestry (wood is the raw; saplings replant)
     Wood,
     SaplingItem,
     Bucket,
+    // Rain collection (rain is the only water)
+    RainBarrelItem,
     Count
 };
 
