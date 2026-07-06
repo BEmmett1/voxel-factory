@@ -10,7 +10,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 5;         // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 6;         // bump when enums/layout change
 
     template <typename T>
     void writePod(std::ofstream& out, const T& v) {
@@ -125,6 +125,10 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, timer);
     }
 
+    // Weather.
+    writePod(out, static_cast<std::uint8_t>(d.weatherRaining ? 1 : 0));
+    writePod(out, d.weatherTimer);
+
     return out.good();
 }
 
@@ -219,6 +223,12 @@ bool load(const std::string& path, SaveData& d) {
         if (!readPod(in, timer)) return false;
         d.saplings[{x, y, z}] = timer;
     }
+
+    // Weather.
+    std::uint8_t raining = 0;
+    if (!readPod(in, raining)) return false;
+    d.weatherRaining = raining != 0;
+    if (!readPod(in, d.weatherTimer)) return false;
 
     return true;
 }

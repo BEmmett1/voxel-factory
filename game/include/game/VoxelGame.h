@@ -70,6 +70,9 @@ private:
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
     void updateLeafDecay();                         // wither leaves cut off from logs
+    void updateWeather();                           // advance the rain/clear phases
+    bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
+    void buildRainMesh();                           // per-frame falling streaks
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
@@ -77,6 +80,8 @@ private:
     engine::Texture    m_atlas;
     std::unordered_map<glm::ivec3, engine::Mesh, IVec3Hash> m_chunkMeshes;
     std::vector<float> m_meshScratch;   // reused vertex staging buffer
+    engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
+    std::vector<float> m_rainScratch;
     engine::Mesh       m_highlightMesh;
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;
@@ -95,6 +100,10 @@ private:
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
+
+    bool  m_weatherRaining = false;
+    float m_weatherTimer = 120.0f; // seconds left in the current weather phase
+    float m_rainIntensity = 0.0f;  // smoothed 0..1; gameplay uses the bool
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

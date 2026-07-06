@@ -168,6 +168,21 @@ namespace {
     // guarantees a drop before a whole canopy can come up empty-handed.
     constexpr float kSaplingDropChance = 0.25f; // sapling chance per chopped leaf
     constexpr int   kSaplingPityLeaves = 4;     // guaranteed drop after N dry leaves
+    // ---- Weather & fuel knobs ----
+    constexpr float kClearMinSeconds = 90.0f;   // clear-phase duration roll
+    constexpr float kClearMaxSeconds = 240.0f;
+    constexpr float kRainMinSeconds  = 40.0f;   // rain-phase duration roll
+    constexpr float kRainMaxSeconds  = 100.0f;
+    constexpr float kRainFadeSeconds = 4.0f;    // visual intensity ramp
+    constexpr float kRainGrowthMult  = 3.0f;    // growth speed-up while raining
+    constexpr int   kRainStreaks     = 220;     // streak count at full intensity
+    constexpr float kRainRadius      = 14.0f;   // streak spawn radius (camera)
+    constexpr float kRainFallSpeed   = 22.0f;   // blocks per second
+    constexpr float kRainStreakLen   = 0.6f;
+    constexpr float kRainSpan        = 24.0f;   // vertical wrap span
+    constexpr int   kSkyTopY         = 64;      // sky-visibility scan ceiling
+    constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
+
     constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
     constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)
@@ -383,6 +398,7 @@ bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
+               m_weatherRaining, m_weatherTimer,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     return SaveSystem::save(m_savePath, d);
@@ -392,6 +408,7 @@ bool VoxelGame::loadGame() {
     if (m_savePath.empty()) return false;
     int slot = 0;
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
+               m_weatherRaining, m_weatherTimer,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot};
     if (!SaveSystem::load(m_savePath, d)) {
@@ -402,6 +419,8 @@ bool VoxelGame::loadGame() {
         m_belts.clear();
         m_sources.clear();
         m_saplings.clear();
+        m_weatherRaining = false;
+        m_weatherTimer = 120.0f;
         return false;
     }
     m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
@@ -660,6 +679,36 @@ void VoxelGame::buildWorld() {
     }
 }
 
+// Rain: short world-space streaks falling around the camera, skipping covered
+// columns so weather stays outside. Rebuilt every frame while visible.
+void VoxelGame::buildRainMesh() {
+    m_rainScratch.clear();
+    const int count = static_cast<int>(static_cast<float>(kRainStreaks) * m_rainIntensity);
+    if (count > 0) {
+        const glm::vec3 cam = camera().position;
+        const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        for (int i = 0; i < count; ++i) {
+            const float ox = (static_cast<float>(hash2(i, 3, 51) % 1024u) / 1023.0f - 0.5f) *
+                             2.0f * kRainRadius;
+            const float oz = (static_cast<float>(hash2(7, i, 52) % 1024u) / 1023.0f - 0.5f) *
+                             2.0f * kRainRadius;
+            const float phase = static_cast<float>(hash2(i, i, 53) % 1024u) / 1023.0f * kRainSpan;
+            const float x = cam.x + ox;
+            const float z = cam.z + oz;
+            const float y = cam.y + kRainSpan * 0.5f -
+                            std::fmod(t * kRainFallSpeed + phase, kRainSpan);
+            if (!skyVisible(static_cast<int>(std::floor(x)),
+                            static_cast<int>(std::floor(y)),
+                            static_cast<int>(std::floor(z)))) {
+                continue; // under a roof/canopy: the drop already landed
+            }
+            m_rainScratch.insert(m_rainScratch.end(),
+                                 {x, y, z, x, y + kRainStreakLen, z});
+        }
+    }
+    m_rainMesh.upload(m_rainScratch, {3}, GL_DYNAMIC_DRAW);
+}
+
 // Rebuild only the chunks whose contents changed. Runs once per frame (top of
 // onRender), so any number of tick/edit mutations in the frame collapse into
 // at most one rebuild per touched chunk.
@@ -780,9 +829,29 @@ void VoxelGame::beltStep() {
     }
 }
 
+// Rain comes and goes on seeded random phases. Gameplay gates on the boolean;
+// visuals ease through m_rainIntensity (updated per frame in onUpdate).
+void VoxelGame::updateWeather() {
+    m_weatherTimer -= kTickSeconds;
+    if (m_weatherTimer > 0.0f) return;
+    m_weatherRaining = !m_weatherRaining;
+    const float lo = m_weatherRaining ? kRainMinSeconds : kClearMinSeconds;
+    const float hi = m_weatherRaining ? kRainMaxSeconds : kClearMaxSeconds;
+    const std::uint32_t h = hash2(311, 977, m_worldSeed + m_sourceRng++);
+    m_weatherTimer = lo + (hi - lo) * static_cast<float>(h % 1024u) / 1023.0f;
+}
+
+// Can this cell see the sky? (No solid block between it and the world top.)
+bool VoxelGame::skyVisible(int wx, int wy, int wz) const {
+    for (int y = wy + 1; y <= kSkyTopY; ++y) {
+        if (isSolid(m_world->getBlock(wx, y, wz))) return false;
+    }
+    return true;
+}
+
 void VoxelGame::updateSources() {
     for (auto& [pos, timer] : m_sources) {
-        timer += kTickSeconds;
+        timer += kTickSeconds * (m_weatherRaining ? kRainGrowthMult : 1.0f);
         if (timer < kSourceSpawnSeconds) continue;
         timer = 0.0f;
 
@@ -840,7 +909,7 @@ void VoxelGame::updateSaplings() {
 
     for (auto& [pos, timer] : m_saplings) {
         if (timer < kTreeGrowSeconds) {
-            timer += kTickSeconds;
+            timer += kTickSeconds * (m_weatherRaining ? kRainGrowthMult : 1.0f);
             continue;
         }
         if (m_world->getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
@@ -917,6 +986,8 @@ void VoxelGame::updateLeafDecay() {
 }
 
 void VoxelGame::onTick() {
+    updateWeather();
+
     // Grow resource patches, pop ripe saplings, wither orphaned leaves. Any
     // change marks its chunk dirty; the per-frame sweep picks it up.
     updateSources();
@@ -1100,6 +1171,15 @@ void VoxelGame::onUpdate(float dt) {
     }
     if (input().wasKeyPressed(SDL_SCANCODE_F3)) {
         m_debugOpen = !m_debugOpen;
+    }
+
+    // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
+    const float rainTarget = m_weatherRaining ? 1.0f : 0.0f;
+    const float rainStep = dt / kRainFadeSeconds;
+    m_rainIntensity += glm::clamp(rainTarget - m_rainIntensity, -rainStep, rainStep);
+    if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
+        m_weatherRaining = !m_weatherRaining;
+        m_weatherTimer = m_weatherRaining ? 9999.0f : kClearMinSeconds;
     }
 
     // Machine panel: owns all input while open.
@@ -1322,14 +1402,19 @@ void VoxelGame::onUpdate(float dt) {
 void VoxelGame::onRender() {
     // Everything the ticks and the update dirtied this frame, in one sweep.
     remeshDirtyChunks();
+    buildRainMesh();
 
-    glClearColor(0.53f, 0.81f, 0.92f, 1.0f); // sky
+    // Sky: fair-weather blue easing toward storm grey.
+    const glm::vec3 sky = glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
+                                   glm::vec3(0.44f, 0.47f, 0.52f), m_rainIntensity);
+    glClearColor(sky.r, sky.g, sky.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     m_shader.use();
     m_shader.setMat4("uProj", camera().projection());
     m_shader.setMat4("uView", camera().view());
     m_shader.setVec3("uLightDir", kLightDir);
+    m_shader.setFloat("uRainDim", m_rainIntensity * kRainDimMax);
     m_atlas.bind(0);
 
     // World: textured + lit, one small draw per chunk (world-space vertices).
@@ -1347,6 +1432,15 @@ void VoxelGame::onRender() {
         m_shader.setInt("uUseFlatColor", 1);
         m_shader.setVec3("uFlatColor", glm::vec3(0.04f));
         m_highlightMesh.draw(GL_LINES);
+    }
+
+    // Rain streaks: flat-colored world-space lines, hidden behind geometry by
+    // the depth test (indoors stays dry-looking).
+    if (!m_rainMesh.empty()) {
+        m_shader.setMat4("uModel", glm::mat4(1.0f));
+        m_shader.setInt("uUseFlatColor", 1);
+        m_shader.setVec3("uFlatColor", glm::vec3(0.62f, 0.68f, 0.78f));
+        m_rainMesh.draw(GL_LINES);
     }
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A
