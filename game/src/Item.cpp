@@ -116,7 +116,8 @@ ItemStack blockDrop(BlockId id) {
         // Forestry: logs yield wood; leaves drop nothing here (the chance
         // sapling drop is rolled at the mining site, not in this table).
         case BlockId::Sapling:     return {ItemId::SaplingItem, 1};
-        case BlockId::Log:         return {ItemId::Wood, 1};
+        // Wood is fuel AND structure now, so a log splits into two.
+        case BlockId::Log:         return {ItemId::Wood, 2};
         case BlockId::RainBarrel:  return {ItemId::RainBarrelItem, 1};
         // Air -> nothing.
         default:                   return {ItemId::None, 0};

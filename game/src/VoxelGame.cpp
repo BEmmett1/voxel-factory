@@ -187,6 +187,7 @@ namespace {
     constexpr float kBarrelFillSeconds = 12.0f; // rain-to-water cadence per barrel
     constexpr int   kBarrelCap       = 10;      // max water buffered in a barrel
     constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
+    constexpr float kSourceMinRadius = 22.0f;   // sources scatter beyond this ring
 
     constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
@@ -389,12 +390,15 @@ void VoxelGame::onStart() {
         camera().yaw = -90.0f;   // looking toward -Z (the demo row)
         camera().pitch = -15.0f;
 
-        m_inventory.add(ItemId::CopperOre, 30);
-        m_inventory.add(ItemId::Stone, 12);
-        m_inventory.add(ItemId::Sand, 10);
-        m_inventory.add(ItemId::Crystal, 8);
-        m_inventory.add(ItemId::Herb, 6);
-        m_inventory.add(ItemId::Essence, 2);
+        // Lean kit: exactly enough for the bootstrap pair (Generator +
+        // Grinder from ingots) with the starting tree covering wood and fuel.
+        // Everything after runs on mined raws and machine-made plates.
+        m_inventory.add(ItemId::CopperOre, 12);
+        m_inventory.add(ItemId::Stone, 8);
+        m_inventory.add(ItemId::Sand, 4);
+        m_inventory.add(ItemId::Crystal, 2);
+        m_inventory.add(ItemId::Herb, 4);
+        m_inventory.add(ItemId::Essence, 1);
     }
 
     // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of
@@ -649,7 +653,9 @@ void VoxelGame::buildWorld() {
 
             const float ddx = static_cast<float>(x) - cx;
             const float ddz = static_cast<float>(z) - cz;
-            if (std::sqrt(ddx * ddx + ddz * ddz) < kPlateauRadius + 6.0f) continue;
+            // Push sources to the island's outer band: reaching them is the
+            // logistics problem belts and miners exist to solve.
+            if (std::sqrt(ddx * ddx + ddz * ddz) < kSourceMinRadius) continue;
 
             // Needs a grass surface with air above.
             int gy = -1;
@@ -2170,15 +2176,15 @@ void VoxelGame::drawHelp() {
         {"TRANSMUTE NEW RESOURCE SOURCES TO EXPAND YOUR ISLAND.", 1},
         {"", 1},
         {"1. MINE NODES (LMB) AT THE GLOWING SOURCE PATCHES. THEY REGROW.", 1},
-        {"2. CRAFT GEAR WITH E:  ORE > INGOT > PLATE > MACHINES.", 1},
-        {"3. PLACE (RMB) A GENERATOR AND RUN WIRE. POWERED BLOCKS GLOW.", 1},
-        {"4. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
-        {"5. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS.", 1},
-        {"6. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
-        {"7. CONDUITS ALSO RUN UP / DOWN. CRAFT A WRENCH, AIM, PRESS R TO RE-AIM.", 1},
-        {"8. NO FLYING. BUILD WITH CHEAP SCAFFOLD ( STONE ) TO CLIMB.", 1},
+        {"2. CRAFT WITH E: ORE > INGOT > GENERATOR + GRINDER ( NO PLATES ).", 1},
+        {"3. GENERATORS BURN WOOD. KEEP THEM FED, KEEP TREES PLANTED.", 1},
+        {"4. A POWERED GRINDER PRESSES THE COPPER PLATES FOR ALL OTHER GEAR.", 1},
+        {"5. RAIN FILLS BARRELS AND HELD BUCKETS. IT IS THE ONLY WATER.", 1},
+        {"6. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
+        {"7. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS. WRENCH + R RE-AIMS.", 1},
+        {"8. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
         {"9. CHOP TREES: LOGS GIVE WOOD, LEAVES DROP SAPLINGS. REPLANT ON GRASS.", 1},
-        {"10. FALL OFF THE ISLAND AND YOUR WHOLE PACK IS LOST. MIND THE EDGE.", 2},
+        {"10. NO FLYING: BUILD SCAFFOLD. FALL OFF THE EDGE AND YOUR PACK IS LOST.", 2},
         {"", 1},
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE JUMP   LCTRL SPRINT", 1},

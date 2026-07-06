@@ -173,13 +173,41 @@ Textures:
   regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
   overwrites hand edits!).
 
-The core loop is complete, closed, and fully automatable: miners harvest → conduits
-transport → machines process → transmute new sources. Possible next directions:
-- **Weather (user's vision):** rain falls occasionally and can be collected as water in
-  the (already craftable) wooden buckets.
-- **Generator tiers + fuel (user's vision):** multiple kinds of generators, each needing
-  fuel to run — wood from trees is the first fuel, tying into the forestry track. (The
-  current Generator would become the free/basic tier or gain a fuel requirement.)
+Weather & the water economy:
+- **Rain fronts** — a clear/rain state machine ticks in `updateWeather()` (seeded
+  phase durations; saved). Visuals ease via `m_rainIntensity`: storm-grey sky,
+  `uRainDim` dims lit color in `voxel.frag` (emissive stays bright — energized
+  networks read as beacons), and world-space streak lines fall around the camera,
+  skipping covered columns (`skyVisible`, `buildRainMesh`). **F4 is a hidden dev
+  key** that forces rain on/off for testing. Rain also multiplies source-patch and
+  sapling growth (`kRainGrowthMult`).
+- **Rain is the ONLY water** — Spring nodes, Water Sources, and their transmute are
+  removed; the raw item survives as *Rain Water*. It is collected by the **Rain
+  Barrel** (Wood ×6 + Bucket; a machine entity that fills its output during rain
+  under open sky — belt-drainable, capped at `kBarrelCap`, runs unpowered and is
+  NOT a power node) and by **holding the Bucket** in the rain (hotbar tool; fill
+  bar over the hotbar; the place path guards `itemInfo(held).placeable` so tools
+  never place blocks).
+- **Fuel** — Generators are machines: they hold Wood in their input (belt-feedable),
+  burn one per `kWoodBurnSeconds` (`Machine::progress` = burn seconds left → the
+  bars double as fuel gauges), and only light a new wood while their network has
+  demand (`PowerSystem::solve` now takes the machine map and emits "hungry"
+  generators; production counts only burning ones). Burn-state flips re-solve
+  power once per tick. No fuel = dark network.
+
+Economy v2 (difficulty by design; hand table in `Recipes.cpp`):
+- **Machine-made plates** — Copper Plate is a Grinder recipe (Ingot → Plate); only
+  the Generator and Grinder hand-craft without plates (from ingots + stone/wood),
+  so the tech tree bootstraps: chop the starting tree → ingots → Generator +
+  Grinder → fueled Grinder presses plates → frames → everything else.
+- Deeper recipes (Machine Frame = Plate ×3 + Crystal + Wood ×2; each alchemy
+  machine = Frame + extras), a lean starting kit (exactly the bootstrap pair plus
+  slack), logs drop Wood ×2, and sources scatter beyond `kSourceMinRadius` so the
+  outer band is where the resources are — logistics distance is the point.
+
+The core loop is complete, closed, and fully automatable. Possible next directions:
+- **Generator tiers / better fuels:** charcoal or essence-based fuels with longer
+  burns; higher-output generator tiers.
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
 - **Flight stone (user's vision):** flight is deliberately absent; a late-game alchemy
   relic will grant it as an earned power.
@@ -198,8 +226,8 @@ Player physics (pressure & pull):
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
   `%APPDATA%\benny\voxel-factory\`) holding seed, all chunks, player camera/inventory/
-  slot, machines (type/buffers/recipe/progress), belts (facing/cargo), and source +
-  sapling timers.
+  slot, machines (type/buffers/recipe/progress — generators/barrels ride along),
+  belts (facing/cargo), source + sapling timers, and weather state.
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
   change — old saves are then discarded rather than misread.
