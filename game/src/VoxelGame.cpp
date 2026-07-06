@@ -182,6 +182,8 @@ namespace {
     constexpr float kRainSpan        = 24.0f;   // vertical wrap span
     constexpr int   kSkyTopY         = 64;      // sky-visibility scan ceiling
     constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
+    constexpr float kWoodBurnSeconds = 20.0f;   // generator burn time per Wood
+    constexpr int   kDemoFuelWood    = 8;       // wood preloaded in demo generators
 
     constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
@@ -235,7 +237,10 @@ namespace {
     // recipe only accepts that recipe's inputs (so belts can't overfill it
     // with ingredients it will never consume).
     bool machineAccepts(const Machine& mac, ItemId item) {
-        // Miners take raw items as mining filters (not consumed).
+        // Generators take fuel; miners take raw items as filters (not consumed).
+        if (mac.type == BlockId::Generator) {
+            return item == ItemId::Wood;
+        }
         if (mac.type == BlockId::Miner) {
             return nodeForRaw(item) != BlockId::Air;
         }
@@ -386,7 +391,7 @@ void VoxelGame::onStart() {
 
     // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of
     // the first onRender) builds every mesh; power just needs one seed solve.
-    m_power = PowerSystem::solve(*m_world);
+    m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
@@ -574,6 +579,8 @@ void VoxelGame::buildWorld() {
     const int dzRow = static_cast<int>(cz) - 4; // demo row, just north of center
 
     m_world->setBlock(cxi - 5, dy, dzRow, BlockId::Generator);
+    registerMachine({cxi - 5, dy, dzRow}, BlockId::Generator);
+    m_machines[{cxi - 5, dy, dzRow}].input.add(ItemId::Wood, kDemoFuelWood);
     for (int x = cxi - 4; x <= cxi; ++x) {
         m_world->setBlock(x, dy, dzRow, BlockId::Wire);
     }
@@ -602,6 +609,8 @@ void VoxelGame::buildWorld() {
     m_world->setBlock(cxi - 5, dy, mz, BlockId::Miner);
     registerMachine({cxi - 5, dy, mz}, BlockId::Miner);
     m_world->setBlock(cxi - 4, dy, mz, BlockId::Generator);
+    registerMachine({cxi - 4, dy, mz}, BlockId::Generator);
+    m_machines[{cxi - 4, dy, mz}].input.add(ItemId::Wood, kDemoFuelWood);
     for (int i = 1; i <= 2; ++i) {
         m_world->setBlock(cxi - 5, dy, mz - i, BlockId::Belt);
         registerBelt({cxi - 5, dy, mz - i}, {0, 0, -1}); // carry toward the demo row
@@ -709,6 +718,32 @@ void VoxelGame::buildRainMesh() {
     m_rainMesh.upload(m_rainScratch, {3}, GL_DYNAMIC_DRAW);
 }
 
+// Generators burn fuel; a new Wood is lit only when the network wants power
+// (the hungry set from the last solve), but a lit one burns out fully.
+// Machine::progress holds the burn seconds LEFT. When any generator's burn
+// state flips, the power network is re-solved once.
+void VoxelGame::updateGeneratorsAndBarrels() {
+    bool powerChanged = false;
+    for (auto& [pos, m] : m_machines) {
+        if (m.type != BlockId::Generator) continue;
+        const bool wasBurning = m.progress > 0.0f;
+        if (m.progress > 0.0f) {
+            m.progress = std::max(0.0f, m.progress - kTickSeconds);
+        }
+        if (m.progress <= 0.0f && m_hungryGenerators.count(pos) > 0 &&
+            m.input.count(ItemId::Wood) > 0) {
+            m.input.remove(ItemId::Wood, 1);
+            m.progress = kWoodBurnSeconds;
+        }
+        m.crafting = m.progress > 0.0f;
+        m.craftTime = kWoodBurnSeconds;
+        if ((m.progress > 0.0f) != wasBurning) powerChanged = true;
+    }
+    if (powerChanged) {
+        solvePowerAndMarkDirty();
+    }
+}
+
 // Rebuild only the chunks whose contents changed. Runs once per frame (top of
 // onRender), so any number of tick/edit mutations in the frame collapse into
 // at most one rebuild per touched chunk.
@@ -736,7 +771,7 @@ void VoxelGame::remeshDirtyChunks() {
 // change it -- and queue a remesh for every chunk whose energized glow flips.
 void VoxelGame::solvePowerAndMarkDirty() {
     const std::uint64_t t0 = SDL_GetPerformanceCounter();
-    PowerState next = PowerSystem::solve(*m_world);
+    PowerState next = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
     for (const glm::ivec3& c : next.cells()) {
         if (!m_power.energized(c.x, c.y, c.z)) m_world->markDirtyAt(c.x, c.y, c.z);
     }
@@ -993,9 +1028,13 @@ void VoxelGame::onTick() {
     updateSources();
     updateSaplings();
     updateLeafDecay();
+    updateGeneratorsAndBarrels();
 
     // Powered machines process their input buffer into outputs over time.
     for (auto& [pos, m] : m_machines) {
+        // Generators run in the pre-pass above (their energized state depends
+        // on their own fuel, and the recipe fallthrough would zero progress).
+        if (m.type == BlockId::Generator) continue;
         m.crafting = false;
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
 
@@ -1511,11 +1550,22 @@ void VoxelGame::drawMachineUi() {
     m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.45f));
     m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
 
-    // Header: machine name + power status.
-    const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+    // Header: machine name + status (generators report their burn instead of
+    // network power -- their energized state is their own doing).
     m_ui.text(L.px + 16, L.py + 12, 18.0f, blockName(mac.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
-    m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
-              powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+    if (mac.type == BlockId::Generator) {
+        const bool burning = mac.progress > 0.0f;
+        const bool hungry = m_hungryGenerators.count(m_machineUiPos) > 0;
+        const char* status = burning ? "BURNING" : hungry ? "OUT OF FUEL" : "IDLE";
+        const glm::vec4 col = burning ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f)
+                            : hungry  ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f)
+                                      : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
+        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, status, col);
+    } else {
+        const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
+                  powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+    }
 
     // Action rows.
     for (int i = 0; i < rows; ++i) {
@@ -1529,7 +1579,12 @@ void VoxelGame::drawMachineUi() {
         std::string label;
         bool actionable = false;
         if (i == 0) {
-            if (recipes.empty()) { // the Miner: status row shows its filter
+            if (mac.type == BlockId::Generator) {
+                label = "  BURNS WOOD ( " +
+                        std::to_string(static_cast<int>(kWoodBurnSeconds)) +
+                        "S PER WOOD, ONLY WHILE A NETWORK NEEDS POWER )";
+                actionable = true;
+            } else if (recipes.empty()) { // the Miner: status row shows its filter
                 const ItemId filter = minerFilter(mac);
                 label = (filter == ItemId::None)
                     ? "  MINES: ANY NEARBY NODE ( RADIUS 4 )"

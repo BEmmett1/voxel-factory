@@ -47,7 +47,7 @@ bool isMachine(BlockId id) {
     return id == BlockId::Grinder || id == BlockId::Cauldron ||
            id == BlockId::Infuser || id == BlockId::Alembic ||
            id == BlockId::Distiller || id == BlockId::Transmuter ||
-           id == BlockId::Miner;
+           id == BlockId::Miner || id == BlockId::Generator;
 }
 
 bool isSource(BlockId id) {

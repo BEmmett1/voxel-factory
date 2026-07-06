@@ -2,8 +2,10 @@
 
 #include "game/Block.h"
 #include "game/HashIVec3.h"
+#include "game/Machine.h"
 
 #include <glm/glm.hpp>
+#include <unordered_map>
 #include <unordered_set>
 
 class World;
@@ -31,12 +33,17 @@ namespace PowerSystem {
     // Blocks that participate in power networks.
     bool isPowerNode(BlockId id);
 
-    // Power produced / demanded by a single block, in arbitrary power units.
-    int production(BlockId id);
+    // Power demanded by a single block, in arbitrary power units. (Production
+    // is internal to solve(): a generator only produces while burning fuel.)
     int demand(BlockId id);
 
     // Find connected power networks across the world and mark every cell of
     // each *satisfied* network (production >= demand, with some production)
-    // as energized.
-    PowerState solve(const World& world);
+    // as energized. Generator production is gated on burning fuel (the
+    // machine entry's remaining burn seconds). If given, outHungryGenerators
+    // receives every generator sitting in a network with any demand -- those
+    // are the ones that should light a new fuel unit.
+    PowerState solve(const World& world,
+                     const std::unordered_map<glm::ivec3, Machine, IVec3Hash>& machines,
+                     std::unordered_set<glm::ivec3, IVec3Hash>* outHungryGenerators = nullptr);
 }

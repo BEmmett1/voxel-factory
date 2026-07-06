@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // The voxel automation game.
@@ -73,6 +74,7 @@ private:
     void updateWeather();                           // advance the rain/clear phases
     bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
     void buildRainMesh();                           // per-frame falling streaks
+    void updateGeneratorsAndBarrels();              // burn fuel / collect rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
@@ -94,6 +96,7 @@ private:
     int                 m_selectedSlot = 0;
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
+    std::unordered_set<glm::ivec3, IVec3Hash> m_hungryGenerators; // networks wanting power
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources;  // pos -> spawn timer
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer

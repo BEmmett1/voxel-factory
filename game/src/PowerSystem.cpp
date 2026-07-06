@@ -22,20 +22,23 @@ namespace PowerSystem {
         return id == BlockId::Generator || id == BlockId::Wire || isMachine(id);
     }
 
-    int production(BlockId id) {
-        return id == BlockId::Generator ? kGeneratorOutput : 0;
-    }
-
     int demand(BlockId id) {
+        // Generators are machines now (fuel buffer, panel, belts) but produce
+        // rather than consume -- they must not demand power from themselves.
+        if (id == BlockId::Generator) return 0;
         return isMachine(id) ? kMachineDemand : 0;
     }
 
-    PowerState solve(const World& world) {
+    PowerState solve(const World& world,
+                     const std::unordered_map<glm::ivec3, Machine, IVec3Hash>& machines,
+                     std::unordered_set<glm::ivec3, IVec3Hash>* outHungryGenerators) {
         PowerState state;
+        if (outHungryGenerators) outHungryGenerators->clear();
         std::unordered_set<glm::ivec3, IVec3Hash> visited;
 
         std::vector<glm::ivec3> stack;
         std::vector<glm::ivec3> component;
+        std::vector<glm::ivec3> generators;
 
         // Seed from every power node in every loaded chunk.
         for (const auto& [coord, chunk] : world.chunks()) {
@@ -50,6 +53,7 @@ namespace PowerSystem {
                         // Flood-fill one connected network of power nodes.
                         component.clear();
                         stack.clear();
+                        generators.clear();
                         stack.push_back(start);
                         visited.insert(start);
 
@@ -62,7 +66,14 @@ namespace PowerSystem {
                             component.push_back(c);
 
                             const BlockId id = world.getBlock(c.x, c.y, c.z);
-                            totalProduction += production(id);
+                            if (id == BlockId::Generator) {
+                                generators.push_back(c);
+                                // Only a burning generator produces.
+                                const auto mit = machines.find(c);
+                                if (mit != machines.end() && mit->second.progress > 0.0f) {
+                                    totalProduction += kGeneratorOutput;
+                                }
+                            }
                             totalDemand += demand(id);
 
                             for (const glm::ivec3& n : kNeighbors) {
@@ -78,6 +89,13 @@ namespace PowerSystem {
                         if (powered) {
                             for (const glm::ivec3& c : component) {
                                 state.setEnergized(c);
+                            }
+                        }
+                        // Any network that wants power keeps its generators
+                        // lighting fresh fuel (satisfied or not).
+                        if (outHungryGenerators && totalDemand > 0) {
+                            for (const glm::ivec3& g : generators) {
+                                outHungryGenerators->insert(g);
                             }
                         }
                     }

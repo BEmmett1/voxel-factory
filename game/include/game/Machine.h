@@ -12,7 +12,8 @@ struct Machine {
     BlockId   type = BlockId::Air;
     Inventory input;
     Inventory output;
-    float     progress = 0.0f;   // seconds into the active recipe
+    float     progress = 0.0f;   // seconds into the active recipe; a Generator
+                                 // stores its remaining burn seconds here
     bool      crafting = false;  // had a valid powered recipe this tick
     float     craftTime = 1.0f;  // seconds of the active recipe (for the bar)
     int       selectedRecipe = -1; // index into this type's recipe list; -1 = auto
