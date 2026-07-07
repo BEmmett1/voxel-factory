@@ -11,6 +11,11 @@ add_executable(voxel-factory
     src/PowerSystem.cpp
     src/SaveSystem.cpp
     src/VoxelGame.cpp
+    src/VoxelGameWorldGen.cpp
+    src/VoxelGameSim.cpp
+    src/VoxelGamePlayer.cpp
+    src/VoxelGameRender.cpp
+    src/VoxelGameUi.cpp
 )
 
 target_include_directories(voxel-factory PRIVATE include)

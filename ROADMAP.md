@@ -20,8 +20,8 @@ calendar quarters counted from July 2026.
       (all currently hardcoded), persisted next to the save
 - [ ] Audio system (SDL3 audio or a mixer lib) + first pass of sounds:
       mine/place, machine hum, rain, UI clicks
-- [ ] Split `game/src/VoxelGame.cpp` (~2.3k lines) before content scaling:
-      WorldGen / Renderer / GameUI / SimulationSystems / PlayerController
+- [x] Split `game/src/VoxelGame.cpp` (~2.3k lines) into per-concern files:
+      WorldGen / Sim / Player / Render / Ui + a shared internal knobs header
 
 ## Q4 2026 — content depth + world decisions
 

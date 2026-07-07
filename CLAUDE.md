@@ -57,6 +57,16 @@ camera → view/projection matrices), `Shader` / `Mesh` (RAII GL program / VAO+V
 `Chunk` (16³ block array + dirty flag), `ChunkMesher` (hidden-face-removal meshing →
 interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 
+`VoxelGame` is one class split across per-concern implementation files in
+`game/src/`: `VoxelGame.cpp` (lifecycle: start/save/load/Esc/title),
+`VoxelGameWorldGen.cpp` (island + demo lines), `VoxelGameSim.cpp` (the 20 Hz
+tick: machines/belts/power/growth/weather + registries),
+`VoxelGamePlayer.cpp` (per-frame input, walking physics, mine/place),
+`VoxelGameRender.cpp` (atlas, meshes, onRender), and `VoxelGameUi.cpp` (HUD +
+all panels). `VoxelGameInternal.h` (namespace `vg`) holds every gameplay
+tuning constant and the helpers shared across those files; single-use helpers
+stay in their file's anonymous namespace.
+
 ## Conventions
 
 - Engine code in `engine::`; game code in the global namespace.
@@ -100,7 +110,7 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   progress; cursor released — hover/click or W/S+Enter; Shift+RMB places against a
   machine instead). Items drag-and-drop between the grid and the machine buffers
   (LMB = stack, RMB = one; payload removed at pickup and returned on cancel, so no
-  duping; layout shared by hit-test + draw via `panelLayout()` in VoxelGame.cpp).
+  duping; layout shared by hit-test + draw via `panelLayout()` in VoxelGameUi.cpp).
   Floating progress bars + a look-at panel show in-world state. `isMachine()` shared by
   power + game.
 - **Econ 5 / M5** — conduit block-entities (`Belt.h`: facing + one carried item). `beltStep()`
@@ -134,7 +144,7 @@ bitmap font also supports `>` and `+`. Esc closes help, then the crafting menu, 
 
 Forestry (saplings → trees → wood):
 - **Trees** — a 3-log trunk + 14-leaf canopy, defined once in `treeCells()`/`placeTree()`
-  (VoxelGame.cpp) and shared by world-gen, growth, and the grow-space check. Exactly one
+  (VoxelGameInternal.h) and shared by world-gen, growth, and the grow-space check. Exactly one
   grown tree spawns near the plateau each game — the starting sapling supply.
 - **Renewable loop** — chopping a Log yields Wood; chopping Leaves has a
   `kSaplingDropChance` sapling drop with a pity guarantee (`m_leafPity`, every
@@ -145,7 +155,7 @@ Forestry (saplings → trees → wood):
   `kLeafDecaySeconds`/`kLeafDecayChance`); every lost leaf — chopped OR decayed —
   rolls the same sapling drop into the player's pack (`rollLeafSapling`, shared
   pity counter), so trunk-first felling doesn't starve the forest. All knobs sit
-  with the other cadence constants in VoxelGame.cpp.
+  with the other cadence constants in VoxelGameInternal.h.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
 
 Performance (measured with the **F3 overlay**: frame avg/worst ms, remesh/solve
@@ -221,7 +231,7 @@ The core loop is complete, closed, and fully automatable. Possible next directio
 Player physics (pressure & pull):
 - **Walking only** — AABB player vs. voxels (axis-separated move-and-slide in
   `onUpdate`), gravity + Space jump, LCtrl sprint, no flight by design. Feel knobs are
-  grouped at the top of `VoxelGame.cpp` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
+  grouped in `VoxelGameInternal.h` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
   tuned by hands-on play, not scripted verification.
 - **Falling off the island wipes the entire inventory** and respawns the player on the
   plateau (`kVoidY`); machines/belts keep their buffers. Hardcore by user decision.
