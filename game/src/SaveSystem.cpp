@@ -5,6 +5,7 @@
 #include "game/Block.h"
 #include "game/Item.h"
 
+#include <filesystem>
 #include <fstream>
 
 namespace {
@@ -51,7 +52,10 @@ namespace {
 namespace SaveSystem {
 
 bool save(const std::string& path, const SaveData& d) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    // Write to a sibling temp file, then rotate it in (current file -> .bak),
+    // so a crash or power loss mid-write can never destroy the only save.
+    const std::string tmpPath = path + ".tmp";
+    std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
     if (!out) return false;
 
     writePod(out, kMagic);
@@ -130,7 +134,16 @@ bool save(const std::string& path, const SaveData& d) {
     writePod(out, d.weatherTimer);
     writePod(out, d.bucketFill);
 
-    return out.good();
+    out.close();
+    if (!out.good()) return false;
+
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        std::filesystem::rename(path, path + ".bak", ec); // replaces any old .bak
+        if (ec) return false;
+    }
+    std::filesystem::rename(tmpPath, path, ec);
+    return !ec;
 }
 
 bool load(const std::string& path, SaveData& d) {

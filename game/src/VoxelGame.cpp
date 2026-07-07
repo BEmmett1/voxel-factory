@@ -16,10 +16,17 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
+#include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+// Product version, injected by CMake from the root project() version.
+#ifndef VOXEL_FACTORY_VERSION
+#define VOXEL_FACTORY_VERSION "dev"
+#endif
 
 namespace {
     constexpr float kLookSensitivity = 0.12f; // degrees per pixel
@@ -37,6 +44,12 @@ namespace {
     constexpr float kEyeHeight    = 1.62f;  // camera above the feet
     constexpr float kVoidY        = -8.0f;  // fall below this: pack lost, respawn
     // -------------------------------------------------------
+
+    // Save location (%APPDATA%\<org>\<app>\). kOrgName is a placeholder until
+    // a studio name exists; migrateLegacySave() makes renaming it free.
+    constexpr const char* kOrgName  = "BennyThompson";
+    constexpr const char* kAppName  = "voxel-factory";
+    constexpr const char* kSaveFile = "save.vxf";
 
     constexpr float kReach = 8.0f;             // how far you can target blocks
     constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area
@@ -350,6 +363,29 @@ namespace {
 VoxelGame::VoxelGame()
     : engine::Application("Voxel Factory", 1280, 720) {}
 
+// One-time migration: saves used to live under a developer-named org folder
+// ("benny"). If the new location has no save yet and the old one does, copy
+// it (and its .bak) over — copy, not move, so older builds keep working.
+// The same logic makes any future kOrgName rename free.
+static void migrateLegacySave(const std::string& newSavePath) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path newSave{newSavePath};
+    if (fs::exists(newSave, ec)) return;
+    // <pref root>/<org>/<app>/save.vxf -> three parents up is the pref root.
+    const fs::path oldDir =
+        newSave.parent_path().parent_path().parent_path() / "benny" / "voxel-factory";
+    for (const char* name : {"save.vxf", "save.vxf.bak"}) {
+        const fs::path from = oldDir / name;
+        if (fs::exists(from, ec)) {
+            fs::copy_file(from, newSave.parent_path() / name,
+                          fs::copy_options::skip_existing, ec);
+            if (ec) SDL_Log("Save migration failed for %s: %s",
+                            from.string().c_str(), ec.message().c_str());
+        }
+    }
+}
+
 void VoxelGame::onStart() {
     glEnable(GL_DEPTH_TEST);
     window().setRelativeMouse(true); // capture the cursor for FPS look
@@ -357,7 +393,10 @@ void VoxelGame::onStart() {
     const char* base = SDL_GetBasePath(); // owned by SDL, do not free
     const std::string dir = base ? base : "";
     if (!m_shader.loadFromFiles(dir + "shaders/voxel.vert", dir + "shaders/voxel.frag")) {
-        SDL_Log("Failed to load voxel shaders from '%sshaders/'", dir.c_str());
+        // Without the shader the game would "run" as a black window; fail
+        // loudly instead (main() shows this in a message box).
+        throw std::runtime_error("Failed to load voxel shaders from '" + dir +
+                                 "shaders/' - the game files may be incomplete.");
     }
     m_shader.use();
     m_shader.setInt("uAtlas", 0); // atlas lives on texture unit 0
@@ -365,9 +404,10 @@ void VoxelGame::onStart() {
     buildAtlas();
 
     // The save lives in the OS-preferred data directory.
-    if (char* pref = SDL_GetPrefPath("benny", "voxel-factory")) {
-        m_savePath = std::string(pref) + "save.vxf";
+    if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
+        m_savePath = std::string(pref) + kSaveFile;
         SDL_free(pref);
+        migrateLegacySave(m_savePath);
     }
 
     // Hotbar: every placeable item, in enum order. Keys 1-9 and 0 jump to the
@@ -423,13 +463,20 @@ bool VoxelGame::saveGame() {
 
 bool VoxelGame::loadGame() {
     if (m_savePath.empty()) return false;
-    int slot = 0;
-    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-               m_weatherRaining, m_weatherTimer, m_bucketFill,
-               camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot};
-    if (!SaveSystem::load(m_savePath, d)) {
-        // A partial read may have dirtied state; start clean.
+    // Try the main file, then the .bak generation the save rotation keeps —
+    // a save interrupted mid-write costs at most one session, not the island.
+    for (const std::string& path : {m_savePath, m_savePath + ".bak"}) {
+        int slot = 0;
+        SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
+                   m_weatherRaining, m_weatherTimer, m_bucketFill,
+                   camera().position, camera().yaw, camera().pitch,
+                   m_worldSeed, m_sourceRng, slot};
+        if (SaveSystem::load(path, d)) {
+            m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
+            return true;
+        }
+        // A partial read may have dirtied state; start clean before the next
+        // candidate (or the fresh island the caller builds).
         m_world = std::make_unique<World>();
         m_inventory = Inventory{};
         m_machines.clear();
@@ -439,10 +486,8 @@ bool VoxelGame::loadGame() {
         m_weatherRaining = false;
         m_weatherTimer = 120.0f;
         m_bucketFill = 0.0f;
-        return false;
     }
-    m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
-    return true;
+    return false;
 }
 
 void VoxelGame::onExit() {
@@ -1255,7 +1300,8 @@ void VoxelGame::buildCrosshairMesh() {
 
 void VoxelGame::updateTitle() {
     const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
-    window().setTitle(std::string("Voxel Factory  —  Holding: ") + itemName(held) +
+    window().setTitle(std::string("Voxel Factory v" VOXEL_FACTORY_VERSION
+                                  "  —  Holding: ") + itemName(held) +
                       " x" + std::to_string(m_inventory.count(held)) +
                       "   (F1 help / E craft / LMB mine / RMB place)");
 }
@@ -1580,7 +1626,7 @@ void VoxelGame::drawDebugOverlay() {
 
     char line[96];
     m_ui.begin(w, h);
-    m_ui.rect(8, 8, 360, 70, glm::vec4(0.05f, 0.05f, 0.08f, 0.82f));
+    m_ui.rect(8, 8, 360, 88, glm::vec4(0.05f, 0.05f, 0.08f, 0.82f));
 
     std::snprintf(line, sizeof(line), "FRAME AVG %5.1f MS  WORST %6.1f MS",
                   m_perf.avgMs, m_perf.worstMs);
@@ -1593,6 +1639,9 @@ void VoxelGame::drawDebugOverlay() {
     std::snprintf(line, sizeof(line), "POWER  %6.1f MS  X%d PER S",
                   m_perf.lastSolveMs, m_perf.solvesPerSec);
     m_ui.text(16, 52, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
+
+    m_ui.text(16, 70, 12.0f, "VOXEL FACTORY V" VOXEL_FACTORY_VERSION,
+              glm::vec4(0.6f, 0.6f, 0.65f, 1.0f));
 
     m_ui.end();
 }

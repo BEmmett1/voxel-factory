@@ -14,21 +14,23 @@ Dependencies (SDL3, glm) are fetched automatically via CMake FetchContent. The O
 loader (glad, GL 3.3 core) is vendored pre-generated in `third_party/glad/` — no Python
 or codegen needed at build time.
 
-Load the MSVC dev environment first so cl.exe is on PATH, then configure + build with
-Ninja (bundled with Visual Studio):
+Configure + build via `CMakePresets.json` (`x64-debug` / `x64-release`, Ninja).
+cl/ninja must be on PATH, and the vcvars env does not survive between tool
+invocations — chain everything through one `cmd /c`:
 
 ```powershell
-& "C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat"
-cmake -S . -B out/build/x64-Debug -G Ninja `
-  -DCMAKE_MAKE_PROGRAM="C:/Program Files/Microsoft Visual Studio/18/Professional/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
-cmake --build out/build/x64-Debug
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul && cmake --preset x64-release && cmake --build --preset x64-release'
 ```
 
 The first configure compiles SDL3 from source (several minutes); later builds are fast.
-Run `out/build/x64-Debug/bin/voxel-factory.exe`. CMake copies `shaders/` and `SDL3.dll`
-next to the exe at build time.
+Run `out/build/<preset>/bin/voxel-factory.exe`. CMake copies `shaders/`, `assets/`, and
+`SDL3.dll` next to the exe at build time. The product version comes from the root
+`project()` (`VOXEL_FACTORY_VERSION`, shown in the title bar and F3 overlay).
 
-There is no test framework.
+There is no test framework, but `voxel-factory.exe --selftest` runs a headless
+save/load round-trip (exit 0/1); CI (`.github/workflows/build.yml`) builds the
+Release preset, runs the selftest, and uploads the bin folder as an artifact on
+every push. See `ROADMAP.md` for the path to the mid-2027 Steam release.
 
 ## Architecture
 
@@ -227,7 +229,10 @@ Player physics (pressure & pull):
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
-  `%APPDATA%\benny\voxel-factory\`) holding seed, all chunks, player camera/inventory/
+  `%APPDATA%\BennyThompson\voxel-factory\`; `kOrgName` is a placeholder studio name,
+  and a legacy save under `benny\` is migrated on first launch). Writes are atomic:
+  save to `.tmp`, rotate the old file to `.bak`, rename in; load falls back to `.bak`
+  before regenerating. The file holds seed, all chunks, player camera/inventory/
   slot, machines (type/buffers/recipe/progress — generators/barrels ride along),
   belts (facing/cargo), source + sapling timers, and weather state.
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via

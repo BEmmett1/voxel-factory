@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # SDL3 is compiled from source via FetchContent; cache the fetched
+      # sources + build products so pushes don't pay that cost every time.
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: out/build/x64-Release/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake --preset x64-release
+
+      - name: Build
+        run: cmake --build --preset x64-release
+
+      - name: Selftest (save round-trip, headless)
+        run: out/build/x64-Release/bin/voxel-factory.exe --selftest
+
+      # The bin folder is self-contained (exe + SDL3.dll + shaders/ + assets/),
+      # so every green build doubles as a distributable zip.
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxel-factory-win64
+          path: out/build/x64-Release/bin/
