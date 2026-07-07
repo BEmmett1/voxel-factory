@@ -138,7 +138,9 @@ Forestry (saplings → trees → wood):
   Saplings place on Grass/Dirt only and grow after `kTreeGrowSeconds` via `m_saplings`
   timers (`updateSaplings`; a blocked or player-overlapped spot retries each tick).
   Leaves with no Log within `kLeafReach` decay staggered (`updateLeafDecay`,
-  `kLeafDecaySeconds`/`kLeafDecayChance`); decayed leaves drop nothing. All knobs sit
+  `kLeafDecaySeconds`/`kLeafDecayChance`); every lost leaf — chopped OR decayed —
+  rolls the same sapling drop into the player's pack (`rollLeafSapling`, shared
+  pity counter), so trunk-first felling doesn't starve the forest. All knobs sit
   with the other cadence constants in VoxelGame.cpp.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
 

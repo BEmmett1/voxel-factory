@@ -1032,6 +1032,20 @@ void VoxelGame::updateSaplings() {
     for (const glm::ivec3& p : done) m_saplings.erase(p);
 }
 
+// Every leaf that dies -- chopped by hand or decayed off a felled trunk --
+// rolls the same sapling drop into the player's pack. The shared pity counter
+// guarantees the supply across dry streaks either way.
+void VoxelGame::rollLeafSapling(const glm::ivec3& p) {
+    const std::uint32_t h = hash2(p.x * 31 + p.y, p.z * 17,
+                                  m_worldSeed + m_sourceRng++);
+    const bool lucky = (h % 100u) <
+        static_cast<std::uint32_t>(kSaplingDropChance * 100.0f + 0.5f);
+    if (lucky || ++m_leafPity >= kSaplingPityLeaves) {
+        m_leafPity = 0;
+        m_inventory.add(ItemId::SaplingItem, 1);
+    }
+}
+
 void VoxelGame::updateLeafDecay() {
     m_leafDecayTimer += kTickSeconds;
     if (m_leafDecayTimer < kLeafDecaySeconds) return;
@@ -1073,7 +1087,8 @@ void VoxelGame::updateLeafDecay() {
     }
 
     for (const glm::ivec3& p : dying) {
-        m_world->setBlock(p.x, p.y, p.z, BlockId::Air); // decayed leaves drop nothing
+        m_world->setBlock(p.x, p.y, p.z, BlockId::Air);
+        rollLeafSapling(p); // a felled canopy still seeds the next forest
     }
 }
 
@@ -1423,14 +1438,7 @@ void VoxelGame::onUpdate(float dt) {
             const ItemStack drop = blockDrop(broken);
             m_inventory.add(drop.id, drop.count);
             if (broken == BlockId::Leaves) {
-                const std::uint32_t h = hash2(tb.x * 31 + tb.y, tb.z * 17,
-                                              m_worldSeed + m_sourceRng++);
-                const bool lucky = (h % 100u) <
-                    static_cast<std::uint32_t>(kSaplingDropChance * 100.0f + 0.5f);
-                if (lucky || ++m_leafPity >= kSaplingPityLeaves) {
-                    m_leafPity = 0;
-                    m_inventory.add(ItemId::SaplingItem, 1);
-                }
+                rollLeafSapling(tb);
             }
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
             if (PowerSystem::isPowerNode(broken)) solvePowerAndMarkDirty();

@@ -71,6 +71,7 @@ private:
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
     void updateLeafDecay();                         // wither leaves cut off from logs
+    void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
     void updateWeather();                           // advance the rain/clear phases
     bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
     void buildRainMesh();                           // per-frame falling streaks
