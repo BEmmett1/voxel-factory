@@ -24,7 +24,9 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\B
 
 The first configure compiles SDL3 from source (several minutes); later builds are fast.
 Run `out/build/<preset>/bin/voxel-factory.exe`. CMake copies `shaders/`, `assets/`, and
-`SDL3.dll` next to the exe at build time. The product version comes from the root
+`SDL3.dll` next to the exe at build time. The MSVC runtime is statically linked
+(`CMAKE_MSVC_RUNTIME_LIBRARY`), so the bin folder is a zero-prerequisite zip — don't
+undo that without shipping the VC++ Redistributable some other way. The product version comes from the root
 `project()` (`VOXEL_FACTORY_VERSION`, shown in the title bar and F3 overlay).
 
 There is no test framework, but `voxel-factory.exe --selftest` runs a headless

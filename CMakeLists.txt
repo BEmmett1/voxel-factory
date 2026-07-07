@@ -11,6 +11,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# Bake the MSVC runtime into the binaries so the bin/ folder runs on machines
+# without the VC++ Redistributable. Set before FetchContent so SDL3 and all of
+# our targets agree on the CRT (mixing CRTs across the DLL boundary is the
+# thing to avoid). Ignored by non-MSVC toolchains.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 include(FetchContent)
 
 # --- SDL3: window, OpenGL context, input, events ---
