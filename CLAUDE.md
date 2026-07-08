@@ -134,7 +134,12 @@ World & closed-loop economy:
   jump to the first ten; mouse wheel cycles all; `Input::wheelSteps`).
 
 UI: an **F1 help overlay** (goal + quickstart + controls) built on `UiRenderer`; the
-bitmap font also supports `>` and `+`. Esc closes help, then the crafting menu, then quits.
+bitmap font also supports `>` and `+`. Esc closes the topmost overlay (machine panel,
+help, crafting menu); with nothing open it toggles the **pause menu** (RESUME /
+SAVE GAME / SAVE AND QUIT). While paused the engine stops accruing simulation time
+(`Application::setPaused` — onTick simply doesn't run, and no backlog builds up),
+so machines, growth, and weather truly freeze. Quitting lives on the pause menu's
+SAVE AND QUIT row (the window close button still quits + saves too).
 
 - **Miner automation** — a powered Miner harvests the nearest grown resource node within
   radius 4, one per 4 s (`kMineSeconds`/`kMineRadius`, special-cased in `onTick` before

@@ -35,6 +35,12 @@ namespace engine {
 
         void quit() { m_running = false; }
 
+        // While paused, simulation time does not accrue: onTick() stops and no
+        // backlog builds up for resume. onUpdate/onRender keep running so a
+        // pause menu can draw and take input.
+        void setPaused(bool p) { m_paused = p; }
+        bool paused() const { return m_paused; }
+
     private:
         void processEvents();
 
@@ -43,6 +49,7 @@ namespace engine {
         Input  m_input;
         Clock  m_clock;
         bool   m_running = false;
+        bool   m_paused = false;
         double m_tickAccumulator = 0.0;
     };
 

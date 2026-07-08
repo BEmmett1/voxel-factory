@@ -307,5 +307,6 @@ void VoxelGame::onRender() {
     if (m_menuOpen) drawCraftMenu();
     if (m_helpOpen) drawHelp();
     if (m_machineUiOpen) drawMachineUi();
+    if (m_pauseOpen) drawPauseMenu();
     if (m_debugOpen) drawDebugOverlay();
 }

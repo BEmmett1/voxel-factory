@@ -715,6 +715,114 @@ void VoxelGame::drawCraftMenu() {
     m_ui.end();
 }
 
+namespace {
+
+    // Pause menu rows + layout, shared by update (hit-testing) and draw.
+    constexpr const char* kPauseRows[] = {"RESUME", "SAVE GAME", "SAVE AND QUIT"};
+    constexpr int kPauseRowCount = static_cast<int>(sizeof(kPauseRows) / sizeof(kPauseRows[0]));
+
+    struct PauseLayout {
+        static constexpr float RowH = 30.0f;
+        float px = 0, py = 0, panelW = 340.0f, panelH = 0;
+        float rowsY = 0;
+        float footerY = 0;
+    };
+
+    PauseLayout pauseLayout(int w, int h) {
+        PauseLayout L;
+        const float headerH = 46.0f, footerH = 30.0f;
+        L.panelH = headerH + kPauseRowCount * PauseLayout::RowH + footerH + 10.0f;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.rowsY = L.py + headerH;
+        L.footerY = L.py + L.panelH - footerH + 6.0f;
+        return L;
+    }
+
+} // namespace
+
+void VoxelGame::openPauseMenu() {
+    m_pauseOpen = true;
+    m_pauseSel = 0;
+    setPaused(true); // the engine stops accruing simulation time
+    window().setRelativeMouse(false); // release the cursor for hover/click
+}
+
+void VoxelGame::closePauseMenu() {
+    m_pauseOpen = false;
+    setPaused(false);
+    window().setRelativeMouse(true);
+}
+
+void VoxelGame::updatePauseMenu() {
+    const PauseLayout L = pauseLayout(window().width(), window().height());
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
+        m_pauseSel = (m_pauseSel - 1 + kPauseRowCount) % kPauseRowCount;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
+        m_pauseSel = (m_pauseSel + 1) % kPauseRowCount;
+    }
+
+    // Hover: while the cursor moves over the rows area, it picks the row.
+    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
+                          my >= L.rowsY && my < L.rowsY + kPauseRowCount * PauseLayout::RowH;
+    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
+        m_pauseSel = static_cast<int>((my - L.rowsY) / PauseLayout::RowH);
+    }
+
+    const bool activate = input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
+                          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
+                          (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows);
+    if (activate) {
+        switch (m_pauseSel) {
+            case 0:
+                closePauseMenu();
+                break;
+            case 1:
+                if (saveGame()) {
+                    window().setTitle("Voxel Factory  —  SAVED");
+                }
+                break;
+            default:
+                quit(); // onExit() saves on every quit path
+                break;
+        }
+    }
+}
+
+void VoxelGame::drawPauseMenu() {
+    const int w = window().width();
+    const int h = window().height();
+    const PauseLayout L = pauseLayout(w, h);
+
+    m_ui.begin(w, h);
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.6f));
+    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+
+    m_ui.text(L.px + 16, L.py + 12, 18.0f, "PAUSED", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    m_ui.text(L.px + L.panelW - 16 - m_ui.textWidth(12.0f, "V" VOXEL_FACTORY_VERSION),
+              L.py + 16, 12.0f, "V" VOXEL_FACTORY_VERSION, glm::vec4(0.6f, 0.6f, 0.65f, 1.0f));
+
+    for (int i = 0; i < kPauseRowCount; ++i) {
+        const float ry = L.rowsY + i * PauseLayout::RowH;
+        const bool selected = (i == m_pauseSel);
+        if (selected) {
+            m_ui.rect(L.px + 6, ry, L.panelW - 12, PauseLayout::RowH - 4,
+                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+        }
+        m_ui.text(L.px + 20, ry + 6, 14.0f, kPauseRows[i],
+                  selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
+                           : glm::vec4(0.90f, 0.90f, 0.92f, 1.0f));
+    }
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f, "W/S + ENTER   ESC RESUME",
+              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+
+    m_ui.end();
+}
+
 void VoxelGame::drawHelp() {
     const int w = window().width();
     const int h = window().height();

@@ -61,6 +61,13 @@ void VoxelGame::onUpdate(float dt) {
         m_debugOpen = !m_debugOpen;
     }
 
+    // Pause menu: simulated time is frozen (the engine skips onTick while
+    // paused); the menu owns all input until it resumes or quits.
+    if (m_pauseOpen) {
+        updatePauseMenu();
+        return;
+    }
+
     // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
     const float rainTarget = m_weatherRaining ? 1.0f : 0.0f;
     const float rainStep = dt / kRainFadeSeconds;

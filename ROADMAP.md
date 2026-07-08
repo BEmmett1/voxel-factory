@@ -14,8 +14,8 @@ calendar quarters counted from July 2026.
 - [x] Save dir off the dev username (`BennyThompson` placeholder org, with
       legacy migration — rename is free later)
 - [x] Fatal errors surface in a message box, not a dead console
-- [ ] Pause menu with **true simulation pause** — `onTick` currently runs
-      unconditionally (`engine/src/Application.cpp`); menus don't stop time
+- [x] Pause menu with **true simulation pause** (`Application::setPaused`;
+      Esc toggles it — RESUME / SAVE GAME / SAVE AND QUIT)
 - [ ] Settings: fullscreen toggle, vsync, mouse sensitivity, keybinds
       (all currently hardcoded), persisted next to the save
 - [ ] Audio system (SDL3 audio or a mixer lib) + first pass of sounds:

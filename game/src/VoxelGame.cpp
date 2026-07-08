@@ -165,8 +165,10 @@ void VoxelGame::onEscape() {
     } else if (m_menuOpen) {
         m_menuOpen = false;
         window().setRelativeMouse(true);
+    } else if (m_pauseOpen) {
+        closePauseMenu();
     } else {
-        quit();
+        openPauseMenu(); // quitting lives on its SAVE AND QUIT row
     }
 }
 

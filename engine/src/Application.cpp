@@ -25,12 +25,18 @@ namespace engine {
             processEvents();
 
             // Fixed-timestep simulation ticks, decoupled from render rate.
-            m_tickAccumulator += dt;
-            int ticks = 0;
-            while (m_tickAccumulator >= kTickSeconds && ticks < kMaxTicksPerFrame) {
-                onTick();
-                m_tickAccumulator -= kTickSeconds;
-                ++ticks;
+            // While paused, simulated time simply does not pass: nothing
+            // accrues, so resuming never burst-runs a tick backlog.
+            if (m_paused) {
+                m_tickAccumulator = 0.0;
+            } else {
+                m_tickAccumulator += dt;
+                int ticks = 0;
+                while (m_tickAccumulator >= kTickSeconds && ticks < kMaxTicksPerFrame) {
+                    onTick();
+                    m_tickAccumulator -= kTickSeconds;
+                    ++ticks;
+                }
             }
 
             m_camera.aspect = m_window->aspect();

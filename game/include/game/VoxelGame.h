@@ -37,7 +37,7 @@ protected:
     void onUpdate(float dt) override;
     void onTick() override;      // fixed 20 Hz machine processing
     void onRender() override;
-    void onEscape() override;    // closes the crafting menu, else quits
+    void onEscape() override;    // closes the topmost overlay, else pause menu
     void onExit() override;      // save the game on any quit path
 
 private:
@@ -52,6 +52,10 @@ private:
     void drawHelp();             // F1 how-to-play overlay
     void drawDebugOverlay();     // F3 perf readout
     void updateMenu();           // crafting menu navigation + crafting
+    void openPauseMenu();        // freezes the simulation (engine setPaused)
+    void closePauseMenu();       // resume
+    void updatePauseMenu();      // keyboard + mouse interaction
+    void drawPauseMenu();
     void openMachineUi(const glm::ivec3& pos);
     void closeMachineUi();
     void updateMachineUi();      // keyboard + mouse interaction with the panel
@@ -118,6 +122,8 @@ private:
     bool m_helpOpen = false;             // F1 help overlay visible?
     bool m_debugOpen = false;            // F3 perf overlay visible?
     int  m_menuSelection = 0;
+    bool m_pauseOpen = false;            // pause menu (Esc); sim time frozen
+    int  m_pauseSel = 0;
 
     // Rolling frame times + costs of the heavy passes, shown by F3.
     struct PerfStats {

@@ -22,7 +22,8 @@ result to expect.
 | Menu: select / craft | **W/S** (or ↑/↓) / **Enter** |
 | Open a machine's panel | **RMB** on it (Shift+RMB places against it instead) |
 | In the panel: choose / act / close | hover or **W/S** · click or **Enter** · **Esc/E/RMB** |
-| Close menu, or quit | **Esc** |
+| Close menu / pause | **Esc** (with nothing open, Esc opens the **pause menu**) |
+| Quit | pause menu → **SAVE AND QUIT** (or close the window; both save) |
 
 **Observability note:** the hotbar shows only *placeable* items (conduit, wire, machines).
 Raw-material counts (ore, herb, …) are not on the hotbar — confirm them via the crafting
@@ -72,7 +73,15 @@ look-at panel.
 5. Walk off the island's edge (empty your pockets first if you value them!).
    **Expect:** you fall past the underside, your **entire inventory is wiped**, and you
    respawn on the plateau. The edge is the game's first real danger.
-   (**Esc** with no menu open quits — don't press it yet.)
+
+## 2b. Pause menu (Esc) — time stops
+
+5b. With no menu open, press **Esc**. **Expect:** the world dims and a `PAUSED` panel
+    opens (RESUME / SAVE GAME / SAVE AND QUIT; hover/click or W/S + Enter; the version
+    shows top-right). Watch a working machine's floating progress bar first: while
+    paused it does **not** advance — machines, patch growth, and weather are frozen.
+    **Esc** (or RESUME) resumes exactly where things left off, with no burst of
+    catch-up activity. `SAVE GAME` quick-saves (title flashes SAVED).
 
 ## 3. Mining (LMB) → inventory + patch regrowth
 
@@ -183,7 +192,7 @@ look-at panel.
 ## 11. Save / load
 
 22. Craft something distinctive (e.g. two Copper Ingots), fly somewhere memorable, then
-    quit with **Esc**.
+    quit via **Esc → SAVE AND QUIT**.
     **Expect:** the game closes cleanly and writes
     `%APPDATA%\benny\voxel-factory\save.vxf`.
 23. Relaunch. **Expect:** the *same* island (identical coastline and source layout), your
@@ -193,4 +202,5 @@ look-at panel.
 
 ## 12. Quit
 
-24. With no menu open, press **Esc**. **Expect:** the game closes cleanly (and saves).
+24. Press **Esc** and activate **SAVE AND QUIT** (or just close the window).
+    **Expect:** the game closes cleanly (and saves either way).
