@@ -333,12 +333,14 @@ void VoxelGame::openMachineUi(const glm::ivec3& pos) {
     m_machineUiPos = pos;
     m_machineUiSel = 0;
     window().setRelativeMouse(false); // release the cursor for hover/click
+    audio().play("open", kUiVolume);
 }
 
 void VoxelGame::closeMachineUi() {
     cancelDrag(); // never close with items in hand
     m_machineUiOpen = false;
     window().setRelativeMouse(true);
+    audio().play("close", kUiVolume);
 }
 
 void VoxelGame::cancelDrag() {
@@ -381,6 +383,7 @@ void VoxelGame::updateMachineUi() {
     const float mx = input().mouseX(), my = input().mouseY();
     const bool inPanelX = mx >= L.px && mx <= L.px + L.panelW;
 
+    const int selBefore = m_machineUiSel;
     if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
         m_machineUiSel = (m_machineUiSel - 1 + rows) % rows;
     }
@@ -394,6 +397,7 @@ void VoxelGame::updateMachineUi() {
         if (row >= 0 && row < rows) m_machineUiSel = row;
     }
     m_machineUiSel = std::min(m_machineUiSel, rows - 1);
+    if (m_machineUiSel != selBefore) audio().play("click", kUiVolume);
 
     const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
     const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
@@ -424,6 +428,7 @@ void VoxelGame::updateMachineUi() {
             m_drag = {Drag::Source::MachineOut, id, take};
             clickConsumed = true;
         }
+        if (clickConsumed) audio().play("click", kUiVolume); // picked something up
     }
 
     // --- Drag drop. ---
@@ -441,6 +446,7 @@ void VoxelGame::updateMachineUi() {
         } else {
             cancelDrag(); // anywhere else: the payload goes back where it came from
         }
+        audio().play("click", kUiVolume);
         updateTitle();
         clickConsumed = true;
     }
@@ -451,6 +457,7 @@ void VoxelGame::updateMachineUi() {
     if (!m_drag.active() &&
         (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) || clickOnRows)) {
+        audio().play("click", kUiVolume);
         if (m_machineUiSel == 0) {
             // AUTO: run whichever recipe's inputs are ready first. (For
             // recipe-less machines like the Miner this row is informational.)
@@ -501,11 +508,15 @@ bool VoxelGame::canCraft(const Recipe& r) const {
 }
 
 void VoxelGame::tryCraft(const Recipe& r) {
-    if (!canCraft(r)) return;
+    if (!canCraft(r)) {
+        audio().play("deny", kCraftVolume);
+        return;
+    }
     for (const ItemStack& in : r.inputs) {
         m_inventory.remove(in.id, in.count);
     }
     m_inventory.add(r.output.id, r.output.count);
+    audio().play("craft", kCraftVolume);
     updateTitle();
 }
 
@@ -519,6 +530,7 @@ void VoxelGame::updateMenu() {
                                       static_cast<int>(invItems.size()));
     const float mx = input().mouseX(), my = input().mouseY();
 
+    const int selBefore = m_menuSelection;
     if (input().wasKeyPressed(SDL_SCANCODE_UP) || input().wasKeyPressed(SDL_SCANCODE_W)) {
         m_menuSelection = (m_menuSelection - 1 + n) % n;
     }
@@ -536,6 +548,7 @@ void VoxelGame::updateMenu() {
     if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
         m_menuSelection = static_cast<int>((my - L.rowsY) / CraftLayout::RowH);
     }
+    if (m_menuSelection != selBefore) audio().play("click", kUiVolume);
 
     // Enter always crafts the selection; LMB crafts the row it lands on.
     if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
@@ -550,6 +563,7 @@ void VoxelGame::updateMenu() {
     if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
         m_menuOpen = false;
         window().setRelativeMouse(true);
+        audio().play("close", kUiVolume);
     }
 }
 
@@ -746,18 +760,24 @@ void VoxelGame::openPauseMenu() {
     m_pauseSel = 0;
     setPaused(true); // the engine stops accruing simulation time
     window().setRelativeMouse(false); // release the cursor for hover/click
+    // Machine hums pause with the simulation; rain keeps playing (ambience).
+    for (const auto& [pos, h] : m_humLoops) audio().setLoopPaused(h, true);
+    audio().play("open", kUiVolume);
 }
 
 void VoxelGame::closePauseMenu() {
     m_pauseOpen = false;
     setPaused(false);
     window().setRelativeMouse(true);
+    for (const auto& [pos, h] : m_humLoops) audio().setLoopPaused(h, false);
+    audio().play("close", kUiVolume);
 }
 
 void VoxelGame::updatePauseMenu() {
     const PauseLayout L = pauseLayout(window().width(), window().height());
     const float mx = input().mouseX(), my = input().mouseY();
 
+    const int selBefore = m_pauseSel;
     if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
         m_pauseSel = (m_pauseSel - 1 + kPauseRowCount) % kPauseRowCount;
     }
@@ -771,6 +791,7 @@ void VoxelGame::updatePauseMenu() {
     if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
         m_pauseSel = static_cast<int>((my - L.rowsY) / PauseLayout::RowH);
     }
+    if (m_pauseSel != selBefore) audio().play("click", kUiVolume);
 
     const bool activate = input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
                           input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
@@ -781,11 +802,13 @@ void VoxelGame::updatePauseMenu() {
                 closePauseMenu();
                 break;
             case 1:
+                audio().play("click", kUiVolume);
                 if (saveGame()) {
                     window().setTitle("Voxel Factory  —  SAVED");
                 }
                 break;
             default:
+                audio().play("click", kUiVolume);
                 quit(); // onExit() saves on every quit path
                 break;
         }

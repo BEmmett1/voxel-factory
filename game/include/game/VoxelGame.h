@@ -80,6 +80,7 @@ private:
     bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
     void buildRainMesh();                           // per-frame falling streaks
     void updateGeneratorsAndBarrels();              // burn fuel / collect rain
+    void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
@@ -109,6 +110,9 @@ private:
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
+
+    engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows m_rainIntensity
+    std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;
 
     bool  m_weatherRaining = false;
     float m_weatherTimer = 120.0f; // seconds left in the current weather phase

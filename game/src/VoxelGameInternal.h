@@ -87,6 +87,17 @@ namespace vg {
     inline constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
     inline constexpr float kSourceMinRadius = 22.0f;   // sources scatter beyond this ring
 
+    // ---- Audio: mix levels + hum behavior ----
+    inline constexpr float kMasterVolume   = 0.8f;
+    inline constexpr float kMineVolume     = 0.9f;  // block broken (positional)
+    inline constexpr float kPlaceVolume    = 0.8f;  // block placed (positional)
+    inline constexpr float kUiVolume       = 0.5f;  // clicks / open / close
+    inline constexpr float kCraftVolume    = 0.6f;  // craft success / deny
+    inline constexpr float kHumVolume      = 0.55f; // energized-machine loop
+    inline constexpr float kHumMaxDistance = 14.0f; // hum audible radius (blocks)
+    inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win
+    inline constexpr float kRainVolume     = 0.5f;  // rain loop gain at intensity 1
+
     inline constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     inline constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
     inline constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)

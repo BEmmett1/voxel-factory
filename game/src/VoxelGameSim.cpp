@@ -93,6 +93,55 @@ void VoxelGame::solvePowerAndMarkDirty() {
     m_power = std::move(next);
     m_perf.lastSolveMs = msBetween(t0, SDL_GetPerformanceCounter());
     ++m_perf.solveCount;
+    updateHums(); // the energized set is the hum set
+}
+
+namespace {
+    // Slightly detuned per machine so a bank of them beats gently instead of
+    // phase-summing into one loud tone.
+    float humPitch(const glm::ivec3& p) {
+        return 0.97f + (vg::hash2(p.x * 17 + p.y, p.z, 733u) % 7u) * 0.01f;
+    }
+} // namespace
+
+// Keep one positional hum loop per audibly-running machine: energized, and
+// for generators actually burning. Only called when the power state can have
+// changed (every solve), never per frame/tick.
+void VoxelGame::updateHums() {
+    std::vector<glm::ivec3> wanted;
+    for (const auto& [pos, m] : m_machines) {
+        if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
+        if (m.type == BlockId::Generator && m.progress <= 0.0f) continue;
+        wanted.push_back(pos);
+    }
+    if (static_cast<int>(wanted.size()) > kMaxHums) {
+        const glm::vec3 ear = camera().position;
+        std::partial_sort(wanted.begin(), wanted.begin() + kMaxHums, wanted.end(),
+                          [&](const glm::ivec3& a, const glm::ivec3& b) {
+                              const glm::vec3 da = glm::vec3(a) + glm::vec3(0.5f) - ear;
+                              const glm::vec3 db = glm::vec3(b) + glm::vec3(0.5f) - ear;
+                              return glm::dot(da, da) < glm::dot(db, db);
+                          });
+        wanted.resize(kMaxHums);
+    }
+    const std::unordered_set<glm::ivec3, IVec3Hash> want(wanted.begin(), wanted.end());
+
+    for (auto it = m_humLoops.begin(); it != m_humLoops.end();) {
+        if (want.count(it->first) == 0) {
+            audio().destroyLoop(it->second);
+            it = m_humLoops.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (const glm::ivec3& pos : wanted) {
+        if (m_humLoops.count(pos) > 0) continue;
+        const engine::AudioLoop h = audio().createLoop(
+            "hum_loop", /*spatial=*/true, kHumVolume, kHumMaxDistance, humPitch(pos));
+        if (h == 0) continue;
+        audio().setLoopPosition(h, glm::vec3(pos) + glm::vec3(0.5f));
+        m_humLoops[pos] = h;
+    }
 }
 
 void VoxelGame::registerMachine(const glm::ivec3& pos, BlockId type) {

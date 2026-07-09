@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Window.h"
+#include "engine/Audio.h"
 #include "engine/Input.h"
 #include "engine/Camera.h"
 #include "engine/Clock.h"
@@ -30,6 +31,7 @@ namespace engine {
         virtual void onExit() {}            // after the loop ends (any quit path)
 
         Window& window() { return *m_window; }
+        Audio&  audio()  { return *m_audio; }
         Input&  input()  { return m_input; }
         Camera& camera() { return m_camera; }
 
@@ -45,6 +47,7 @@ namespace engine {
         void processEvents();
 
         std::unique_ptr<Window> m_window;
+        std::unique_ptr<Audio>  m_audio; // after Window: dies before SDL_Quit()
         Camera m_camera;
         Input  m_input;
         Clock  m_clock;

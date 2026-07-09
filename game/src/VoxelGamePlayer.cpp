@@ -34,6 +34,12 @@ namespace {
         return false;
     }
 
+    // Small per-cell pitch variation (±10%) so repeated mining/placing at
+    // different spots doesn't sound machine-gun identical.
+    float pitchJitter(const glm::ivec3& p) {
+        return 1.0f + (static_cast<int>(hash2(p.x * 31 + p.y, p.z, 517u) % 21u) - 10) * 0.01f;
+    }
+
 } // namespace
 
 void VoxelGame::onUpdate(float dt) {
@@ -72,6 +78,7 @@ void VoxelGame::onUpdate(float dt) {
     const float rainTarget = m_weatherRaining ? 1.0f : 0.0f;
     const float rainStep = dt / kRainFadeSeconds;
     m_rainIntensity += glm::clamp(rainTarget - m_rainIntensity, -rainStep, rainStep);
+    audio().setLoopGain(m_rainLoop, m_rainIntensity * kRainVolume);
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
         m_weatherRaining = !m_weatherRaining;
         m_weatherTimer = m_weatherRaining ? 9999.0f : kClearMinSeconds;
@@ -93,6 +100,7 @@ void VoxelGame::onUpdate(float dt) {
     // Help overlay: toggle with F1. While open it freezes the world.
     if (input().wasKeyPressed(SDL_SCANCODE_F1)) {
         m_helpOpen = !m_helpOpen;
+        audio().play(m_helpOpen ? "open" : "close", kUiVolume);
         if (m_menuOpen) {
             m_menuOpen = false;
             window().setRelativeMouse(true);
@@ -107,6 +115,7 @@ void VoxelGame::onUpdate(float dt) {
     if (input().wasKeyPressed(SDL_SCANCODE_E)) {
         m_menuOpen = !m_menuOpen;
         window().setRelativeMouse(!m_menuOpen);
+        audio().play(m_menuOpen ? "open" : "close", kUiVolume);
     }
     if (m_menuOpen) {
         updateMenu();
@@ -194,6 +203,7 @@ void VoxelGame::onUpdate(float dt) {
         if (input().wasKeyPressed(sc)) {
             m_selectedSlot = n;
             updateTitle();
+            audio().play("click", kUiVolume * 0.5f);
         }
     }
     const int wheel = input().wheelSteps();
@@ -201,6 +211,7 @@ void VoxelGame::onUpdate(float dt) {
         const int n = static_cast<int>(m_hotbar.size());
         m_selectedSlot = ((m_selectedSlot - wheel) % n + n) % n;
         updateTitle();
+        audio().play("click", kUiVolume * 0.5f);
     }
 
     // Aim and edit.
@@ -224,6 +235,8 @@ void VoxelGame::onUpdate(float dt) {
                 rollLeafSapling(tb);
             }
             m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
+            audio().playAt("mine", glm::vec3(tb) + glm::vec3(0.5f), kMineVolume,
+                           pitchJitter(tb));
             if (PowerSystem::isPowerNode(broken)) solvePowerAndMarkDirty();
             updateTitle();
         }
@@ -246,6 +259,8 @@ void VoxelGame::onUpdate(float dt) {
                     !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
                     const BlockId placed = itemInfo(held).placesBlock;
                     m_world->setBlock(p.x, p.y, p.z, placed);
+                    audio().playAt("place", glm::vec3(p) + glm::vec3(0.5f),
+                                   kPlaceVolume, pitchJitter(p));
                     m_inventory.remove(held, 1);
                     if (isMachine(placed)) registerMachine(p, placed);
                     if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch

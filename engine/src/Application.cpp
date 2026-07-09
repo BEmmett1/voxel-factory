@@ -9,7 +9,8 @@ namespace engine {
     }
 
     Application::Application(const std::string& title, int width, int height)
-        : m_window(std::make_unique<Window>(title, width, height)) {}
+        : m_window(std::make_unique<Window>(title, width, height)),
+          m_audio(std::make_unique<Audio>()) {}
 
     Application::~Application() = default;
 
@@ -43,6 +44,9 @@ namespace engine {
             m_window->updateViewport();
 
             onUpdate(dt);
+            // The camera is the player's eye, and onUpdate is where the game
+            // moves it -- so the listener is exact for this frame's audio.
+            m_audio->update(m_camera.position, m_camera.front(), m_camera.up());
             onRender();
             m_window->swap();
         }

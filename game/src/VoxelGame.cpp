@@ -62,6 +62,12 @@ void VoxelGame::onStart() {
 
     buildAtlas();
 
+    audio().setMasterVolume(kMasterVolume);
+    audio().loadDirectory(dir + "assets/sounds");
+    // Rain ambience runs for the whole session; the per-frame intensity ease
+    // in onUpdate drives its gain (silent while clear).
+    m_rainLoop = audio().createLoop("rain_loop", /*spatial=*/false, 0.0f);
+
     // The save lives in the OS-preferred data directory.
     if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
         m_savePath = std::string(pref) + kSaveFile;
@@ -103,6 +109,7 @@ void VoxelGame::onStart() {
     // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of
     // the first onRender) builds every mesh; power just needs one seed solve.
     m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
+    updateHums(); // a loaded save's energized machines hum from frame one
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
@@ -162,9 +169,11 @@ void VoxelGame::onEscape() {
         }
     } else if (m_helpOpen) {
         m_helpOpen = false;
+        audio().play("close", kUiVolume);
     } else if (m_menuOpen) {
         m_menuOpen = false;
         window().setRelativeMouse(true);
+        audio().play("close", kUiVolume);
     } else if (m_pauseOpen) {
         closePauseMenu();
     } else {

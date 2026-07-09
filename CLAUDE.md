@@ -48,7 +48,8 @@ Two layers, mirroring the conventions of the sibling potion-game project.
 
 Subsystems: `Window` (SDL3 window + GL 3.3 context + glad load), `Input` (per-frame
 keyboard/mouse with edge detection + relative-mouse look), `Camera` (perspective fly
-camera → view/projection matrices), `Shader` / `Mesh` (RAII GL program / VAO+VBO).
+camera → view/projection matrices), `Shader` / `Mesh` (RAII GL program / VAO+VBO),
+`Audio` (see **Audio** below).
 `engine/GL.h` is the single include point for glad and must precede other GL headers.
 
 ### Game layer (`game/`, global namespace)
@@ -193,6 +194,27 @@ Textures:
   PNG in any pixel editor and rebuild (an always-run CMake target copies assets), or
   regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
   overwrites hand edits!).
+
+Audio (first pass — mine/place, machine hum, rain, UI clicks):
+- **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,
+  compiled only in `engine/src/Audio.cpp`; pImpl keeps it out of headers). Owned by
+  `Application` (declared after `m_window` so it dies before `SDL_Quit`); the engine
+  loop updates the 3D listener from the camera each frame. If no output device opens
+  (headless/CI), it logs once and every call no-ops — audio can never crash the game.
+  API: `play` (flat, UI), `playAt` (positional one-shot, linear falloff), and
+  `createLoop`/`setLoopGain`/`setLoopPosition`/`setLoopPaused`/`destroyLoop` handles.
+- **WAVs are generated assets** — `python tools/make_sounds.py` (pure stdlib, like
+  make_atlas.py; overwrites hand edits!) writes `game/assets/sounds/*.wav`, committed
+  and auto-copied by `copy-assets`. Any file can be replaced by a hand-made WAV of the
+  same stem; a missing file logs and stays silent. Loops are seam-free by construction
+  (hum: integer-cycle sines; rain: tail-to-head crossfade).
+- **Wiring**: mine/place one-shots at the block (pitch-jittered per cell); the rain
+  loop's gain follows `m_rainIntensity`; `updateHums()` (called from every
+  `solvePowerAndMarkDirty` + the onStart seed solve) diffs one positional hum loop per
+  energized machine (burning generators only, capped at `kMaxHums` nearest);
+  open/close/click/craft/deny cover all panels at the same funnels that mutate state.
+  Pause mutes hums (sim frozen) but keeps rain. Mix knobs sit in the `// ---- Audio ----`
+  block of VoxelGameInternal.h.
 
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine ticks in `updateWeather()` (seeded
