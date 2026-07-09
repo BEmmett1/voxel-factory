@@ -252,8 +252,10 @@ The core loop is complete, closed, and fully automatable. Possible next directio
 - **Generator tiers / better fuels:** charcoal or essence-based fuels with longer
   burns; higher-output generator tiers.
 - Multi-item/slot belts; belts needing power; machine output auto-eject.
-- **Flight stone (user's vision):** flight is deliberately absent; a late-game alchemy
-  relic will grant it as an earned power.
+- **Flight stone (user's vision):** flight is deliberately absent; it is earned as the
+  final boss's drop at the end of the combat pillar (weapons/armor/boss dungeons —
+  entity layer, machine-crafted gear, crafted teleport keys; see ROADMAP.md Q4 2026 /
+  Q1 2027).
 
 Player physics (pressure & pull):
 - **Walking only** — AABB player vs. voxels (axis-separated move-and-slide in

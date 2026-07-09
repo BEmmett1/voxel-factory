@@ -24,18 +24,49 @@ calendar quarters counted from July 2026.
 - [x] Split `game/src/VoxelGame.cpp` (~2.3k lines) into per-concern files:
       WorldGen / Sim / Player / Render / Ui + a shared internal knobs header
 
-## Q4 2026 — content depth + world decisions
+## Q4 2026 — content depth + combat foundations
+
+Combat (weapons, armor, bosses) is now a launch pillar. The entity layer is
+the biggest new system since power networks — it must land this quarter or
+the pillar slips to post-launch.
 
 - Decide the world-size ceiling: the fixed 6×6-chunk island is a design
   statement, but plan either bigger islands, multiple islands, or vertical
-  expansion — logistics distance is the game's difficulty axis
+  expansion — logistics distance is the game's difficulty axis. Now has a
+  concrete driver: boss dungeon islands need coordinates outside the home
+  island (`World` is already sparse and world-coordinate; the `kWorldChunks`
+  cap either lifts or arenas take a reserved coordinate band)
 - More machine/recipe tiers (charcoal/essence fuels, generator tiers),
   multi-item belts, machine auto-eject
-- The flight-stone relic (late-game earned flight — the vision piece)
+- Combat foundations:
+  - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
+    `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
+    records (bump `kVersion`). Reuse the player's axis-separated
+    move-and-slide (`boxCollides`) for entity-vs-voxel collision
+  - Player health + damage; death anywhere = the existing void-fall rule
+    (pack lost, respawn on the plateau) — one hardcore penalty everywhere
+  - First melee weapon through the center-screen aim raycast (the mine ray is
+    the attack ray); weapons ride the Bucket/Wrench held-tool precedent.
+    Armor slots with damage mitigation
+  - Forge/armory machine tier: weapons and armor are machine-crafted from the
+    plate → frame → crystal/essence chain, so gearing up is an automation
+    problem — factories are the real weapon
+  - The dormant potions get their job: Healing Draught heals, Mana Vial fuels
+    a ranged alchemy attack, Elixir of Vigor buffs
 - Multiple save slots + "New game / Continue" flow (needs the main menu)
 
-## Q1 2027 — Steam + hardening
+## Q1 2027 — bosses + Steam + hardening
 
+- Boss dungeons: separately generated arena islands reached by a crafted
+  teleport key (expensive, philosopher-adjacent — the factory produces both
+  your gear and your ticket, and the player picks when fights happen).
+  Victory or death returns you home; death costs the pack as usual
+- 2–3 bosses of rising tier gating unique drops (unique catalysts, better
+  fuels — feeds the generator-tier line); top-tier armor may earn
+  keep-your-pack-on-death the way the relic earns flight
+- The final boss drops the **Flight Stone** (late-game earned flight — the
+  vision piece): flight is earned by mastering both halves of the game, the
+  factory that arms you and the fight itself
 - Steamworks integration (app id, overlay, achievements, cloud saves)
 - Packaging: installer or Steam depot layout; code signing decision
 - Logging to a file + crash handling (minidumps) so player reports are
@@ -47,7 +78,8 @@ calendar quarters counted from July 2026.
 
 - Closed beta; grow `TESTING.md` into a release-checklist + regression suite
 - Store page, trailer, screenshots; pricing
-- Balance pass driven by beta telemetry/feedback
+- Balance pass driven by beta telemetry/feedback — economy AND combat/boss
+  tuning (weapon damage, armor curves, boss HP, key/gear recipe costs)
 - Launch
 
 ## Known gaps (survey, July 2026)
