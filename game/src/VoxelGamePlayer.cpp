@@ -16,22 +16,9 @@ using namespace vg;
 
 namespace {
 
-    // Does the player's box (feet at `feet`) overlap any solid block?
+    // The player's box vs. the world (shared helper, player-sized).
     bool boxCollides(const World& w, const glm::vec3& feet) {
-        const int x0 = static_cast<int>(std::floor(feet.x - kPlayerHalfW));
-        const int x1 = static_cast<int>(std::floor(feet.x + kPlayerHalfW));
-        const int y0 = static_cast<int>(std::floor(feet.y));
-        const int y1 = static_cast<int>(std::floor(feet.y + kPlayerHeight));
-        const int z0 = static_cast<int>(std::floor(feet.z - kPlayerHalfW));
-        const int z1 = static_cast<int>(std::floor(feet.z + kPlayerHalfW));
-        for (int y = y0; y <= y1; ++y) {
-            for (int z = z0; z <= z1; ++z) {
-                for (int x = x0; x <= x1; ++x) {
-                    if (isSolid(w.getBlock(x, y, z))) return true;
-                }
-            }
-        }
-        return false;
+        return vg::boxCollides(w, feet, kPlayerHalfW, kPlayerHeight);
     }
 
     // Small per-cell pitch variation (±10%) so repeated mining/placing at
@@ -65,6 +52,13 @@ void VoxelGame::onUpdate(float dt) {
     }
     if (input().wasKeyPressed(SDL_SCANCODE_F3)) {
         m_debugOpen = !m_debugOpen;
+    }
+
+    // Entity animation clocks tick at render rate (menus keep animating, just
+    // like onTick keeps simulating); a true pause freezes them.
+    if (!paused()) {
+        m_sinceTick += dt;
+        for (auto& c : m_creatures) c.animTime += dt;
     }
 
     // Pause menu: simulated time is frozen (the engine skips onTick while

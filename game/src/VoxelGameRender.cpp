@@ -22,8 +22,6 @@ using namespace vg;
 
 namespace {
 
-    const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
-
     // Cheap deterministic per-texel noise for the procedural atlas.
     float texelNoise(int id, int px, int py) {
         std::uint32_t h = static_cast<std::uint32_t>(px) * 73856093u ^
@@ -284,6 +282,10 @@ void VoxelGame::onRender() {
         m_shader.setVec3("uFlatColor", glm::vec3(0.62f, 0.68f, 0.78f));
         m_rainMesh.draw(GL_LINES);
     }
+
+    // Creatures: skinned Blockbench models, depth-tested with the world.
+    renderCreatures();
+    m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A
     // slightly larger dark pass forms an outline behind the light fill so it

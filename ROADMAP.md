@@ -42,7 +42,10 @@ the pillar slips to post-launch.
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
     records (bump `kVersion`). Reuse the player's axis-separated
-    move-and-slide (`boxCollides`) for entity-vs-voxel collision
+    move-and-slide (`boxCollides`) for entity-vs-voxel collision.
+    *Foundation landed July 2026:* Blockbench model import (`engine::BbModel`,
+    animated/skinned) + a wandering test creature with gravity/collision —
+    health, damage, and save records remain
   - Player health + damage; death anywhere = the existing void-fall rule
     (pack lost, respawn on the plateau) — one hardcore penalty everywhere
   - First melee weapon through the center-screen aim raycast (the mine ray is

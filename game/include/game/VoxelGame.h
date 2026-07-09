@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Application.h"
+#include "engine/BbModel.h"
 #include "engine/Shader.h"
 #include "engine/Mesh.h"
 #include "engine/Texture.h"
@@ -81,6 +82,10 @@ private:
     void buildRainMesh();                           // per-frame falling streaks
     void updateGeneratorsAndBarrels();              // burn fuel / collect rain
     void updateHums();                              // sync hum loops to power state
+    void loadCreatureAssets();                      // .bbmodel + texture + shader
+    void spawnTestCreature();                       // one wanderer; not persisted
+    void updateCreatures();                         // onTick: wander + physics
+    void renderCreatures();                         // onRender: pose eval + draw
     void updateBucketFill();                        // held bucket catches rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
@@ -110,6 +115,28 @@ private:
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
+
+    // Test creature (the entity-layer foundation). Spawned fresh each launch;
+    // deliberately NOT saved -- persistence arrives with the full entity layer.
+    struct Creature {
+        glm::vec3 pos{0.0f}, prevPos{0.0f}; // feet; prevPos = last tick (render lerp)
+        glm::vec3 vel{0.0f};
+        float yaw = 0.0f;                   // degrees; 0 faces -Z like the model
+        glm::vec3 home{0.0f}, target{0.0f};
+        float idleTimer = 1.0f;             // counts down while standing
+        bool  walking = false, grounded = false;
+        int   anim = -1;                    // index into the model's animations
+        float animTime = 0.0f;              // frozen while the engine is paused
+        std::uint32_t wanderRolls = 0;      // hash counter for wander decisions
+    };
+    engine::BbModel        m_creatureModel;
+    bool                   m_creatureReady = false; // model + mesh + shader loaded
+    engine::Mesh           m_creatureMesh;
+    engine::Texture        m_creatureTex;
+    engine::Shader         m_entityShader;
+    std::vector<Creature>  m_creatures;
+    std::vector<glm::mat4> m_boneScratch;  // reused per draw
+    float m_sinceTick = 0.0f;              // seconds since last onTick (render lerp)
 
     engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows m_rainIntensity
     std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;

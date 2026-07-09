@@ -68,6 +68,8 @@ void VoxelGame::onStart() {
     // in onUpdate drives its gain (silent while clear).
     m_rainLoop = audio().createLoop("rain_loop", /*spatial=*/false, 0.0f);
 
+    loadCreatureAssets(); // .bbmodel + entity shader; creatureless on failure
+
     // The save lives in the OS-preferred data directory.
     if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
         m_savePath = std::string(pref) + kSaveFile;
@@ -110,6 +112,7 @@ void VoxelGame::onStart() {
     // the first onRender) builds every mesh; power just needs one seed solve.
     m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
     updateHums(); // a loaded save's energized machines hum from frame one
+    spawnTestCreature(); // fresh each launch; not part of the save
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();

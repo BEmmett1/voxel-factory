@@ -13,6 +13,7 @@
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -24,6 +25,9 @@
 namespace vg {
 
     inline constexpr float kLookSensitivity = 0.12f; // degrees per pixel
+
+    // Sun direction, shared by the chunk and entity passes.
+    inline const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
     // ---- Player physics: the feel knobs. Tune freely. ----
     inline constexpr float kWalkSpeed    = 4.5f;   // blocks per second
@@ -86,6 +90,18 @@ namespace vg {
     inline constexpr int   kBarrelCap       = 10;      // max water buffered in a barrel
     inline constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
     inline constexpr float kSourceMinRadius = 22.0f;   // sources scatter beyond this ring
+
+    // ---- Entities: the test creature. Tune freely. ----
+    inline constexpr const char* kCreatureModel = "assets/models/creature.bbmodel";
+    inline constexpr float kCreatureScale        = 1.0f;   // model is authored in blocks
+    inline constexpr float kCreatureHalfW        = 0.35f;  // collision box half width
+    inline constexpr float kCreatureHeight       = 0.9f;
+    inline constexpr float kCreatureWalkSpeed    = 1.6f;   // blocks per second
+    inline constexpr float kCreatureWanderRadius = 6.0f;   // around its spawn point
+    inline constexpr float kCreatureIdleMin      = 1.5f;   // seconds between wander legs
+    inline constexpr float kCreatureIdleMax      = 5.0f;
+    inline constexpr float kCreatureTurnRate     = 360.0f; // deg/s yaw ease
+    inline constexpr int   kMaxEntityBones       = 32;     // must match uBones[] in entity.vert
 
     // ---- Audio: mix levels + hum behavior ----
     inline constexpr float kMasterVolume   = 0.8f;
@@ -166,6 +182,26 @@ namespace vg {
             if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
             for (const ItemStack& in : recipes[i]->inputs) {
                 if (in.id == item) return true;
+            }
+        }
+        return false;
+    }
+
+    // Does an AABB (feet at `feet`, half width halfW, height h) overlap any
+    // solid block? Shared by player and entity move-and-slide.
+    inline bool boxCollides(const World& w, const glm::vec3& feet, float halfW,
+                            float height) {
+        const int x0 = static_cast<int>(std::floor(feet.x - halfW));
+        const int x1 = static_cast<int>(std::floor(feet.x + halfW));
+        const int y0 = static_cast<int>(std::floor(feet.y));
+        const int y1 = static_cast<int>(std::floor(feet.y + height));
+        const int z0 = static_cast<int>(std::floor(feet.z - halfW));
+        const int z1 = static_cast<int>(std::floor(feet.z + halfW));
+        for (int y = y0; y <= y1; ++y) {
+            for (int z = z0; z <= z1; ++z) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (isSolid(w.getBlock(x, y, z))) return true;
+                }
             }
         }
         return false;

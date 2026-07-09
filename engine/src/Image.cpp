@@ -20,4 +20,18 @@ namespace engine {
         return true;
     }
 
+    bool loadImage(const unsigned char* bytes, std::size_t len, Image& out) {
+        int w = 0, h = 0, comp = 0;
+        unsigned char* data =
+            stbi_load_from_memory(bytes, static_cast<int>(len), &w, &h, &comp, 4);
+        if (!data) {
+            return false;
+        }
+        out.width = w;
+        out.height = h;
+        out.rgba.assign(data, data + static_cast<std::size_t>(w) * h * 4);
+        stbi_image_free(data);
+        return true;
+    }
+
 } // namespace engine

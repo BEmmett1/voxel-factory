@@ -16,4 +16,7 @@ namespace engine {
     // channels). Returns false on missing file or decode error.
     bool loadImage(const std::string& path, Image& out);
 
+    // Decode an in-memory PNG (e.g. a data-URI payload) into RGBA8.
+    bool loadImage(const unsigned char* bytes, std::size_t len, Image& out);
+
 } // namespace engine

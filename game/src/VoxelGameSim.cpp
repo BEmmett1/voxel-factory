@@ -505,4 +505,6 @@ void VoxelGame::onTick() {
         m_beltTimer = 0;
         beltStep();
     }
+
+    updateCreatures(); // wander + physics (VoxelGameEntities.cpp)
 }

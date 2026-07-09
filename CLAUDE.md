@@ -216,6 +216,28 @@ Audio (first pass — mine/place, machine hum, rain, UI clicks):
   Pause mutes hums (sim frozen) but keeps rain. Mix knobs sit in the `// ---- Audio ----`
   block of VoxelGameInternal.h.
 
+Entities (Blockbench import — the combat pillar's first brick):
+- **`engine::BbModel`** loads Blockbench's native `.bbmodel` (JSON via vendored
+  nlohmann/json in `third_party/json/`, compiled ONLY in `engine/src/BbModel.cpp`):
+  cuboid elements baked into one interleaved `{pos, normal, uv, boneIndex}` mesh,
+  bone hierarchy from the outliner (DFS order, parent < child), embedded base64 PNG
+  textures (`engine::loadImage` from-memory overload), and keyframe animations
+  (rotation/position, linear/step; `evaluateBbPose` → per-bone skin matrices, no
+  inverse binds needed). Lenient everywhere: numeric strings/molang degrade with a
+  log; box-UV models unsupported (author with per-face UVs). All unit conversion
+  funnels through `geoToWorld`/`animPosToWorld`/`animRotToWorld` in BbModel.cpp so
+  a handedness fix is a one-line sign flip.
+- **Test creature** — `tools/make_sounds.py`-style generator `tools/make_test_model.py`
+  emits the committed `game/assets/models/creature.bbmodel` (asymmetric on purpose:
+  +X horn, front-face eyes, 25°-rotated tail; idle/walk anims). One creature spawns
+  fresh each launch near the plateau (NOT saved), wanders in `updateCreatures()`
+  (onTick; gravity + the shared `vg::boxCollides` move-and-slide), and draws skinned
+  in `renderCreatures()` (`game/shaders/entity.*`, `uBones[32]` = `kMaxEntityBones`,
+  one draw per creature, prev/cur tick interpolation hides the 20 Hz step; same
+  `kLightDir` + `uRainDim` as the world). All logic in `game/src/VoxelGameEntities.cpp`;
+  knobs in the `// ---- Entities ----` block. Missing/corrupt model = creatureless
+  launch + log; failed texture = magenta checker (never fatal).
+
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine ticks in `updateWeather()` (seeded
   phase durations; saved). Visuals ease via `m_rainIntensity`: storm-grey sky,

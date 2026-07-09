@@ -98,6 +98,11 @@ namespace engine {
         glUniformMatrix4fv(glGetUniformLocation(m_program, name), 1, GL_FALSE, glm::value_ptr(m));
     }
 
+    void Shader::setMat4Array(const char* name, const glm::mat4* m, int count) const {
+        glUniformMatrix4fv(glGetUniformLocation(m_program, name), count, GL_FALSE,
+                           glm::value_ptr(m[0]));
+    }
+
     void Shader::setVec3(const char* name, const glm::vec3& v) const {
         glUniform3fv(glGetUniformLocation(m_program, name), 1, glm::value_ptr(v));
     }

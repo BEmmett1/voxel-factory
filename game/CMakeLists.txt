@@ -16,6 +16,7 @@ add_executable(voxel-factory
     src/VoxelGamePlayer.cpp
     src/VoxelGameRender.cpp
     src/VoxelGameUi.cpp
+    src/VoxelGameEntities.cpp
 )
 
 target_include_directories(voxel-factory PRIVATE include)
