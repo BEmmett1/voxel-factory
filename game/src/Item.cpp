@@ -56,6 +56,7 @@ namespace {
         /* SaplingItem          */ {"Sapling",              -1, true,  BlockId::Sapling},
         /* Bucket               */ {"Bucket",               77, false, BlockId::Air},
         /* RainBarrelItem       */ {"Rain Barrel",          -1, true,  BlockId::RainBarrel},
+        /* CopperSword          */ {"Copper Sword",         79, false, BlockId::Air},
     }};
 }
 

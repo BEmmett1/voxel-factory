@@ -284,6 +284,16 @@ Player physics (pressure & pull):
   `onUpdate`), gravity + Space jump, LCtrl sprint, no flight by design. Feel knobs are
   grouped in `VoxelGameInternal.h` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
   tuned by hands-on play, not scripted verification.
+- **Melee (Copper Sword)** — a hotbar tool (Plate ×2 + Wood ×1, atlas tile 79);
+  LMB swings along the aim ray (`tryMeleeAttack` in VoxelGameEntities.cpp: shared
+  ray-vs-AABB slab test, blocked by nearer solid blocks, `kSwordCooldown` gate,
+  "swing"/"hit" sounds). A struck creature takes `kSwordDamage`, flashes red
+  (`uFlash` in entity.frag, decays per frame), gets knocked back (decaying
+  `Creature::knock` + vertical pop) and flees; at 0 hp it's removed (no drops yet —
+  boss loot answers "why fight" later). A missed swing falls through to mining.
+  Knobs in the `// ---- Melee ----` block. Save note: v11 grew the ItemId enum —
+  `readInventory` accepts older, SHORTER item arrays (append-only enum growth stays
+  save-compatible; reordering never is).
 - **Health & damage** — `m_health` in hearts (`kMaxHealth`, knobs in the
   `// ---- Health & damage ----` block); heart segments render above the hotbar's
   left end in `drawHud`. Hard landings hurt past `kFallSafeSpeed`

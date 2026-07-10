@@ -22,6 +22,7 @@ namespace {
         // Plate-gated gear (plates are Grinder-made).
         {{{I::CopperPlate, 2}},                      {I::Conduit, 2}},
         {{{I::CopperPlate, 2}},                      {I::Wrench, 1}},
+        {{{I::CopperPlate, 2}, {I::Wood, 1}},        {I::CopperSword, 1}},
         {{{I::CopperPlate, 3}, {I::Crystal, 1}, {I::Wood, 2}}, {I::MachineFrame, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 2}},      {I::CauldronItem, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 1}, {I::Vial, 1}}, {I::InfuserItem, 1}},

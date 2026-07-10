@@ -83,10 +83,11 @@ void VoxelGame::onStart() {
     for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
         const ItemId id = static_cast<ItemId>(i);
         // Tools ride in the hotbar too: the bucket (hold in rain to collect
-        // water) and the healing draught (RMB to drink). The place path
-        // guards on `placeable`, so tools never place blocks.
+        // water), the healing draught (RMB drinks), and the sword (LMB
+        // attacks). The place path guards on `placeable`, so tools never
+        // place blocks.
         if (itemInfo(id).placeable || id == ItemId::Bucket ||
-            id == ItemId::HealingDraught) {
+            id == ItemId::HealingDraught || id == ItemId::CopperSword) {
             m_hotbar.push_back(id);
         }
     }

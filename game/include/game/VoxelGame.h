@@ -86,6 +86,7 @@ private:
     void spawnTestCreature();                       // one wanderer; not persisted
     void updateCreatures();                         // onTick: wander + physics
     void renderCreatures();                         // onRender: pose eval + draw
+    bool tryMeleeAttack();                          // sword ray vs creatures
     void updateBucketFill();                        // held bucket catches rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
@@ -128,6 +129,9 @@ private:
         int   anim = -1;                    // index into the model's animations
         float animTime = 0.0f;              // frozen while the engine is paused
         std::uint32_t wanderRolls = 0;      // hash counter for wander decisions
+        float     hp = 0.0f;                // set from kCreatureHealth on spawn
+        glm::vec3 knock{0.0f};              // decaying shove from being hit
+        float     hurtFlash = 0.0f;         // 0..1 red tint, fades per frame
     };
     engine::BbModel        m_creatureModel;
     bool                   m_creatureReady = false; // model + mesh + shader loaded
@@ -199,4 +203,5 @@ private:
     // triggers the same penalty as falling off the island: pack lost, respawn.
     float m_health = 0.0f;
     void  damagePlayer(float amount);
+    float m_attackCooldown = 0.0f; // seconds until the sword can swing again
 };

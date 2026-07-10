@@ -64,7 +64,11 @@ void VoxelGame::onUpdate(float dt) {
     // like onTick keeps simulating); a true pause freezes them.
     if (!paused()) {
         m_sinceTick += dt;
-        for (auto& c : m_creatures) c.animTime += dt;
+        for (auto& c : m_creatures) {
+            c.animTime += dt;
+            c.hurtFlash = std::max(0.0f, c.hurtFlash - dt * kFlashDecay);
+        }
+        m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
     }
 
     // Pause menu: simulated time is frozen (the engine skips onTick while
@@ -225,11 +229,12 @@ void VoxelGame::onUpdate(float dt) {
         audio().play("click", kUiVolume * 0.5f);
     }
 
+    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+
     // Drink: RMB with the Healing Draught held restores health (no aim
     // needed); the sip consumes the click so nothing places or opens.
     bool drank = false;
     if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
-        const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
         if (held == ItemId::HealingDraught && m_health < kMaxHealth &&
             m_inventory.has(held)) {
             m_inventory.remove(held, 1);
@@ -238,6 +243,17 @@ void VoxelGame::onUpdate(float dt) {
             updateTitle();
             drank = true;
         }
+    }
+
+    // Sword: LMB swings along the aim ray, creatures first (needs no block
+    // under the crosshair). A connected swing consumes the click; a miss
+    // whooshes and falls through to mining.
+    bool swordHit = false;
+    if (input().wasMousePressed(SDL_BUTTON_LEFT) && m_attackCooldown <= 0.0f &&
+        held == ItemId::CopperSword && m_inventory.has(held)) {
+        m_attackCooldown = kSwordCooldown;
+        audio().play("swing", kUiVolume);
+        swordHit = tryMeleeAttack();
     }
 
     // Aim and edit.
@@ -249,7 +265,7 @@ void VoxelGame::onUpdate(float dt) {
         const glm::ivec3 tb = aim.block;
 
         // Mine: break the block and collect its drop.
-        if (input().wasMousePressed(SDL_BUTTON_LEFT)) {
+        if (!swordHit && input().wasMousePressed(SDL_BUTTON_LEFT)) {
             const BlockId broken = m_world->getBlock(tb.x, tb.y, tb.z);
             if (isMachine(broken)) unregisterMachine(tb);     // returns buffered items
             if (broken == BlockId::Belt) unregisterBelt(tb);  // returns carried item
@@ -273,7 +289,6 @@ void VoxelGame::onUpdate(float dt) {
             if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);
             } else {
-                const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
                 const glm::ivec3 p = aim.block + aim.normal;
                 const bool insidePlayer = cellOverlapsPlayer(p);
                 // Saplings only take root in soil.

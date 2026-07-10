@@ -50,9 +50,11 @@ the pillar slips to post-launch.
     safe landing speed, death anywhere = the existing void-fall rule
     (pack lost, respawn on the plateau) — one hardcore penalty everywhere.
     Health rides the save (v10 appends it; v9 saves still load)
-  - First melee weapon through the center-screen aim raycast (the mine ray is
-    the attack ray); weapons ride the Bucket/Wrench held-tool precedent.
-    Armor slots with damage mitigation
+  - [x] First melee weapon (July 2026): the Copper Sword (Plate ×2 + Wood,
+    hotbar tool) swings through the aim ray with priority over mining —
+    creatures take damage/knockback/hurt-flash, flee, and die in three hits;
+    misses fall through to normal mining. Armor slots with damage mitigation
+    remain
   - Forge/armory machine tier: weapons and armor are machine-crafted from the
     plate → frame → crystal/essence chain, so gearing up is an automation
     problem — factories are the real weapon

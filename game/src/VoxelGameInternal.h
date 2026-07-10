@@ -49,6 +49,15 @@ namespace vg {
     inline constexpr float kFallDamagePerVel = 0.5f;  // hearts per blocks/s beyond safe
     inline constexpr float kDraughtHeal      = 4.0f;  // hearts per Healing Draught
 
+    // ---- Melee (the sword swings through the aim raycast) ----
+    inline constexpr float kSwordDamage    = 2.0f;   // per hit (creature hearts)
+    inline constexpr float kSwordCooldown  = 0.35f;  // seconds between swings
+    inline constexpr float kKnockback      = 7.0f;   // horizontal shove, blocks/s
+    inline constexpr float kKnockUp        = 4.5f;   // vertical pop, blocks/s
+    inline constexpr float kKnockDecay     = 0.8f;   // shove multiplier per tick
+    inline constexpr float kCreatureHealth = 6.0f;   // test creature (3 hits)
+    inline constexpr float kFlashDecay     = 5.0f;   // hurt tint fade, per second
+
     // Save location (%APPDATA%\<org>\<app>\). kOrgName is a placeholder until
     // a studio name exists; migrateLegacySave() makes renaming it free.
     inline constexpr const char* kOrgName  = "BennyThompson";

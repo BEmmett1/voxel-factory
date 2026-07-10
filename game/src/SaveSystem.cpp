@@ -11,10 +11,12 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 10;        // bump when enums/layout change
-    // v9 -> v10 only APPENDED the player-health float, so v9 saves still load
-    // (health keeps the caller's default). Any enum/layout change must drop
-    // this compatibility and require an exact version match again.
+    constexpr std::uint32_t kVersion = 11;        // bump when enums/layout change
+    // Append-only growth stays loadable: v10 appended the player-health float
+    // (older saves keep the caller's default) and v11 appended ItemId entries
+    // at the enum tail (readInventory accepts older, shorter item sets). Any
+    // REORDERING or non-tail change must drop this compatibility and require
+    // an exact version match again.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     template <typename T>
@@ -38,7 +40,11 @@ namespace {
 
     bool readInventory(std::ifstream& in, Inventory& inv) {
         std::uint32_t n = 0;
-        if (!readPod(in, n) || n != static_cast<std::uint32_t>(ItemId::Count)) return false;
+        // Older saves may carry FEWER item slots: ItemId only ever grows at
+        // the enum tail, so entry i means the same item in every version and
+        // the missing tail defaults to zero. More slots than we know = a
+        // newer build's file = reject.
+        if (!readPod(in, n) || n > static_cast<std::uint32_t>(ItemId::Count)) return false;
         for (std::uint32_t i = 0; i < n; ++i) {
             std::int32_t c = 0;
             if (!readPod(in, c) || c < 0) return false;

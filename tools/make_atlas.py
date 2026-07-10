@@ -585,6 +585,17 @@ def items():
     t.px(14, 2, (0, 0, 0), 0)
     t.disc(4, 12, 1, shade(STONE, 0.9))
 
+    t = paint(79)                                    # copper sword
+    for d in range(8):                               # diagonal blade
+        t.px(5 + d, 10 - d, shade(COPPER, 1.25))
+        t.px(6 + d, 10 - d, shade(COPPER, 0.95))
+    t.px(13, 2, (255, 235, 210))                     # gleaming tip
+    for d in range(-1, 3):                           # cross-guard
+        t.px(4 + d, 12 - d, GOLD)
+    t.px(3, 13, shade(LOG, 1.2))                     # grip
+    t.px(2, 14, shade(LOG, 1.0))
+    t.px(1, 15, shade(LOG, 0.8))                     # pommel
+
     t = paint(80)                                    # ground herb powder
     for k in range(4):
         t.hline(13 - k, 4 + k, 11 - k, shade(HERB, 1.1))

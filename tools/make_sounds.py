@@ -205,6 +205,31 @@ def heal():
     write_wav("heal", b)
 
 
+def swing():
+    """Sword whoosh: airy noise that swells and dies fast."""
+    b = silence(0.14)
+    n = len(b)
+    for i in range(n):
+        env = math.sin(math.pi * i / n) ** 2  # swell in, swell out
+        b[i] += env * rng.uniform(-1.0, 1.0)
+    # Soften it: one-pole low-pass over the enveloped noise.
+    k = 1.0 - math.exp(-2.0 * math.pi * 2400 / RATE)
+    state = 0.0
+    for i in range(n):
+        state += k * (b[i] - state)
+        b[i] = state
+    write_wav("swing", b)
+
+
+def hit():
+    """Sword connects: a meaty thud, heavier than mining rock."""
+    b = silence(0.13)
+    add_noise(b, amp=0.7, decay=0.04, lowpass=600)
+    add_sine(b, 160, amp=1.0, decay=0.06, freq_end=90)
+    fade_out(b)
+    write_wav("hit", b)
+
+
 OUT_DIR = Path(__file__).resolve().parent.parent / "game" / "assets" / "sounds"
 
 
@@ -221,6 +246,8 @@ def main():
     deny()
     hurt()
     heal()
+    swing()
+    hit()
 
 
 if __name__ == "__main__":

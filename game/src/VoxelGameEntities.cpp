@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
+#include "game/Raycast.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -13,6 +14,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 using namespace vg;
 
@@ -29,6 +31,26 @@ namespace {
         a = std::fmod(a + 180.0f, 360.0f);
         if (a < 0.0f) a += 360.0f;
         return a - 180.0f;
+    }
+
+    // Ray vs AABB slab test; on hit, tOut is the entry distance (>= 0).
+    bool rayAabb(const glm::vec3& o, const glm::vec3& d, const glm::vec3& lo,
+                 const glm::vec3& hi, float& tOut) {
+        float tMin = 0.0f, tMax = std::numeric_limits<float>::max();
+        for (int i = 0; i < 3; ++i) {
+            if (std::abs(d[i]) < 1e-8f) {
+                if (o[i] < lo[i] || o[i] > hi[i]) return false;
+                continue;
+            }
+            float t0 = (lo[i] - o[i]) / d[i];
+            float t1 = (hi[i] - o[i]) / d[i];
+            if (t0 > t1) std::swap(t0, t1);
+            tMin = std::max(tMin, t0);
+            tMax = std::min(tMax, t1);
+            if (tMin > tMax) return false;
+        }
+        tOut = tMin;
+        return true;
     }
 
 } // namespace
@@ -85,11 +107,69 @@ void VoxelGame::spawnTestCreature() {
             Creature c;
             c.pos = c.prevPos = c.home = c.target = feet;
             c.anim = m_creatureModel.findAnimation("idle");
+            c.hp = kCreatureHealth;
             m_creatures.push_back(c);
             return;
         }
     }
     SDL_Log("Entities: no ground at the creature spawn -- skipped");
+}
+
+// Swing the sword along the aim ray: strike the nearest creature within
+// reach, unless a solid block is in the way first. Returns true on a hit
+// (the caller then skips the mining path for this click).
+bool VoxelGame::tryMeleeAttack() {
+    const glm::vec3 o = camera().position;
+    const glm::vec3 d = camera().front();
+
+    // A wall between us and the creature blocks the swing.
+    float tBlock = kReach;
+    const RaycastHit aim = raycastVoxel(*m_world, o, d, kReach);
+    if (aim.hit) {
+        float t = kReach;
+        if (rayAabb(o, d, glm::vec3(aim.block), glm::vec3(aim.block) + 1.0f, t)) {
+            tBlock = t;
+        }
+    }
+
+    int   best = -1;
+    float bestT = tBlock;
+    for (int i = 0; i < static_cast<int>(m_creatures.size()); ++i) {
+        const Creature& c = m_creatures[i];
+        const glm::vec3 lo = c.pos - glm::vec3(kCreatureHalfW, 0.0f, kCreatureHalfW);
+        const glm::vec3 hi = c.pos + glm::vec3(kCreatureHalfW, kCreatureHeight,
+                                               kCreatureHalfW);
+        float t = 0.0f;
+        if (rayAabb(o, d, lo, hi, t) && t <= kReach && t < bestT) {
+            bestT = t;
+            best = i;
+        }
+    }
+    if (best < 0) return false;
+
+    Creature& c = m_creatures[best];
+    c.hp -= kSwordDamage;
+    c.hurtFlash = 1.0f;
+    const glm::vec3 center = c.pos + glm::vec3(0.0f, kCreatureHeight * 0.5f, 0.0f);
+    if (c.hp <= 0.0f) {
+        // Down: a lower-pitched thud marks the kill. No drops yet -- boss
+        // loot is the combat pillar's later answer to "why fight".
+        audio().playAt("hit", center, kHurtVolume, 0.7f);
+        m_creatures.erase(m_creatures.begin() + best);
+        return true;
+    }
+    audio().playAt("hit", center, kHurtVolume);
+
+    // Shove it away from the player and send it fleeing.
+    glm::vec3 away = c.pos - o;
+    away.y = 0.0f;
+    away = (glm::dot(away, away) > 1e-6f) ? glm::normalize(away)
+                                          : glm::vec3(0.0f, 0.0f, 1.0f);
+    c.knock = away * kKnockback;
+    c.vel.y += kKnockUp;
+    c.target = c.pos + away * kCreatureWanderRadius;
+    c.walking = true;
+    return true;
 }
 
 void VoxelGame::updateCreatures() {
@@ -129,9 +209,11 @@ void VoxelGame::updateCreatures() {
             }
         }
 
-        // --- Physics: gravity + the player's axis-separated move-and-slide. ---
-        c.vel.x = wishVel.x;
-        c.vel.z = wishVel.z;
+        // --- Physics: gravity + the player's axis-separated move-and-slide.
+        // Being-hit knockback rides on top of the walk velocity and decays.
+        c.knock *= kKnockDecay;
+        c.vel.x = wishVel.x + c.knock.x;
+        c.vel.z = wishVel.z + c.knock.z;
         c.vel.y = std::max(c.vel.y - kGravity * dt, -kTerminalVel);
 
         bool blockedX = false, blockedZ = false;
@@ -204,6 +286,7 @@ void VoxelGame::renderCreatures() {
         model = glm::rotate(model, glm::radians(c.yaw), {0.0f, 1.0f, 0.0f});
         model = glm::scale(model, glm::vec3(kCreatureScale));
         m_entityShader.setMat4("uModel", model);
+        m_entityShader.setFloat("uFlash", c.hurtFlash * 0.7f);
         m_entityShader.setMat4Array("uBones", m_boneScratch.data(), kMaxEntityBones);
         m_creatureMesh.draw();
     }
