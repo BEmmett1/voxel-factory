@@ -82,12 +82,17 @@ void VoxelGame::onStart() {
     m_hotbar.clear();
     for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
         const ItemId id = static_cast<ItemId>(i);
-        // The bucket rides in the hotbar as a tool: hold it in the rain to
-        // collect water. (The place path guards on `placeable`.)
-        if (itemInfo(id).placeable || id == ItemId::Bucket) m_hotbar.push_back(id);
+        // Tools ride in the hotbar too: the bucket (hold in rain to collect
+        // water) and the healing draught (RMB to drink). The place path
+        // guards on `placeable`, so tools never place blocks.
+        if (itemInfo(id).placeable || id == ItemId::Bucket ||
+            id == ItemId::HealingDraught) {
+            m_hotbar.push_back(id);
+        }
     }
 
     m_world = std::make_unique<World>();
+    m_health = kMaxHealth; // pre-v10 saves have no health field; keep this default
     if (!loadGame()) {
         // No (valid) save: fresh island + the starting kit of raw materials.
         // Everything placeable is hand-crafted from these.
@@ -126,7 +131,7 @@ bool VoxelGame::saveGame() {
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                m_weatherRaining, m_weatherTimer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot};
+               m_worldSeed, m_sourceRng, slot, m_health};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -139,7 +144,7 @@ bool VoxelGame::loadGame() {
         SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                    m_weatherRaining, m_weatherTimer, m_bucketFill,
                    camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot};
+                   m_worldSeed, m_sourceRng, slot, m_health};
         if (SaveSystem::load(path, d)) {
             m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
             return true;

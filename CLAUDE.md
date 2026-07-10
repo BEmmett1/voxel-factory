@@ -284,8 +284,15 @@ Player physics (pressure & pull):
   `onUpdate`), gravity + Space jump, LCtrl sprint, no flight by design. Feel knobs are
   grouped in `VoxelGameInternal.h` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
   tuned by hands-on play, not scripted verification.
-- **Falling off the island wipes the entire inventory** and respawns the player on the
-  plateau (`kVoidY`); machines/belts keep their buffers. Hardcore by user decision.
+- **Health & damage** — `m_health` in hearts (`kMaxHealth`, knobs in the
+  `// ---- Health & damage ----` block); heart segments render above the hotbar's
+  left end in `drawHud`. Hard landings hurt past `kFallSafeSpeed`
+  (`damagePlayer`, "hurt" sound); the **Healing Draught rides the hotbar as a
+  tool** (like the Bucket) — RMB drinks when hurt ("heal" sound; the drink
+  consumes the click so nothing places/opens). Health is saved (v10).
+- **Death = one hardcore rule everywhere**: reaching 0 HP or **falling off the
+  island** (`kVoidY`) wipes the entire inventory and respawns the player on the
+  plateau at full health; machines/belts keep their buffers. By user decision.
 - **Scaffold** — a cheap structural block (Stone ×1 → Scaffold ×4) for climbing and
   bridging, since verticality must be built, not flown.
 - Blocks can't be placed overlapping the player's box.
@@ -297,7 +304,11 @@ Persistence:
   save to `.tmp`, rotate the old file to `.bak`, rename in; load falls back to `.bak`
   before regenerating. The file holds seed, all chunks, player camera/inventory/
   slot, machines (type/buffers/recipe/progress — generators/barrels ride along),
-  belts (facing/cargo), source + sapling timers, and weather state.
+  belts (facing/cargo), source + sapling timers, weather state, and player
+  health (appended in v10; v9 saves still load with full-health default).
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
-  change — old saves are then discarded rather than misread.
+  change — old saves are then discarded rather than misread. Exception: a bump that only
+  APPENDS trailing fields may keep older versions loadable (`kOldestLoadable`; the
+  caller's defaults survive), as v9→v10 did for health — any enum/layout change must
+  drop that compatibility.

@@ -46,16 +46,19 @@ the pillar slips to post-launch.
     *Foundation landed July 2026:* Blockbench model import (`engine::BbModel`,
     animated/skinned) + a wandering test creature with gravity/collision —
     health, damage, and save records remain
-  - Player health + damage; death anywhere = the existing void-fall rule
-    (pack lost, respawn on the plateau) — one hardcore penalty everywhere
+  - [x] Player health + damage (July 2026): hearts HUD, fall damage past a
+    safe landing speed, death anywhere = the existing void-fall rule
+    (pack lost, respawn on the plateau) — one hardcore penalty everywhere.
+    Health rides the save (v10 appends it; v9 saves still load)
   - First melee weapon through the center-screen aim raycast (the mine ray is
     the attack ray); weapons ride the Bucket/Wrench held-tool precedent.
     Armor slots with damage mitigation
   - Forge/armory machine tier: weapons and armor are machine-crafted from the
     plate → frame → crystal/essence chain, so gearing up is an automation
     problem — factories are the real weapon
-  - The dormant potions get their job: Healing Draught heals, Mana Vial fuels
-    a ranged alchemy attack, Elixir of Vigor buffs
+  - The dormant potions get their job: Healing Draught heals (done July 2026 —
+    rides the hotbar, RMB drinks), Mana Vial fuels a ranged alchemy attack,
+    Elixir of Vigor buffs
 - Multiple save slots + "New game / Continue" flow (needs the main menu)
 
 ## Q1 2027 — bosses + Steam + hardening

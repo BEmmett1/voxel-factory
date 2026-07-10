@@ -183,6 +183,28 @@ def deny():
     write_wav("deny", b)
 
 
+# NOTE: new sounds are appended AFTER the originals (shared rng) so rerunning
+# the script keeps every previously-committed WAV byte-identical.
+
+def hurt():
+    """Player damage: dull low thump sweeping down + a grunt of noise."""
+    b = silence(0.16)
+    add_noise(b, amp=0.5, decay=0.05, lowpass=900)
+    add_sine(b, 130, amp=1.0, decay=0.08, freq_end=70)
+    fade_out(b)
+    write_wav("hurt", b)
+
+
+def heal():
+    """Drinking a draught: three soft rising notes -- restorative."""
+    b = silence(0.25)
+    add_sine(b, 520, amp=0.8, decay=0.06, attack=0.005)
+    add_sine(b, 660, amp=0.8, decay=0.06, delay=0.08, attack=0.005)
+    add_sine(b, 880, amp=0.9, decay=0.09, delay=0.16, attack=0.005)
+    fade_out(b)
+    write_wav("heal", b)
+
+
 OUT_DIR = Path(__file__).resolve().parent.parent / "game" / "assets" / "sounds"
 
 
@@ -197,6 +219,8 @@ def main():
     blips("close", 900, 600)
     craft()
     deny()
+    hurt()
+    heal()
 
 
 if __name__ == "__main__":

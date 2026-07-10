@@ -31,6 +31,9 @@ struct SaveData {
     std::uint32_t& worldSeed;
     std::uint32_t& sourceRng;
     int& selectedSlot;
+    // Appended in v10. Loading an older save leaves the caller's default
+    // untouched (full health), so existing worlds survive the version bump.
+    float& health;
 };
 
 namespace SaveSystem {

@@ -194,4 +194,9 @@ private:
     float     m_velY = 0.0f;      // vertical velocity (gravity/jump)
     glm::vec3 m_velXZ{0.0f};      // horizontal velocity (accel/friction; y unused)
     bool      m_grounded = false; // standing on something this frame?
+
+    // Health in hearts (0..vg::kMaxHealth; initialized in onStart). Reaching 0
+    // triggers the same penalty as falling off the island: pack lost, respawn.
+    float m_health = 0.0f;
+    void  damagePlayer(float amount);
 };

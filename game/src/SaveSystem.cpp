@@ -11,7 +11,11 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 9;         // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 10;        // bump when enums/layout change
+    // v9 -> v10 only APPENDED the player-health float, so v9 saves still load
+    // (health keeps the caller's default). Any enum/layout change must drop
+    // this compatibility and require an exact version match again.
+    constexpr std::uint32_t kOldestLoadable = 9;
 
     template <typename T>
     void writePod(std::ofstream& out, const T& v) {
@@ -134,6 +138,9 @@ bool save(const std::string& path, const SaveData& d) {
     writePod(out, d.weatherTimer);
     writePod(out, d.bucketFill);
 
+    // Player health (appended in v10).
+    writePod(out, d.health);
+
     out.close();
     if (!out.good()) return false;
 
@@ -152,7 +159,9 @@ bool load(const std::string& path, SaveData& d) {
 
     std::uint32_t magic = 0, version = 0;
     if (!readPod(in, magic) || magic != kMagic) return false;
-    if (!readPod(in, version) || version != kVersion) return false;
+    if (!readPod(in, version) || version < kOldestLoadable || version > kVersion) {
+        return false;
+    }
 
     if (!readPod(in, d.worldSeed)) return false;
     if (!readPod(in, d.sourceRng)) return false;
@@ -244,6 +253,9 @@ bool load(const std::string& path, SaveData& d) {
     d.weatherRaining = raining != 0;
     if (!readPod(in, d.weatherTimer)) return false;
     if (!readPod(in, d.bucketFill)) return false;
+
+    // Player health: appended in v10; older saves keep the caller's default.
+    if (version >= 10 && !readPod(in, d.health)) return false;
 
     return true;
 }

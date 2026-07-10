@@ -43,6 +43,12 @@ namespace vg {
     inline constexpr float kVoidY        = -8.0f;  // fall below this: pack lost, respawn
     // -------------------------------------------------------
 
+    // ---- Health & damage ----
+    inline constexpr float kMaxHealth        = 10.0f; // hearts
+    inline constexpr float kFallSafeSpeed    = 14.0f; // impact speed that hurts (~3.5 blocks)
+    inline constexpr float kFallDamagePerVel = 0.5f;  // hearts per blocks/s beyond safe
+    inline constexpr float kDraughtHeal      = 4.0f;  // hearts per Healing Draught
+
     // Save location (%APPDATA%\<org>\<app>\). kOrgName is a placeholder until
     // a studio name exists; migrateLegacySave() makes renaming it free.
     inline constexpr const char* kOrgName  = "BennyThompson";
@@ -109,6 +115,7 @@ namespace vg {
     inline constexpr float kPlaceVolume    = 0.8f;  // block placed (positional)
     inline constexpr float kUiVolume       = 0.5f;  // clicks / open / close
     inline constexpr float kCraftVolume    = 0.6f;  // craft success / deny
+    inline constexpr float kHurtVolume     = 0.7f;  // player damage / heal
     inline constexpr float kHumVolume      = 0.55f; // energized-machine loop
     inline constexpr float kHumMaxDistance = 14.0f; // hum audible radius (blocks)
     inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win

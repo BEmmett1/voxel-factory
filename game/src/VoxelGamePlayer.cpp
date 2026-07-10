@@ -29,6 +29,12 @@ namespace {
 
 } // namespace
 
+void VoxelGame::damagePlayer(float amount) {
+    if (amount <= 0.0f) return;
+    m_health = std::max(0.0f, m_health - amount);
+    audio().play("hurt", kHurtVolume);
+}
+
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
 
@@ -170,19 +176,30 @@ void VoxelGame::onUpdate(float dt) {
         feet.y = next.y;
     } else if (m_velY <= 0.0f) {
         feet.y = std::floor(next.y) + 1.0f; // land: snap feet onto the block top
+        // Hard landings hurt: damage scales with impact speed beyond the
+        // safe threshold (~a 3-block drop).
+        const float impact = -m_velY;
+        if (impact > kFallSafeSpeed) {
+            damagePlayer((impact - kFallSafeSpeed) * kFallDamagePerVel);
+        }
         m_velY = 0.0f;
         m_grounded = true;
     } else {
         m_velY = 0.0f; // bumped our head
     }
 
-    // Fell off the island: everything in your pack is gone.
-    if (feet.y < kVoidY) {
+    // Death — by damage or by falling off the island — costs the whole pack
+    // and respawns on the plateau. One hardcore penalty everywhere.
+    const bool fellOff = feet.y < kVoidY;
+    if (fellOff || m_health <= 0.0f) {
         m_inventory = Inventory{};
         feet = spawnFeet();
         m_velY = 0.0f;
         m_velXZ = glm::vec3(0.0f);
-        window().setTitle("Voxel Factory  —  YOU FELL. YOUR PACK IS LOST.");
+        m_health = kMaxHealth;
+        window().setTitle(fellOff
+            ? "Voxel Factory  —  YOU FELL. YOUR PACK IS LOST."
+            : "Voxel Factory  —  YOU DIED. YOUR PACK IS LOST.");
     }
 
     cam.position = feet + glm::vec3(0.0f, kEyeHeight, 0.0f);
@@ -206,6 +223,21 @@ void VoxelGame::onUpdate(float dt) {
         m_selectedSlot = ((m_selectedSlot - wheel) % n + n) % n;
         updateTitle();
         audio().play("click", kUiVolume * 0.5f);
+    }
+
+    // Drink: RMB with the Healing Draught held restores health (no aim
+    // needed); the sip consumes the click so nothing places or opens.
+    bool drank = false;
+    if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+        if (held == ItemId::HealingDraught && m_health < kMaxHealth &&
+            m_inventory.has(held)) {
+            m_inventory.remove(held, 1);
+            m_health = std::min(kMaxHealth, m_health + kDraughtHeal);
+            audio().play("heal", kHurtVolume);
+            updateTitle();
+            drank = true;
+        }
     }
 
     // Aim and edit.
@@ -236,7 +268,7 @@ void VoxelGame::onUpdate(float dt) {
         }
         // RMB: on a machine, open its panel (Shift+RMB to place against it
         // instead); otherwise place the held item into the empty target cell.
-        if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        if (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT)) {
             const bool aimedMachine = m_machines.find(tb) != m_machines.end();
             if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);

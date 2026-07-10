@@ -602,6 +602,21 @@ void VoxelGame::drawHud() {
                   glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
     }
 
+    // Health: heart segments above the hotbar's left end (partial segments
+    // show fractional damage, e.g. from a hard landing).
+    {
+        const float segW = 16.0f, segH = 12.0f, segGap = 4.0f;
+        const float hy = y - segH - 10.0f;
+        for (int i = 0; i < static_cast<int>(kMaxHealth); ++i) {
+            const float hx = x0 + i * (segW + segGap);
+            m_ui.rect(hx, hy, segW, segH, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
+            const float fill = glm::clamp(m_health - static_cast<float>(i), 0.0f, 1.0f);
+            if (fill > 0.0f) {
+                m_ui.rect(hx, hy, segW * fill, segH, glm::vec4(0.85f, 0.20f, 0.25f, 0.95f));
+            }
+        }
+    }
+
     // Held-bucket rain collection: a small fill bar above the hotbar.
     if (m_bucketFill > 0.0f) {
         const float bw = 180.0f;
@@ -871,6 +886,7 @@ void VoxelGame::drawHelp() {
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE JUMP   LCTRL SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
+        {"RMB WITH DRAUGHT > DRINK ( HEAL )   HARD FALLS HURT", 1},
         {"E CRAFT MENU   RMB OPEN MACHINE   F5 SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},
         {"F1 OR ESC TO CLOSE", 2},
