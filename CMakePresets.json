@@ -25,18 +25,19 @@
         },
         {
             "name": "mac-debug",
-            "displayName": "macOS Debug (Apple Silicon)",
+            "displayName": "macOS Debug (universal)",
             "description": "Debug build on macOS (brew install cmake ninja)",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/out/build/mac-Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_OSX_ARCHITECTURES": "arm64"
+                "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "10.15"
             }
         },
         {
             "name": "mac-release",
-            "displayName": "macOS Release (Apple Silicon)",
+            "displayName": "macOS Release (universal)",
             "description": "Optimized build for distribution",
             "inherits": "mac-debug",
             "binaryDir": "${sourceDir}/out/build/mac-Release",

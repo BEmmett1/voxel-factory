@@ -27,7 +27,7 @@ Third-party code stays quiet via `/external:anglebrackets /external:W0`, which r
 on a convention: include everything third-party (SDL3/glm/glad and the vendored
 single-header libs) with angle brackets, first-party headers with quotes.
 
-**macOS (Apple Silicon)**: `brew install cmake ninja`, then
+**macOS (universal: arm64 + x86_64, macOS 10.15+)**: `brew install cmake ninja`, then
 `cmake --preset mac-release && cmake --build --preset mac-release` — no vcvars dance.
 Apple only ships GL core 3.2/4.1, so Window.cpp requests a **4.1 core +
 forward-compatible** context under `__APPLE__` (glad 3.3 loader + `#version 330 core`

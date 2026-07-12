@@ -47,11 +47,13 @@ jobs:
       - name: Install ninja
         run: brew install ninja
 
+      # "univ" in the key: a cached arm64-only SDL3 tree from before the
+      # universal switch must not poison the fat link.
       - name: Cache FetchContent deps
         uses: actions/cache@v4
         with:
           path: out/build/mac-Release/_deps
-          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+          key: deps-${{ runner.os }}-univ-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
         run: cmake --preset mac-release
@@ -59,16 +61,23 @@ jobs:
       - name: Build
         run: cmake --build --preset mac-release
 
+      # The artifact must run on Intel and Apple Silicon alike.
+      - name: Assert universal binary
+        run: |
+          lipo -archs out/build/mac-Release/bin/voxel-factory
+          lipo -archs out/build/mac-Release/bin/voxel-factory | grep -q x86_64
+          lipo -archs out/build/mac-Release/bin/voxel-factory | grep -q arm64
+
       - name: Selftest (save round-trip, headless)
         run: out/build/mac-Release/bin/voxel-factory --selftest
 
       # Tar first: upload-artifact's zip strips the executable bit, a tarball
       # keeps the bin folder runnable straight after download + untar.
       - name: Pack build
-        run: tar -czf voxel-factory-mac-arm64.tar.gz -C out/build/mac-Release bin
+        run: tar -czf voxel-factory-mac.tar.gz -C out/build/mac-Release bin
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: voxel-factory-mac-arm64
-          path: voxel-factory-mac-arm64.tar.gz
+          name: voxel-factory-mac
+          path: voxel-factory-mac.tar.gz
