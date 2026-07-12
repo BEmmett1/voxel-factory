@@ -161,6 +161,10 @@ bool VoxelGame::loadGame() {
         m_weatherRaining = false;
         m_weatherTimer = 120.0f;
         m_bucketFill = 0.0f;
+        m_health = kMaxHealth;
+        m_sourceRng = 0;
+        // Camera pose, seed, and slot need no reset: a .bak success or the
+        // caller's fresh island overwrites them all.
     }
     return false;
 }
@@ -191,7 +195,7 @@ void VoxelGame::onEscape() {
 }
 
 void VoxelGame::updateTitle() {
-    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    const ItemId held = heldItem();
     window().setTitle(std::string("Voxel Factory v" VOXEL_FACTORY_VERSION
                                   "  —  Holding: ") + itemName(held) +
                       " x" + std::to_string(m_inventory.count(held)) +

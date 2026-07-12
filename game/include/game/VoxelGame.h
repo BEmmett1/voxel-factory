@@ -64,6 +64,10 @@ private:
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
+    // The selected hotbar item (None while the hotbar is empty).
+    ItemId heldItem() const {
+        return m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    }
 
     bool saveGame();             // write the full game state to m_savePath
     bool loadGame();             // restore it; false = no/invalid save

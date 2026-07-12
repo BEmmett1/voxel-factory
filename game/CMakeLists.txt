@@ -22,6 +22,11 @@ add_executable(voxel-factory
 target_include_directories(voxel-factory PRIVATE include)
 target_link_libraries(voxel-factory PRIVATE engine)
 
+# Same warning stance as the engine (see engine/CMakeLists.txt).
+if(MSVC)
+    target_compile_options(voxel-factory PRIVATE /W4 /external:anglebrackets /external:W0)
+endif()
+
 # Product version (from the root project()) — shown in the title bar and F3 overlay.
 target_compile_definitions(voxel-factory PRIVATE
     VOXEL_FACTORY_VERSION="${PROJECT_VERSION}")

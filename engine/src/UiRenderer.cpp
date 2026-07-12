@@ -199,19 +199,20 @@ void main() {
         m_shader.use();
         m_shader.setInt("uTex", 0);
 
+        // The overlay is rebuilt and re-uploaded every frame.
         if (!m_solid.empty()) {
             m_white.bind(0);
-            m_mesh.upload(m_solid, {2, 2, 4});
+            m_mesh.upload(m_solid, {2, 2, 4}, GL_DYNAMIC_DRAW);
             m_mesh.draw();
         }
         if (!m_icons.empty() && m_iconTex) {
             m_iconTex->bind(0);
-            m_mesh.upload(m_icons, {2, 2, 4});
+            m_mesh.upload(m_icons, {2, 2, 4}, GL_DYNAMIC_DRAW);
             m_mesh.draw();
         }
         if (!m_text.empty()) {
             m_font.bind(0);
-            m_mesh.upload(m_text, {2, 2, 4});
+            m_mesh.upload(m_text, {2, 2, 4}, GL_DYNAMIC_DRAW);
             m_mesh.draw();
         }
 

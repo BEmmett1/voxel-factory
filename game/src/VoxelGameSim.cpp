@@ -61,7 +61,7 @@ void VoxelGame::updateGeneratorsAndBarrels() {
 
 // Holding a bucket under open sky while it rains slowly collects water.
 void VoxelGame::updateBucketFill() {
-    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    const ItemId held = heldItem();
     const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
     const bool collecting = m_weatherRaining && held == ItemId::Bucket &&
         m_inventory.has(ItemId::Bucket) &&

@@ -229,7 +229,7 @@ void VoxelGame::onUpdate(float dt) {
         audio().play("click", kUiVolume * 0.5f);
     }
 
-    const ItemId held = m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
+    const ItemId held = heldItem();
 
     // Drink: RMB with the Healing Draught held restores health (no aim
     // needed); the sip consumes the click so nothing places or opens.

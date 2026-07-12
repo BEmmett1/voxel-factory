@@ -22,6 +22,11 @@ invocations — chain everything through one `cmd /c`:
 cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul && cmake --preset x64-release && cmake --build --preset x64-release'
 ```
 
+First-party targets compile at `/W4` and are warning-clean — keep them that way.
+Third-party code stays quiet via `/external:anglebrackets /external:W0`, which relies
+on a convention: include everything third-party (SDL3/glm/glad and the vendored
+single-header libs) with angle brackets, first-party headers with quotes.
+
 The first configure compiles SDL3 from source (several minutes); later builds are fast.
 Run `out/build/<preset>/bin/voxel-factory.exe`. CMake copies `shaders/`, `assets/`, and
 `SDL3.dll` next to the exe at build time. The MSVC runtime is statically linked
