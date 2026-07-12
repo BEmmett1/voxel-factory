@@ -94,11 +94,10 @@ the pillar slips to post-launch.
 
 Kept here so they don't get lost — none are architectural dead-ends:
 
-- No main/pause menu, no settings, no fullscreen (audio landed July 2026)
-- Simulation never pauses (menus leave `onTick` running)
+- No main menu, no settings, no fullscreen (audio + the true-pause pause menu
+  landed July 2026)
 - All input hardcoded (scancodes in `VoxelGame::onUpdate`); sensitivity fixed
 - Single save slot; no in-game feedback when a save/load fails
 - No logging infrastructure, no crash dumps, no telemetry
-- `VoxelGame.cpp` bundles ~10 responsibilities; refactor before content push
 - World hard-capped at 6×6 chunks, held fully in memory and saved wholesale
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
