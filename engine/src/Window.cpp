@@ -21,12 +21,25 @@ namespace engine {
             throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
         }
 
+#ifdef __APPLE__
+        // macOS ships only core profiles 3.2 and 4.1, and requires the
+        // forward-compatible flag for any 3.2+ core context. GL 4.1 core is a
+        // superset of 3.3, so the glad 3.3 loader and the #version 330 core
+        // shaders run unchanged.
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+#else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
+        // No SDL_WINDOW_HIGH_PIXEL_DENSITY: the UI draws and hit-tests in one
+        // coordinate space, which is only safe while window points == pixels.
+        // Retina needs a point->pixel pass over the UI first (ROADMAP gap).
         m_window = SDL_CreateWindow(title.c_str(), width, height,
                                     SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
         if (!m_window) {

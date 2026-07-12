@@ -22,10 +22,33 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "mac-debug",
+            "displayName": "macOS Debug (Apple Silicon)",
+            "description": "Debug build on macOS (brew install cmake ninja)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/mac-Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_OSX_ARCHITECTURES": "arm64"
+            }
+        },
+        {
+            "name": "mac-release",
+            "displayName": "macOS Release (Apple Silicon)",
+            "description": "Optimized build for distribution",
+            "inherits": "mac-debug",
+            "binaryDir": "${sourceDir}/out/build/mac-Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
         }
     ],
     "buildPresets": [
         { "name": "x64-debug", "configurePreset": "x64-debug" },
-        { "name": "x64-release", "configurePreset": "x64-release" }
+        { "name": "x64-release", "configurePreset": "x64-release" },
+        { "name": "mac-debug", "configurePreset": "mac-debug" },
+        { "name": "mac-release", "configurePreset": "mac-release" }
     ]
 }

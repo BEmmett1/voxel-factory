@@ -100,4 +100,6 @@ Kept here so they don't get lost — none are architectural dead-ends:
 - Single save slot; no in-game feedback when a save/load fails
 - No logging infrastructure, no crash dumps, no telemetry
 - World hard-capped at 6×6 chunks, held fully in memory and saved wholesale
+- macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
+  point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)

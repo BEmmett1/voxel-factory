@@ -14,8 +14,10 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Bake the MSVC runtime into the binaries so the bin/ folder runs on machines
 # without the VC++ Redistributable. Set before FetchContent so SDL3 and all of
 # our targets agree on the CRT (mixing CRTs across the DLL boundary is the
-# thing to avoid). Ignored by non-MSVC toolchains.
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# thing to avoid).
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 include(FetchContent)
 
@@ -38,8 +40,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 
 # --- glad: OpenGL 3.3 core function loader (vendored, pre-generated) ---
+# SYSTEM keeps its headers outside consumers' warning ratchet (see engine/).
 add_library(glad STATIC third_party/glad/src/gl.c)
-target_include_directories(glad PUBLIC third_party/glad/include)
+target_include_directories(glad SYSTEM PUBLIC third_party/glad/include)
 
 # Our subprojects
 add_subdirectory(engine)

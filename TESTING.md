@@ -41,6 +41,9 @@ grid. The window title always names the held item and its count.
    & "C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat"
    cmake --build out/build/x64-Debug
    ```
+   On macOS (Apple Silicon): `cmake --preset mac-debug && cmake --build --preset
+   mac-debug`, then run `out/build/mac-Debug/bin/voxel-factory` (saves land in
+   `~/Library/Application Support/BennyThompson/voxel-factory/`).
 2. Run `out/build/x64-Debug/bin/voxel-factory.exe`.
    **Expect:** a window titled `Voxel Factory v<version>  —  Holding: Healing Draught x0 …`,
    a centered crosshair, a hotbar along the bottom (all counts 0), and a row of ten

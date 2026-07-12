@@ -25,6 +25,8 @@ target_link_libraries(voxel-factory PRIVATE engine)
 # Same warning stance as the engine (see engine/CMakeLists.txt).
 if(MSVC)
     target_compile_options(voxel-factory PRIVATE /W4 /external:anglebrackets /external:W0)
+else()
+    target_compile_options(voxel-factory PRIVATE -Wall -Wextra)
 endif()
 
 # Product version (from the root project()) — shown in the title bar and F3 overlay.
@@ -52,9 +54,18 @@ add_custom_target(copy-assets ALL
 add_dependencies(copy-assets voxel-factory)
 
 # Copy SDL3.dll next to the executable on Windows so it runs in place.
-add_custom_command(TARGET voxel-factory POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:SDL3::SDL3>
-        $<TARGET_FILE_DIR:voxel-factory>
-    COMMENT "Copying SDL3 runtime library to output directory"
-)
+if(WIN32)
+    add_custom_command(TARGET voxel-factory POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL3::SDL3>
+            $<TARGET_FILE_DIR:voxel-factory>
+        COMMENT "Copying SDL3 runtime library to output directory"
+    )
+endif()
+
+# On macOS libSDL3.dylib already lands in bin/ (the root output dirs apply to
+# the SDL3 subproject too); @loader_path makes the exe find it there wherever
+# the bin folder is moved — the same relocatable-folder story as Windows.
+if(APPLE)
+    set_target_properties(voxel-factory PROPERTIES BUILD_RPATH "@loader_path")
+endif()

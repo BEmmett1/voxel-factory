@@ -38,3 +38,37 @@ jobs:
         with:
           name: voxel-factory-win64
           path: out/build/x64-Release/bin/
+
+  macos-release:
+    runs-on: macos-latest # arm64 (Apple Silicon)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ninja
+        run: brew install ninja
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: out/build/mac-Release/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake --preset mac-release
+
+      - name: Build
+        run: cmake --build --preset mac-release
+
+      - name: Selftest (save round-trip, headless)
+        run: out/build/mac-Release/bin/voxel-factory --selftest
+
+      # Tar first: upload-artifact's zip strips the executable bit, a tarball
+      # keeps the bin folder runnable straight after download + untar.
+      - name: Pack build
+        run: tar -czf voxel-factory-mac-arm64.tar.gz -C out/build/mac-Release bin
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxel-factory-mac-arm64
+          path: voxel-factory-mac-arm64.tar.gz
