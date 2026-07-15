@@ -11,12 +11,12 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 11;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 12;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
-    // (older saves keep the caller's default) and v11 appended ItemId entries
-    // at the enum tail (readInventory accepts older, shorter item sets). Any
-    // REORDERING or non-tail change must drop this compatibility and require
-    // an exact version match again.
+    // (older saves keep the caller's default), v11 appended ItemId entries
+    // at the enum tail (readInventory accepts older, shorter item sets), and
+    // v12 appended the ten hotbar slot ids. Any REORDERING or non-tail change
+    // must drop this compatibility and require an exact version match again.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     template <typename T>
@@ -147,6 +147,11 @@ bool save(const std::string& path, const SaveData& d) {
     // Player health (appended in v10).
     writePod(out, d.health);
 
+    // Hotbar slot assignments (appended in v12); 0 = ItemId::None = empty.
+    for (const ItemId id : d.hotbar) {
+        writePod(out, static_cast<std::uint8_t>(id));
+    }
+
     out.close();
     if (!out.good()) return false;
 
@@ -262,6 +267,15 @@ bool load(const std::string& path, SaveData& d) {
 
     // Player health: appended in v10; older saves keep the caller's default.
     if (version >= 10 && !readPod(in, d.health)) return false;
+
+    // Hotbar slots: appended in v12; older saves keep the caller's default.
+    if (version >= 12) {
+        for (ItemId& cell : d.hotbar) {
+            std::uint8_t v = 0;
+            if (!readPod(in, v) || v >= static_cast<std::uint8_t>(ItemId::Count)) return false;
+            cell = static_cast<ItemId>(v);
+        }
+    }
 
     return true;
 }

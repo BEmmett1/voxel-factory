@@ -23,6 +23,9 @@ calendar quarters counted from July 2026.
       `tools/make_sounds.py`, replaceable by hand-made files
 - [x] Split `game/src/VoxelGame.cpp` (~2.3k lines) into per-concern files:
       WorldGen / Sim / Player / Render / Ui + a shared internal knobs header
+- [x] Inventory screen + curated hotbar (July 2026): Tab overlay shows the
+      full pack; the hotbar is ten player-assigned slots (assignments are
+      references — they grey out at count 0 and survive death; saved in v12)
 
 ## Q4 2026 — content depth + combat foundations
 
@@ -103,3 +106,9 @@ Kept here so they don't get lost — none are architectural dead-ends:
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
+- **Multiplayer: explicitly deferred (decided July 2026).** Nothing in the
+  architecture anticipates it — the sim is a single-process 20 Hz tick with
+  direct state mutation, the save is one wholesale binary, and there is no
+  entity-ownership model. It would be a rearchitecture (networked tick,
+  authority, save format), not a feature. Revisit, if ever, only after the
+  combat/entity pillar ships — the entity layer is a prerequisite either way

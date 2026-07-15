@@ -70,6 +70,11 @@ enum class ItemId : std::uint8_t {
     Count
 };
 
+// The player's hotbar is a fixed strip of assigned slots (ItemId::None = an
+// empty slot). Lives here rather than in game internals because the save
+// format (SaveSystem.h) serializes the slots.
+inline constexpr int kHotbarSlots = 10;
+
 struct ItemInfo {
     const char* name;
     int         atlasTile;   // icon tile for materials; -1 for placeables (see iconTile)

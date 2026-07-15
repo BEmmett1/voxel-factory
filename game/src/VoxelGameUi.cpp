@@ -129,6 +129,37 @@ namespace {
         return L;
     }
 
+    // Inventory-overlay layout (owned-items grid + the hotbar assignment
+    // strip); shared by update (hit-testing) and draw.
+    struct InvLayout {
+        float px = 0, py = 0, panelW = 560.0f, panelH = 0;
+        float invY = 0; // owned-items grid, PanelLayout::InvCols wide
+        int   invRows = 0;
+        float tooltipY = 0;
+        float hotbarLabelY = 0, hotbarY = 0; // the kHotbarSlots assignment cells
+        float footerY = 0;
+    };
+
+    InvLayout invLayout(int w, int h, int invCount) {
+        InvLayout L;
+        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+        const float headerH = 40.0f, tooltipH = 18.0f, labelH = 20.0f, footerH = 24.0f;
+        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
+        const float hotbarH = PanelLayout::Cell + PanelLayout::Gap;
+        L.panelH = headerH + invH + tooltipH + labelH + hotbarH + footerH + 12.0f;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.invY = L.py + headerH;
+        L.tooltipY = L.invY + invH + 2.0f;
+        L.hotbarLabelY = L.tooltipY + tooltipH;
+        L.hotbarY = L.hotbarLabelY + labelH;
+        L.footerY = L.py + L.panelH - footerH + 2.0f;
+        return L;
+    }
+
+    // Grey-out for hotbar cells whose item is assigned but out of stock.
+    constexpr glm::vec4 kOutOfStockTint{0.45f, 0.45f, 0.5f, 0.8f};
+
 } // namespace
 
 void VoxelGame::drawDebugOverlay() {
@@ -567,12 +598,162 @@ void VoxelGame::updateMenu() {
     }
 }
 
+void VoxelGame::openInventoryUi() {
+    m_invOpen = true;
+    window().setRelativeMouse(false); // release the cursor for drag/hover
+    audio().play("open", kUiVolume);
+}
+
+void VoxelGame::closeInventoryUi() {
+    m_invDrag = ItemId::None; // an unfinished drag assigns nothing
+    m_invOpen = false;
+    window().setRelativeMouse(true);
+    audio().play("close", kUiVolume);
+}
+
+void VoxelGame::updateInventoryUi() {
+    const auto invItems = itemsOf(m_inventory);
+    const InvLayout L = invLayout(window().width(), window().height(),
+                                  static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    const int gridHit = hitCell(mx, my, L.px + 16.0f, L.invY,
+                                static_cast<int>(invItems.size()), PanelLayout::InvCols);
+    const int slotHit = hitCell(mx, my, L.px + 16.0f, L.hotbarY, kHotbarSlots,
+                                PanelLayout::InvCols);
+
+    // LMB press picks up an assignment: from the grid it's a reference copy
+    // (the item stays in the inventory); from a slot it clears the slot and
+    // carries its assignment (rearrange).
+    if (m_invDrag == ItemId::None && input().wasMousePressed(SDL_BUTTON_LEFT)) {
+        if (gridHit >= 0) {
+            m_invDrag = invItems[gridHit].first;
+            audio().play("click", kUiVolume);
+        } else if (slotHit >= 0 && m_hotbar[slotHit] != ItemId::None) {
+            m_invDrag = m_hotbar[slotHit];
+            m_hotbar[slotHit] = ItemId::None;
+            audio().play("click", kUiVolume);
+            updateTitle();
+        }
+    }
+
+    // LMB release over a slot assigns; any other slot already holding the
+    // item is cleared first (an item lives on at most one slot). A release
+    // anywhere else just drops the drag -- which for a slot-sourced drag IS
+    // the clear gesture.
+    if (m_invDrag != ItemId::None && input().wasMouseReleased(SDL_BUTTON_LEFT)) {
+        if (slotHit >= 0) {
+            for (ItemId& s : m_hotbar) {
+                if (s == m_invDrag) s = ItemId::None;
+            }
+            m_hotbar[slotHit] = m_invDrag;
+        }
+        m_invDrag = ItemId::None;
+        audio().play("click", kUiVolume);
+        updateTitle();
+    }
+
+    // RMB on a slot clears it directly; elsewhere it closes (menu precedent).
+    if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        if (slotHit >= 0 && m_hotbar[slotHit] != ItemId::None) {
+            m_hotbar[slotHit] = ItemId::None;
+            audio().play("click", kUiVolume);
+            updateTitle();
+        } else if (m_invDrag == ItemId::None) {
+            closeInventoryUi();
+        }
+    }
+}
+
+void VoxelGame::drawInventoryUi() {
+    const int w = window().width();
+    const int h = window().height();
+    const auto invItems = itemsOf(m_inventory);
+    const InvLayout L = invLayout(w, h, static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    m_ui.begin(w, h);
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.5f));
+    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+    m_ui.text(L.px + 16, L.py + 12, 18.0f, "INVENTORY", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+
+    // Everything the player owns, with counts.
+    for (int i = 0; i < static_cast<int>(invItems.size()); ++i) {
+        drawItemCell(m_ui, m_atlas,
+                     L.px + 16.0f + (i % PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
+                     L.invY + (i / PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
+                     invItems[i].first, invItems[i].second);
+    }
+
+    // The hotbar strip: assignment slots (empty slab / greyed at count 0),
+    // with the selected slot outlined like the HUD.
+    m_ui.text(L.px + 16, L.hotbarLabelY + 2, 13.0f, "HOTBAR", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    const int slotHover = hitCell(mx, my, L.px + 16.0f, L.hotbarY, kHotbarSlots,
+                                  PanelLayout::InvCols);
+    for (int i = 0; i < kHotbarSlots; ++i) {
+        const float cx = L.px + 16.0f + i * (PanelLayout::Cell + PanelLayout::Gap);
+        const float cy = L.hotbarY;
+        if (m_invDrag != ItemId::None && slotHover == i) {
+            // Drop-target highlight (the IN-strip convention).
+            m_ui.rect(cx - 3, cy - 3, PanelLayout::Cell + 6, PanelLayout::Cell + 6,
+                      glm::vec4(0.20f, 0.55f, 0.25f, 0.9f));
+        } else if (i == m_selectedSlot) {
+            m_ui.rect(cx - 3, cy - 3, PanelLayout::Cell + 6, PanelLayout::Cell + 6,
+                      glm::vec4(1.0f, 0.85f, 0.2f, 0.95f));
+        }
+        m_ui.rect(cx, cy, PanelLayout::Cell, PanelLayout::Cell,
+                  glm::vec4(0.16f, 0.16f, 0.19f, 1.0f));
+        const std::string key = (i < 9) ? std::to_string(i + 1) : "0";
+        m_ui.text(cx + 3, cy + 3, 10.0f, key, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
+        const ItemId id = m_hotbar[i];
+        if (id == ItemId::None) continue; // empty slab; iconTile(None) is -1
+        const int count = m_inventory.count(id);
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(id), uv0, uv1);
+        m_ui.icon(m_atlas, cx + 4, cy + 4, PanelLayout::Cell - 8, PanelLayout::Cell - 8,
+                  uv0, uv1, count > 0 ? glm::vec4(1.0f) : kOutOfStockTint);
+        const std::string cnt = std::to_string(count);
+        m_ui.text(cx + PanelLayout::Cell - m_ui.textWidth(11.0f, cnt) - 3,
+                  cy + PanelLayout::Cell - 13, 11.0f, cnt,
+                  count > 0 ? glm::vec4(1.0f) : glm::vec4(0.55f, 0.55f, 0.6f, 1.0f));
+    }
+
+    // Tooltip: name of the hovered cell (grid or hotbar strip).
+    ItemId hovered = ItemId::None;
+    const int gi = hitCell(mx, my, L.px + 16.0f, L.invY,
+                           static_cast<int>(invItems.size()), PanelLayout::InvCols);
+    if (gi >= 0) {
+        hovered = invItems[gi].first;
+    } else if (slotHover >= 0) {
+        hovered = m_hotbar[slotHover];
+    }
+    if (hovered != ItemId::None) {
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered),
+                  glm::vec4(1.0f, 1.0f, 0.8f, 1.0f));
+    }
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f,
+              "DRAG TO A SLOT TO ASSIGN   RMB SLOT CLEAR   TAB / ESC CLOSE",
+              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+
+    // The dragged assignment rides the cursor, drawn last so it sits on top
+    // (no count: it's a reference, not a stack).
+    if (m_invDrag != ItemId::None) {
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(m_invDrag), uv0, uv1);
+        const float s = 34.0f;
+        m_ui.icon(m_atlas, mx - s * 0.5f, my - s * 0.5f, s, s, uv0, uv1);
+    }
+
+    m_ui.end();
+}
+
 void VoxelGame::drawHud() {
     const int w = window().width();
     const int h = window().height();
     m_ui.begin(w, h);
 
-    const int n = static_cast<int>(m_hotbar.size());
+    const int n = kHotbarSlots;
     const float slot = 52.0f, gap = 6.0f, pad = 6.0f;
     const float totalW = n * slot + (n - 1) * gap;
     const float x0 = (static_cast<float>(w) - totalW) * 0.5f;
@@ -587,19 +768,23 @@ void VoxelGame::drawHud() {
         }
         m_ui.rect(sx, y, slot, slot, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
 
+        // Key label (top-left). Unassigned slots stay an empty slab.
+        const std::string key = (i < 9) ? std::to_string(i + 1) : "0";
+        m_ui.text(sx + 4, y + 4, 11.0f, key, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
+        if (item == ItemId::None) continue;
+
+        // An assigned-but-out-of-stock slot greys out and re-enables on
+        // restock (the count is read live from the inventory).
+        const int count = m_inventory.count(item);
         glm::vec2 uv0, uv1;
         Atlas::uvForTile(iconTile(item), uv0, uv1);
-        m_ui.icon(m_atlas, sx + pad, y + pad, slot - 2 * pad, slot - 2 * pad, uv0, uv1);
-
-        // Key label (first ten slots) and inventory count (bottom-right).
-        if (i < 10) {
-            const std::string key = (i < 9) ? std::to_string(i + 1) : "0";
-            m_ui.text(sx + 4, y + 4, 11.0f, key, glm::vec4(0.75f, 0.75f, 0.8f, 1.0f));
-        }
-        const std::string cnt = std::to_string(m_inventory.count(item));
+        m_ui.icon(m_atlas, sx + pad, y + pad, slot - 2 * pad, slot - 2 * pad, uv0, uv1,
+                  count > 0 ? glm::vec4(1.0f) : kOutOfStockTint);
+        const std::string cnt = std::to_string(count);
         const float th = 14.0f;
         m_ui.text(sx + slot - m_ui.textWidth(th, cnt) - 4, y + slot - th - 4, th, cnt,
-                  glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+                  count > 0 ? glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+                            : glm::vec4(0.55f, 0.55f, 0.6f, 1.0f));
     }
 
     // Health: heart segments above the hotbar's left end (partial segments
@@ -886,6 +1071,7 @@ void VoxelGame::drawHelp() {
         {"CONTROLS", 0},
         {"WASD MOVE   SPACE JUMP   LCTRL SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
+        {"TAB INVENTORY: DRAG ITEMS ONTO THE HOTBAR TO ASSIGN THEM", 1},
         {"RMB WITH DRAUGHT > DRINK ( HEAL )   HARD FALLS HURT", 1},
         {"E CRAFT MENU   RMB OPEN MACHINE   F5 SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},

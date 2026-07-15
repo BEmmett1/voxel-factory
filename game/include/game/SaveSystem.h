@@ -6,6 +6,7 @@
 #include "game/HashIVec3.h"
 
 #include <glm/glm.hpp>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -34,6 +35,9 @@ struct SaveData {
     // Appended in v10. Loading an older save leaves the caller's default
     // untouched (full health), so existing worlds survive the version bump.
     float& health;
+    // Appended in v12: the player-assigned hotbar slots (None = empty).
+    // Pre-v12 saves keep the caller's default (vg::kDefaultHotbar).
+    std::array<ItemId, kHotbarSlots>& hotbar;
 };
 
 namespace SaveSystem {

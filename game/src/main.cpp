@@ -8,6 +8,7 @@
 #include "game/SaveSystem.h"
 #include "game/World.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -74,10 +75,15 @@ int runSelfTest() {
     std::uint32_t seed = 1234u, rngState = 5678u;
     int slot = 4;
     float health = 6.5f;
+    // A mixed hotbar: a tool, a gap, and a placeable among defaults.
+    std::array<ItemId, kHotbarSlots> hotbar{};
+    hotbar[0] = ItemId::CopperSword;
+    hotbar[1] = ItemId::Conduit;
+    hotbar[9] = ItemId::ScaffoldItem; // slots 2-8 stay None
 
     SaveData src{world, inv, machines, belts, sources, saplings,
                  raining, weatherTimer, bucketFill,
-                 camPos, yaw, pitch, seed, rngState, slot, health};
+                 camPos, yaw, pitch, seed, rngState, slot, health, hotbar};
     SELFTEST_CHECK(SaveSystem::save(path, src));
 
     World world2;
@@ -92,9 +98,12 @@ int runSelfTest() {
     std::uint32_t seed2 = 0u, rngState2 = 0u;
     int slot2 = 0;
     float health2 = 0.0f;
+    // Pre-filled with a different pattern to prove the load overwrites it.
+    std::array<ItemId, kHotbarSlots> hotbar2;
+    hotbar2.fill(ItemId::Wood);
     SaveData dst{world2, inv2, machines2, belts2, sources2, saplings2,
                  raining2, weatherTimer2, bucketFill2,
-                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2};
+                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2, hotbar2};
     SELFTEST_CHECK(SaveSystem::load(path, dst));
 
     SELFTEST_CHECK(world2.chunks().size() == world.chunks().size());
@@ -128,6 +137,9 @@ int runSelfTest() {
     SELFTEST_CHECK(seed2 == seed && rngState2 == rngState);
     SELFTEST_CHECK(slot2 == 4);
     SELFTEST_CHECK(health2 == 6.5f);
+    for (int i = 0; i < kHotbarSlots; ++i) {
+        SELFTEST_CHECK(hotbar2[i] == hotbar[i]);
+    }
 
     // A second save rotates the first file to .bak; no .tmp is left behind.
     SELFTEST_CHECK(SaveSystem::save(path, src));
@@ -150,7 +162,7 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
     SaveData cutDst{world3, inv2, machines3, belts3, sources3, saplings3,
                     raining2, weatherTimer2, bucketFill2,
-                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2};
+                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2, hotbar2};
     SELFTEST_CHECK(!SaveSystem::load(cut, cutDst));
 
     fs::remove(path, ec);

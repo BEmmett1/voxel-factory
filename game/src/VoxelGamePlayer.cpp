@@ -109,6 +109,11 @@ void VoxelGame::onUpdate(float dt) {
             m_menuOpen = false;
             window().setRelativeMouse(true);
         }
+        if (m_invOpen) {
+            m_invOpen = false;
+            m_invDrag = ItemId::None;
+            window().setRelativeMouse(true);
+        }
     }
     if (m_helpOpen) {
         return;
@@ -120,9 +125,27 @@ void VoxelGame::onUpdate(float dt) {
         m_menuOpen = !m_menuOpen;
         window().setRelativeMouse(!m_menuOpen);
         audio().play(m_menuOpen ? "open" : "close", kUiVolume);
+        if (m_invOpen) { // the overlays are mutually exclusive
+            m_invOpen = false;
+            m_invDrag = ItemId::None;
+        }
     }
     if (m_menuOpen) {
         updateMenu();
+        return;
+    }
+
+    // Inventory overlay: toggle with Tab. While open it owns the input;
+    // drag items onto the hotbar strip to assign them.
+    if (input().wasKeyPressed(SDL_SCANCODE_TAB)) {
+        if (m_invOpen) {
+            closeInventoryUi();
+        } else {
+            openInventoryUi();
+        }
+    }
+    if (m_invOpen) {
+        updateInventoryUi();
         return;
     }
 
@@ -193,7 +216,9 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // Death — by damage or by falling off the island — costs the whole pack
-    // and respawns on the plateau. One hardcore penalty everywhere.
+    // and respawns on the plateau. One hardcore penalty everywhere. Hotbar
+    // ASSIGNMENTS deliberately survive (they're references, not items): the
+    // slots grey out at count 0 and re-enable as the pack is rebuilt.
     const bool fellOff = feet.y < kVoidY;
     if (fellOff || m_health <= 0.0f) {
         m_inventory = Inventory{};
@@ -208,10 +233,9 @@ void VoxelGame::onUpdate(float dt) {
 
     cam.position = feet + glm::vec3(0.0f, kEyeHeight, 0.0f);
 
-    // Hotbar selection: keys 1-9 and 0 jump to the first ten slots; the mouse
-    // wheel cycles through all of them (scroll up = previous).
-    const int keySlots = std::min(10, static_cast<int>(m_hotbar.size()));
-    for (int n = 0; n < keySlots; ++n) {
+    // Hotbar selection: keys 1-9 and 0 map to the ten slots; the mouse wheel
+    // cycles through all of them, empty slots included (scroll up = previous).
+    for (int n = 0; n < kHotbarSlots; ++n) {
         const SDL_Scancode sc = (n < 9)
             ? static_cast<SDL_Scancode>(SDL_SCANCODE_1 + n)
             : SDL_SCANCODE_0;
@@ -222,9 +246,9 @@ void VoxelGame::onUpdate(float dt) {
         }
     }
     const int wheel = input().wheelSteps();
-    if (wheel != 0 && !m_hotbar.empty()) {
-        const int n = static_cast<int>(m_hotbar.size());
-        m_selectedSlot = ((m_selectedSlot - wheel) % n + n) % n;
+    if (wheel != 0) {
+        m_selectedSlot =
+            ((m_selectedSlot - wheel) % kHotbarSlots + kHotbarSlots) % kHotbarSlots;
         updateTitle();
         audio().play("click", kUiVolume * 0.5f);
     }
@@ -295,7 +319,10 @@ void VoxelGame::onUpdate(float dt) {
                 const BlockId under = m_world->getBlock(p.x, p.y - 1, p.z);
                 const bool soilOk = itemInfo(held).placesBlock != BlockId::Sapling ||
                                     under == BlockId::Grass || under == BlockId::Dirt;
-                if (itemInfo(held).placeable && m_inventory.has(held) &&
+                if (itemInfo(held).placeable && !m_inventory.has(held)) {
+                    // Assigned but out of stock: make the restock need audible.
+                    audio().play("deny", kCraftVolume);
+                } else if (itemInfo(held).placeable && m_inventory.has(held) &&
                     !insidePlayer && soilOk &&
                     !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
                     const BlockId placed = itemInfo(held).placesBlock;

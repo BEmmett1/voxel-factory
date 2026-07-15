@@ -13,6 +13,7 @@
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -63,6 +64,15 @@ namespace vg {
     inline constexpr const char* kOrgName  = "BennyThompson";
     inline constexpr const char* kAppName  = "voxel-factory";
     inline constexpr const char* kSaveFile = "save.vxf";
+
+    // Fresh games and pre-v12 saves seed the hotbar with the ten placeables
+    // the old auto-built hotbar put on keys 1-0, preserving muscle memory
+    // (and previewing the machine tech tree on a fresh island).
+    inline constexpr std::array<ItemId, kHotbarSlots> kDefaultHotbar = {
+        ItemId::Conduit,      ItemId::WireItem,     ItemId::GeneratorItem,
+        ItemId::GrinderItem,  ItemId::CauldronItem, ItemId::InfuserItem,
+        ItemId::AlembicItem,  ItemId::DistillerItem, ItemId::TransmuterItem,
+        ItemId::MinerItem};
 
     inline constexpr float kReach = 8.0f;             // how far you can target blocks
     inline constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area

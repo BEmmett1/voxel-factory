@@ -146,12 +146,20 @@ World & closed-loop economy:
 - **Philosopher's tier** — Distiller and Transmuter machines complete the reagent chain:
   Elixir → Refined Elixir → Philosopher's Catalyst → Philosopher's Stone.
 - **Closed loop** — new sources are hand-craftable from a Catalyst + 8 of the raw, so
-  resource production itself is expandable. The hotbar lists all placeables (keys 1-9, 0
-  jump to the first ten; mouse wheel cycles all; `Input::wheelSteps`).
+  resource production itself is expandable.
+- **Curated hotbar + inventory screen** — the hotbar is ten player-assigned slots
+  (`m_hotbar` is `std::array<ItemId, kHotbarSlots>`; `ItemId::None` = empty; keys 1-9/0,
+  wheel cycles all ten). The **Tab overlay** (`m_invOpen`, `invLayout()`/`update`/
+  `drawInventoryUi` in VoxelGameUi.cpp) shows everything owned; dragging a grid item
+  onto a slot ASSIGNS it (`m_invDrag` — a reference, nothing leaves the inventory; an
+  item lives on at most one slot; RMB clears a slot). Assignments survive count 0
+  (drawn grey-tinted, RMB place plays "deny") and the death wipe — restocking
+  re-enables them. Fresh games and pre-v12 saves seed `vg::kDefaultHotbar` (the ten
+  machine placeables). Tab/E/F1 overlays are mutually exclusive.
 
 UI: an **F1 help overlay** (goal + quickstart + controls) built on `UiRenderer`; the
 bitmap font also supports `>` and `+`. Esc closes the topmost overlay (machine panel,
-help, crafting menu); with nothing open it toggles the **pause menu** (RESUME /
+inventory, help, crafting menu); with nothing open it toggles the **pause menu** (RESUME /
 SAVE GAME / SAVE AND QUIT). While paused the engine stops accruing simulation time
 (`Application::setPaused` — onTick simply doesn't run, and no backlog builds up),
 so machines, growth, and weather truly freeze. Quitting lives on the pause menu's
@@ -329,11 +337,12 @@ Persistence:
   save to `.tmp`, rotate the old file to `.bak`, rename in; load falls back to `.bak`
   before regenerating. The file holds seed, all chunks, player camera/inventory/
   slot, machines (type/buffers/recipe/progress — generators/barrels ride along),
-  belts (facing/cargo), source + sapling timers, weather state, and player
-  health (appended in v10; v9 saves still load with full-health default).
+  belts (facing/cargo), source + sapling timers, weather state, player
+  health (appended in v10; v9 saves still load with full-health default), and the
+  hotbar slot assignments (appended in v12; older saves keep `vg::kDefaultHotbar`).
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
   change — old saves are then discarded rather than misread. Exception: a bump that only
   APPENDS trailing fields may keep older versions loadable (`kOldestLoadable`; the
-  caller's defaults survive), as v9→v10 did for health — any enum/layout change must
-  drop that compatibility.
+  caller's defaults survive), as v9→v10 did for health and v11→v12 for the hotbar —
+  any enum/layout change must drop that compatibility.

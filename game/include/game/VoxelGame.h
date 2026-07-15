@@ -17,6 +17,7 @@
 #include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -61,13 +62,16 @@ private:
     void closeMachineUi();
     void updateMachineUi();      // keyboard + mouse interaction with the panel
     void drawMachineUi();
+    void openInventoryUi();      // Tab: full inventory + hotbar assignment
+    void closeInventoryUi();
+    void updateInventoryUi();    // drag items onto hotbar slots
+    void drawInventoryUi();
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
-    // The selected hotbar item (None while the hotbar is empty).
-    ItemId heldItem() const {
-        return m_hotbar.empty() ? ItemId::None : m_hotbar[m_selectedSlot];
-    }
+    // The selected hotbar item (None for an empty slot). m_selectedSlot stays
+    // in [0, kHotbarSlots) — enforced at load, number keys, and wheel.
+    ItemId heldItem() const { return m_hotbar[m_selectedSlot]; }
 
     bool saveGame();             // write the full game state to m_savePath
     bool loadGame();             // restore it; false = no/invalid save
@@ -108,9 +112,12 @@ private:
     std::unique_ptr<World> m_world;
     PowerState m_power; // energized cells; refreshed on every edit
 
-    Inventory           m_inventory;
-    std::vector<ItemId> m_hotbar;        // placeable items, selected by number keys
-    int                 m_selectedSlot = 0;
+    Inventory m_inventory;
+    // Player-assigned hotbar slots (None = empty). Assignments are references
+    // into m_inventory — counts never live here — so they survive hitting 0
+    // (drawn greyed) and even the death wipe; restocking re-enables them.
+    std::array<ItemId, kHotbarSlots> m_hotbar{};
+    int m_selectedSlot = 0;
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
     std::unordered_set<glm::ivec3, IVec3Hash> m_hungryGenerators; // networks wanting power
@@ -158,6 +165,7 @@ private:
     std::string m_savePath;        // save.vxf in the SDL pref dir
 
     bool m_menuOpen = false;             // crafting menu visible?
+    bool m_invOpen = false;              // inventory overlay (Tab) visible?
     bool m_helpOpen = false;             // F1 help overlay visible?
     bool m_debugOpen = false;            // F3 perf overlay visible?
     int  m_menuSelection = 0;
@@ -195,6 +203,10 @@ private:
     };
     Drag m_drag;
     void cancelDrag(); // return the payload to its source
+
+    // Item being dragged inside the inventory overlay. Unlike m_drag this is
+    // a reference — nothing leaves the inventory — so cancel is just a reset.
+    ItemId m_invDrag = ItemId::None;
 
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};

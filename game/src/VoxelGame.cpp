@@ -77,20 +77,10 @@ void VoxelGame::onStart() {
         migrateLegacySave(m_savePath);
     }
 
-    // Hotbar: every placeable item, in enum order. Keys 1-9 and 0 jump to the
-    // first ten slots; the mouse wheel cycles through all of them.
-    m_hotbar.clear();
-    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
-        const ItemId id = static_cast<ItemId>(i);
-        // Tools ride in the hotbar too: the bucket (hold in rain to collect
-        // water), the healing draught (RMB drinks), and the sword (LMB
-        // attacks). The place path guards on `placeable`, so tools never
-        // place blocks.
-        if (itemInfo(id).placeable || id == ItemId::Bucket ||
-            id == ItemId::HealingDraught || id == ItemId::CopperSword) {
-            m_hotbar.push_back(id);
-        }
-    }
+    // Hotbar: ten player-assigned slots, curated in the Tab inventory overlay
+    // (keys 1-9 and 0 select; the wheel cycles). Seed the default BEFORE
+    // loadGame() so a pre-v12 save keeps it, like the health default below.
+    m_hotbar = kDefaultHotbar;
 
     m_world = std::make_unique<World>();
     m_health = kMaxHealth; // pre-v10 saves have no health field; keep this default
@@ -132,7 +122,7 @@ bool VoxelGame::saveGame() {
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                m_weatherRaining, m_weatherTimer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot, m_health};
+               m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -145,9 +135,10 @@ bool VoxelGame::loadGame() {
         SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                    m_weatherRaining, m_weatherTimer, m_bucketFill,
                    camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_health};
+                   m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
         if (SaveSystem::load(path, d)) {
-            m_selectedSlot = std::clamp(slot, 0, static_cast<int>(m_hotbar.size()) - 1);
+            // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
+            m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
             return true;
         }
         // A partial read may have dirtied state; start clean before the next
@@ -162,6 +153,7 @@ bool VoxelGame::loadGame() {
         m_weatherTimer = 120.0f;
         m_bucketFill = 0.0f;
         m_health = kMaxHealth;
+        m_hotbar = kDefaultHotbar;
         m_sourceRng = 0;
         // Camera pose, seed, and slot need no reset: a .bak success or the
         // caller's fresh island overwrites them all.
@@ -180,6 +172,12 @@ void VoxelGame::onEscape() {
         } else {
             closeMachineUi();
         }
+    } else if (m_invOpen) {
+        if (m_invDrag != ItemId::None) {
+            m_invDrag = ItemId::None; // first Esc drops the drag; second closes
+        } else {
+            closeInventoryUi();
+        }
     } else if (m_helpOpen) {
         m_helpOpen = false;
         audio().play("close", kUiVolume);
@@ -196,8 +194,11 @@ void VoxelGame::onEscape() {
 
 void VoxelGame::updateTitle() {
     const ItemId held = heldItem();
+    const std::string holding =
+        held == ItemId::None
+            ? std::string("Nothing")
+            : itemName(held) + (" x" + std::to_string(m_inventory.count(held)));
     window().setTitle(std::string("Voxel Factory v" VOXEL_FACTORY_VERSION
-                                  "  —  Holding: ") + itemName(held) +
-                      " x" + std::to_string(m_inventory.count(held)) +
+                                  "  —  Holding: ") + holding +
                       "   (F1 help / E craft / LMB mine / RMB place)");
 }
