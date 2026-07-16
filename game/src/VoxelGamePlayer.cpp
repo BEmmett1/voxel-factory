@@ -72,9 +72,14 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // Pause menu: simulated time is frozen (the engine skips onTick while
-    // paused); the menu owns all input until it resumes or quits.
+    // paused); the menu owns all input until it resumes or quits. The
+    // settings panel lives inside the pause (sim stays frozen there).
     if (m_pauseOpen) {
-        updatePauseMenu();
+        if (m_settingsOpen) {
+            updateSettingsUi();
+        } else {
+            updatePauseMenu();
+        }
         return;
     }
 
@@ -94,15 +99,15 @@ void VoxelGame::onUpdate(float dt) {
         return;
     }
 
-    // F5: quick-save (also happens automatically on quit).
-    if (input().wasKeyPressed(SDL_SCANCODE_F5)) {
+    // Quick-save (default F5; also happens automatically on quit).
+    if (input().wasKeyPressed(key(Action::QuickSave))) {
         if (saveGame()) {
             window().setTitle("Voxel Factory  —  SAVED");
         }
     }
 
-    // Help overlay: toggle with F1. While open it freezes the world.
-    if (input().wasKeyPressed(SDL_SCANCODE_F1)) {
+    // Help overlay (default F1). While open it freezes the world.
+    if (input().wasKeyPressed(key(Action::Help))) {
         m_helpOpen = !m_helpOpen;
         audio().play(m_helpOpen ? "open" : "close", kUiVolume);
         if (m_menuOpen) {
@@ -119,9 +124,9 @@ void VoxelGame::onUpdate(float dt) {
         return;
     }
 
-    // Crafting menu: toggle with E. While open it owns the input and freezes
+    // Crafting menu (default E). While open it owns the input and freezes
     // the world; the cursor is released for hover/click.
-    if (input().wasKeyPressed(SDL_SCANCODE_E)) {
+    if (input().wasKeyPressed(key(Action::CraftMenu))) {
         m_menuOpen = !m_menuOpen;
         window().setRelativeMouse(!m_menuOpen);
         audio().play(m_menuOpen ? "open" : "close", kUiVolume);
@@ -135,9 +140,9 @@ void VoxelGame::onUpdate(float dt) {
         return;
     }
 
-    // Inventory overlay: toggle with Tab. While open it owns the input;
+    // Inventory overlay (default Tab). While open it owns the input;
     // drag items onto the hotbar strip to assign them.
-    if (input().wasKeyPressed(SDL_SCANCODE_TAB)) {
+    if (input().wasKeyPressed(key(Action::Inventory))) {
         if (m_invOpen) {
             closeInventoryUi();
         } else {
@@ -150,8 +155,8 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // Mouse look.
-    cam.addLook(input().mouseRelX() * kLookSensitivity,
-                -input().mouseRelY() * kLookSensitivity);
+    cam.addLook(input().mouseRelX() * m_settings.sensitivity,
+                -input().mouseRelY() * m_settings.sensitivity);
 
     // Walking physics: WASD on the ground plane, gravity, Space to jump.
     // There is no flight -- verticality is scaffolds, hills, and falling.
@@ -159,14 +164,14 @@ void VoxelGame::onUpdate(float dt) {
     if (glm::dot(flatFront, flatFront) > 1e-6f) flatFront = glm::normalize(flatFront);
 
     glm::vec3 wish(0.0f);
-    if (input().isKeyDown(SDL_SCANCODE_W)) wish += flatFront;
-    if (input().isKeyDown(SDL_SCANCODE_S)) wish -= flatFront;
-    if (input().isKeyDown(SDL_SCANCODE_D)) wish += cam.right();
-    if (input().isKeyDown(SDL_SCANCODE_A)) wish -= cam.right();
+    if (input().isKeyDown(key(Action::MoveForward))) wish += flatFront;
+    if (input().isKeyDown(key(Action::MoveBack))) wish -= flatFront;
+    if (input().isKeyDown(key(Action::MoveRight))) wish += cam.right();
+    if (input().isKeyDown(key(Action::MoveLeft))) wish -= cam.right();
     float targetSpeed = 0.0f;
     if (glm::dot(wish, wish) > 0.0f) {
         targetSpeed = kWalkSpeed;
-        if (input().isKeyDown(SDL_SCANCODE_LCTRL)) targetSpeed *= kSprintMult; // sprint
+        if (input().isKeyDown(key(Action::Sprint))) targetSpeed *= kSprintMult;
         wish = glm::normalize(wish);
     }
 
@@ -180,7 +185,7 @@ void VoxelGame::onUpdate(float dt) {
         m_velXZ += delta * (std::min(rate * dt, deltaLen) / deltaLen);
     }
 
-    if (m_grounded && input().isKeyDown(SDL_SCANCODE_SPACE)) {
+    if (m_grounded && input().isKeyDown(key(Action::Jump))) {
         m_velY = kJumpSpeed;
     }
     m_velY = std::max(m_velY - kGravity * dt, -kTerminalVel);
@@ -353,8 +358,8 @@ void VoxelGame::onUpdate(float dt) {
             }
         }
 
-        // Wrench: R re-aims the targeted conduit, cycling six directions.
-        if (input().wasKeyPressed(SDL_SCANCODE_R) && m_inventory.has(ItemId::Wrench)) {
+        // Wrench (default R): re-aims the targeted conduit, cycling six ways.
+        if (input().wasKeyPressed(key(Action::WrenchRotate)) && m_inventory.has(ItemId::Wrench)) {
             const auto bit = m_belts.find(tb);
             if (bit != m_belts.end()) {
                 static const glm::ivec3 kCycle[6] = {

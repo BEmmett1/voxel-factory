@@ -25,7 +25,8 @@
 
 namespace vg {
 
-    inline constexpr float kLookSensitivity = 0.12f; // degrees per pixel
+    // Mouse look sensitivity and master volume live in Settings (Settings.h)
+    // now — user-tunable, persisted in settings.cfg.
 
     // Sun direction, shared by the chunk and entity passes.
     inline const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
@@ -64,6 +65,7 @@ namespace vg {
     inline constexpr const char* kOrgName  = "BennyThompson";
     inline constexpr const char* kAppName  = "voxel-factory";
     inline constexpr const char* kSaveFile = "save.vxf";
+    inline constexpr const char* kSettingsFile = "settings.cfg";
 
     // Fresh games and pre-v12 saves seed the hotbar with the ten placeables
     // the old auto-built hotbar put on keys 1-0, preserving muscle memory
@@ -128,8 +130,7 @@ namespace vg {
     inline constexpr float kCreatureTurnRate     = 360.0f; // deg/s yaw ease
     inline constexpr int   kMaxEntityBones       = 32;     // must match uBones[] in entity.vert
 
-    // ---- Audio: mix levels + hum behavior ----
-    inline constexpr float kMasterVolume   = 0.8f;
+    // ---- Audio: mix levels + hum behavior (master volume is a Setting) ----
     inline constexpr float kMineVolume     = 0.9f;  // block broken (positional)
     inline constexpr float kPlaceVolume    = 0.8f;  // block placed (positional)
     inline constexpr float kUiVolume       = 0.5f;  // clicks / open / close

@@ -932,7 +932,7 @@ void VoxelGame::drawCraftMenu() {
 namespace {
 
     // Pause menu rows + layout, shared by update (hit-testing) and draw.
-    constexpr const char* kPauseRows[] = {"RESUME", "SAVE GAME", "SAVE AND QUIT"};
+    constexpr const char* kPauseRows[] = {"RESUME", "SETTINGS", "SAVE GAME", "SAVE AND QUIT"};
     constexpr int kPauseRowCount = static_cast<int>(sizeof(kPauseRows) / sizeof(kPauseRows[0]));
 
     struct PauseLayout {
@@ -946,6 +946,32 @@ namespace {
         PauseLayout L;
         const float headerH = 46.0f, footerH = 30.0f;
         L.panelH = headerH + kPauseRowCount * PauseLayout::RowH + footerH + 10.0f;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.rowsY = L.py + headerH;
+        L.footerY = L.py + L.panelH - footerH + 6.0f;
+        return L;
+    }
+
+    // Settings panel rows (the keybinds subpanel's rows come from the Action
+    // enum plus RESET DEFAULTS + BACK). One layout serves both panels.
+    constexpr const char* kSettingsRows[] = {
+        "FULLSCREEN", "VSYNC", "SENSITIVITY", "VOLUME", "KEYBINDS...", "BACK"};
+    constexpr int kSettingsRowCount =
+        static_cast<int>(sizeof(kSettingsRows) / sizeof(kSettingsRows[0]));
+    constexpr int kBindsRowCount = kActionCount + 2; // + RESET DEFAULTS + BACK
+
+    struct SettingsLayout {
+        static constexpr float RowH = 28.0f;
+        float px = 0, py = 0, panelW = 460.0f, panelH = 0;
+        float rowsY = 0;
+        float footerY = 0;
+    };
+
+    SettingsLayout settingsLayout(int w, int h, int rows) {
+        SettingsLayout L;
+        const float headerH = 46.0f, footerH = 30.0f;
+        L.panelH = headerH + rows * SettingsLayout::RowH + footerH + 10.0f;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.rowsY = L.py + headerH;
@@ -1002,6 +1028,9 @@ void VoxelGame::updatePauseMenu() {
                 closePauseMenu();
                 break;
             case 1:
+                openSettingsUi(); // plays "open"; pause stays underneath
+                break;
+            case 2:
                 audio().play("click", kUiVolume);
                 if (saveGame()) {
                     window().setTitle("Voxel Factory  —  SAVED");
@@ -1046,38 +1075,270 @@ void VoxelGame::drawPauseMenu() {
     m_ui.end();
 }
 
+void VoxelGame::openSettingsUi() {
+    m_settingsOpen = true;
+    m_settingsSel = 0;
+    m_bindsOpen = false;
+    m_bindCapture = -1;
+    // The pause menu underneath already froze the sim + released the cursor.
+    audio().play("open", kUiVolume);
+}
+
+void VoxelGame::closeSettingsUi() {
+    m_bindCapture = -1;
+    m_bindsOpen = false;
+    m_settingsOpen = false;
+    if (!m_settingsPath.empty()) SettingsIO::save(m_settingsPath, m_settings);
+    audio().play("close", kUiVolume);
+}
+
+void VoxelGame::applySettings() {
+    // All three are guarded engine calls — safe headless and at any time.
+    window().setFullscreen(m_settings.fullscreen);
+    window().setVsync(m_settings.vsync);
+    audio().setMasterVolume(m_settings.volume);
+    // Sensitivity needs no push: its one use site reads m_settings live.
+}
+
+void VoxelGame::updateSettingsUi() {
+    // Key capture swallows EVERYTHING first (including W/S/Enter), so panel
+    // navigation can never race an armed capture. Esc cancels via onEscape,
+    // which runs before this and clears m_bindCapture.
+    if (m_bindCapture >= 0) {
+        for (int sc = 1; sc < SDL_SCANCODE_COUNT; ++sc) {
+            const SDL_Scancode s = static_cast<SDL_Scancode>(sc);
+            if (!input().wasKeyPressed(s)) continue;
+            if (!bindableScancode(s)) {
+                audio().play("deny", kCraftVolume); // reserved key; keep waiting
+            } else {
+                // A key lives on at most one action: steal it if needed (the
+                // robbed row shows "---"; RESET DEFAULTS recovers).
+                for (SDL_Scancode& b : m_settings.binds) {
+                    if (b == s) b = SDL_SCANCODE_UNKNOWN;
+                }
+                m_settings.binds[static_cast<std::size_t>(m_bindCapture)] = s;
+                m_bindCapture = -1;
+                audio().play("click", kUiVolume);
+            }
+            break;
+        }
+        return; // mouse input is ignored while capturing
+    }
+
+    const int rows = m_bindsOpen ? kBindsRowCount : kSettingsRowCount;
+    int& sel = m_bindsOpen ? m_bindsSel : m_settingsSel;
+    const SettingsLayout L = settingsLayout(window().width(), window().height(), rows);
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    const int selBefore = sel;
+    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
+        sel = (sel - 1 + rows) % rows;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
+        sel = (sel + 1) % rows;
+    }
+    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
+                          my >= L.rowsY && my < L.rowsY + rows * SettingsLayout::RowH;
+    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
+        sel = static_cast<int>((my - L.rowsY) / SettingsLayout::RowH);
+    }
+    sel = std::min(sel, rows - 1);
+    if (sel != selBefore) audio().play("click", kUiVolume);
+
+    const bool activate = input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
+                          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
+                          (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows);
+
+    if (m_bindsOpen) {
+        if (!activate) return;
+        if (sel < kActionCount) {
+            m_bindCapture = sel; // row shows PRESS A KEY until the next key
+            audio().play("click", kUiVolume);
+        } else if (sel == kActionCount) {
+            m_settings.binds = kDefaultBinds; // RESET DEFAULTS
+            audio().play("click", kUiVolume);
+        } else {
+            m_bindsOpen = false; // BACK
+            audio().play("close", kUiVolume);
+        }
+        return;
+    }
+
+    // Settings panel: LEFT/RIGHT (or A/D) step the selected value; Enter or a
+    // click flips toggles / steps a value up.
+    int step = 0;
+    if (input().wasKeyPressed(SDL_SCANCODE_LEFT) || input().wasKeyPressed(SDL_SCANCODE_A)) step -= 1;
+    if (input().wasKeyPressed(SDL_SCANCODE_RIGHT) || input().wasKeyPressed(SDL_SCANCODE_D)) step += 1;
+
+    auto adjust = [&](float& v, float lo, float hi, float delta) {
+        const float next = glm::clamp(v + delta, lo, hi);
+        if (next == v) {
+            audio().play("deny", kCraftVolume); // already at the limit
+            return false;
+        }
+        v = next;
+        audio().play("click", kUiVolume);
+        return true;
+    };
+
+    switch (sel) {
+        case 0: // FULLSCREEN
+            if (step != 0 || activate) {
+                m_settings.fullscreen = !m_settings.fullscreen;
+                applySettings();
+                audio().play("click", kUiVolume);
+            }
+            break;
+        case 1: // VSYNC
+            if (step != 0 || activate) {
+                m_settings.vsync = !m_settings.vsync;
+                applySettings();
+                audio().play("click", kUiVolume);
+            }
+            break;
+        case 2: // SENSITIVITY (read live at the look site; no apply needed)
+            if (step != 0 || activate) {
+                adjust(m_settings.sensitivity, kSensitivityMin, kSensitivityMax,
+                       (step != 0 ? static_cast<float>(step) : 1.0f) * kSensitivityStep);
+            }
+            break;
+        case 3: // VOLUME
+            if (step != 0 || activate) {
+                if (adjust(m_settings.volume, kVolumeMin, kVolumeMax,
+                           (step != 0 ? static_cast<float>(step) : 1.0f) * kVolumeStep)) {
+                    applySettings();
+                }
+            }
+            break;
+        case 4: // KEYBINDS...
+            if (activate) {
+                m_bindsOpen = true;
+                m_bindsSel = 0;
+                audio().play("open", kUiVolume);
+            }
+            break;
+        default: // BACK
+            if (activate) closeSettingsUi();
+            break;
+    }
+}
+
+void VoxelGame::drawSettingsUi() {
+    const int w = window().width();
+    const int h = window().height();
+    const int rows = m_bindsOpen ? kBindsRowCount : kSettingsRowCount;
+    const int sel = m_bindsOpen ? m_bindsSel : m_settingsSel;
+    const SettingsLayout L = settingsLayout(w, h, rows);
+
+    m_ui.begin(w, h);
+    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.6f));
+    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+    m_ui.text(L.px + 16, L.py + 12, 18.0f, m_bindsOpen ? "KEYBINDS" : "SETTINGS",
+              glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+
+    char buf[32];
+    for (int i = 0; i < rows; ++i) {
+        const float ry = L.rowsY + i * SettingsLayout::RowH;
+        const bool selected = (i == sel);
+        if (selected) {
+            m_ui.rect(L.px + 6, ry, L.panelW - 12, SettingsLayout::RowH - 4,
+                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+        }
+        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
+                                       : glm::vec4(0.90f, 0.90f, 0.92f, 1.0f);
+
+        std::string label, value;
+        bool capturing = false;
+        if (m_bindsOpen) {
+            if (i < kActionCount) {
+                label = actionName(static_cast<Action>(i));
+                capturing = (m_bindCapture == i);
+                value = capturing ? "PRESS A KEY"
+                                  : scancodeLabel(m_settings.binds[static_cast<std::size_t>(i)]);
+            } else if (i == kActionCount) {
+                label = "RESET DEFAULTS";
+            } else {
+                label = "BACK";
+            }
+        } else {
+            label = kSettingsRows[i];
+            switch (i) {
+                case 0: value = m_settings.fullscreen ? "< ON >" : "< OFF >"; break;
+                case 1: value = m_settings.vsync ? "< ON >" : "< OFF >"; break;
+                case 2:
+                    std::snprintf(buf, sizeof(buf), "< %.2f >", m_settings.sensitivity);
+                    value = buf;
+                    break;
+                case 3:
+                    std::snprintf(buf, sizeof(buf), "< %d%% >",
+                                  static_cast<int>(std::lround(m_settings.volume * 100.0f)));
+                    value = buf;
+                    break;
+                default: break;
+            }
+        }
+
+        m_ui.text(L.px + 20, ry + 6, 14.0f, label, col);
+        if (!value.empty()) {
+            const glm::vec4 vcol = capturing ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f) : col;
+            m_ui.text(L.px + L.panelW - 20 - m_ui.textWidth(14.0f, value), ry + 6, 14.0f,
+                      value, vcol);
+        }
+    }
+
+    const char* footer = m_bindCapture >= 0 ? "PRESS A KEY   ESC CANCEL"
+                       : m_bindsOpen        ? "W/S + ENTER REBIND   ESC BACK"
+                                            : "A/D ADJUST   ENTER SELECT   ESC BACK";
+    m_ui.text(L.px + 16, L.footerY, 12.0f, footer, glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+
+    m_ui.end();
+}
+
 void VoxelGame::drawHelp() {
     const int w = window().width();
     const int h = window().height();
 
-    // Each line: text + a style (0 heading, 1 body, 2 dim).
-    struct Line { const char* text; int style; };
-    static const Line kLines[] = {
+    // Each line: text + a style (0 heading, 1 body, 2 dim). Built per call so
+    // rebound keys show their current names (help only draws while open).
+    struct Line { std::string text; int style; };
+    const auto k = [this](Action a) { return scancodeLabel(m_settings.key(a)); };
+    // "WASD" when all four movement binds are single characters, else spelled
+    // out with slashes (covers LEFT CTRL-style names and unbound "---").
+    std::string move = k(Action::MoveForward) + k(Action::MoveLeft) +
+                       k(Action::MoveBack) + k(Action::MoveRight);
+    if (move.size() != 4) {
+        move = k(Action::MoveForward) + "/" + k(Action::MoveLeft) + "/" +
+               k(Action::MoveBack) + "/" + k(Action::MoveRight);
+    }
+    const std::vector<Line> kLines = {
         {"HOW TO PLAY", 0},
         {"GOAL: BREW YOUR WAY UP TO THE PHILOSOPHERS STONE, THEN", 1},
         {"TRANSMUTE NEW RESOURCE SOURCES TO EXPAND YOUR ISLAND.", 1},
         {"", 1},
         {"1. MINE NODES (LMB) AT THE GLOWING SOURCE PATCHES. THEY REGROW.", 1},
-        {"2. CRAFT WITH E: ORE > INGOT > GENERATOR + GRINDER ( NO PLATES ).", 1},
+        {"2. CRAFT WITH " + k(Action::CraftMenu) +
+             ": ORE > INGOT > GENERATOR + GRINDER ( NO PLATES ).", 1},
         {"3. GENERATORS BURN WOOD. KEEP THEM FED, KEEP TREES PLANTED.", 1},
         {"4. A POWERED GRINDER PRESSES THE COPPER PLATES FOR ALL OTHER GEAR.", 1},
         {"5. RAIN FILLS BARRELS AND HELD BUCKETS. IT IS THE ONLY WATER.", 1},
         {"6. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
-        {"7. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS. WRENCH + R RE-AIMS.", 1},
+        {"7. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS. WRENCH + " +
+             k(Action::WrenchRotate) + " RE-AIMS.", 1},
         {"8. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
         {"9. CHOP TREES: LOGS GIVE WOOD, LEAVES DROP SAPLINGS. REPLANT ON GRASS.", 1},
         {"10. NO FLYING: BUILD SCAFFOLD. FALL OFF THE EDGE AND YOUR PACK IS LOST.", 2},
         {"", 1},
         {"CONTROLS", 0},
-        {"WASD MOVE   SPACE JUMP   LCTRL SPRINT", 1},
+        {move + " MOVE   " + k(Action::Jump) + " JUMP   " + k(Action::Sprint) + " SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
-        {"TAB INVENTORY: DRAG ITEMS ONTO THE HOTBAR TO ASSIGN THEM", 1},
+        {k(Action::Inventory) + " INVENTORY: DRAG ITEMS ONTO THE HOTBAR TO ASSIGN THEM", 1},
         {"RMB WITH DRAUGHT > DRINK ( HEAL )   HARD FALLS HURT", 1},
-        {"E CRAFT MENU   RMB OPEN MACHINE   F5 SAVE   ESC QUIT ( AUTO SAVES )", 1},
+        {k(Action::CraftMenu) + " CRAFT MENU   RMB OPEN MACHINE   " +
+             k(Action::QuickSave) + " SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},
-        {"F1 OR ESC TO CLOSE", 2},
+        {k(Action::Help) + " OR ESC TO CLOSE", 2},
     };
-    const int n = static_cast<int>(sizeof(kLines) / sizeof(kLines[0]));
+    const int n = static_cast<int>(kLines.size());
 
     m_ui.begin(w, h);
     m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.55f));
@@ -1090,8 +1351,8 @@ void VoxelGame::drawHelp() {
     m_ui.rect(px, py, panelW, panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
 
     for (int i = 0; i < n; ++i) {
-        const Line& line = kLines[i];
-        if (!line.text[0]) continue;
+        const Line& line = kLines[static_cast<std::size_t>(i)];
+        if (line.text.empty()) continue;
         const float ly = py + padY + i * lineH;
         const float size = line.style == 0 ? 18.0f : 14.0f;
         const glm::vec4 col = line.style == 0 ? glm::vec4(1.0f, 1.0f, 0.7f, 1.0f)

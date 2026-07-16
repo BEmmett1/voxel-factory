@@ -25,6 +25,8 @@ namespace engine {
 
         void setRelativeMouse(bool enabled);
         void setTitle(const std::string& title);
+        void setFullscreen(bool on);  // SDL3 borderless-desktop fullscreen
+        void setVsync(bool on);       // swap interval 1/0 (context is current)
 
         SDL_Window* handle() const { return m_window; }
 

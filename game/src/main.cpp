@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/SaveSystem.h"
+#include "game/Settings.h"
 #include "game/World.h"
 
 #include <array>
@@ -168,6 +169,56 @@ int runSelfTest() {
     fs::remove(path, ec);
     fs::remove(path + ".bak", ec);
     fs::remove(cut, ec);
+
+    // Settings: cfg round-trip, rotation, and parse tolerance (headless).
+    const std::string cfg =
+        (fs::temp_directory_path() / "voxel-factory-selftest.cfg").string();
+    fs::remove(cfg, ec);
+    fs::remove(cfg + ".bak", ec);
+
+    Settings s;
+    SELFTEST_CHECK(!SettingsIO::load(cfg, s)); // missing file = false, defaults kept
+    s.fullscreen = true;
+    s.vsync = false;
+    s.sensitivity = 0.20f;
+    s.volume = 0.5f;
+    s.binds[static_cast<int>(Action::Jump)] = SDL_SCANCODE_J;
+    // Rebinding W to Sprint leaves MoveForward EXPLICITLY unbound — the
+    // round-trip must preserve that, not resurrect the default (which the
+    // duplicate pass would then strip from the wrong action).
+    s.binds[static_cast<int>(Action::MoveForward)] = SDL_SCANCODE_UNKNOWN;
+    s.binds[static_cast<int>(Action::Sprint)] = SDL_SCANCODE_W;
+    SELFTEST_CHECK(SettingsIO::save(cfg, s));
+
+    Settings t;
+    SELFTEST_CHECK(SettingsIO::load(cfg, t));
+    SELFTEST_CHECK(t.fullscreen && !t.vsync);
+    SELFTEST_CHECK(t.sensitivity == 0.20f && t.volume == 0.5f);
+    SELFTEST_CHECK(t.key(Action::Jump) == SDL_SCANCODE_J);
+    SELFTEST_CHECK(t.key(Action::MoveForward) == SDL_SCANCODE_UNKNOWN);
+    SELFTEST_CHECK(t.key(Action::Sprint) == SDL_SCANCODE_W);
+
+    // A second save rotates .bak and leaves no .tmp (the SaveSystem contract).
+    SELFTEST_CHECK(SettingsIO::save(cfg, s));
+    SELFTEST_CHECK(fs::exists(cfg + ".bak"));
+    SELFTEST_CHECK(!fs::exists(cfg + ".tmp"));
+
+    // Tolerance: junk lines and unknown keys are skipped; out-of-range floats
+    // clamp; bad numbers and reserved scancodes keep their defaults.
+    {
+        std::ofstream bad(cfg, std::ios::trunc);
+        bad << "# comment\nGARBAGE\nNEWKEY=5\nSENSITIVITY=99\nVOLUME=abc\n"
+            << "BIND_JUMP=41\nVSYNC=0\n"; // 41 = SDL_SCANCODE_ESCAPE (reserved)
+    }
+    Settings u;
+    SELFTEST_CHECK(SettingsIO::load(cfg, u));
+    SELFTEST_CHECK(u.sensitivity == kSensitivityMax);          // clamped
+    SELFTEST_CHECK(u.volume == 0.8f);                          // bad value -> default
+    SELFTEST_CHECK(u.key(Action::Jump) == SDL_SCANCODE_SPACE); // reserved -> default
+    SELFTEST_CHECK(!u.vsync);
+
+    fs::remove(cfg, ec);
+    fs::remove(cfg + ".bak", ec);
     std::printf("selftest OK\n");
     return 0;
 }

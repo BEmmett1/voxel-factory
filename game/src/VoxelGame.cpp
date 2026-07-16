@@ -62,20 +62,23 @@ void VoxelGame::onStart() {
 
     buildAtlas();
 
-    audio().setMasterVolume(kMasterVolume);
+    // The save and settings live in the OS-preferred data directory. Resolved
+    // before audio setup so the loaded master volume applies from frame one.
+    if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
+        m_savePath = std::string(pref) + kSaveFile;
+        m_settingsPath = std::string(pref) + kSettingsFile;
+        SDL_free(pref);
+        migrateLegacySave(m_savePath);
+    }
+    SettingsIO::load(m_settingsPath, m_settings); // missing/invalid = defaults
+    applySettings(); // fullscreen/vsync/volume (window + audio exist by now)
+
     audio().loadDirectory(dir + "assets/sounds");
     // Rain ambience runs for the whole session; the per-frame intensity ease
     // in onUpdate drives its gain (silent while clear).
     m_rainLoop = audio().createLoop("rain_loop", /*spatial=*/false, 0.0f);
 
     loadCreatureAssets(); // .bbmodel + entity shader; creatureless on failure
-
-    // The save lives in the OS-preferred data directory.
-    if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
-        m_savePath = std::string(pref) + kSaveFile;
-        SDL_free(pref);
-        migrateLegacySave(m_savePath);
-    }
 
     // Hotbar: ten player-assigned slots, curated in the Tab inventory overlay
     // (keys 1-9 and 0 select; the wheel cycles). Seed the default BEFORE
@@ -162,6 +165,8 @@ bool VoxelGame::loadGame() {
 }
 
 void VoxelGame::onExit() {
+    // Settings first: covers quitting with the settings panel still open.
+    if (!m_settingsPath.empty()) SettingsIO::save(m_settingsPath, m_settings);
     saveGame(); // runs on every quit path (Esc, window close)
 }
 
@@ -185,6 +190,19 @@ void VoxelGame::onEscape() {
         m_menuOpen = false;
         window().setRelativeMouse(true);
         audio().play("close", kUiVolume);
+    } else if (m_settingsOpen) {
+        // One level per press: key capture -> keybinds -> settings -> pause.
+        // (processEvents routes Esc here BEFORE onUpdate, so the capture scan
+        // in updateSettingsUi never sees this press.)
+        if (m_bindCapture >= 0) {
+            m_bindCapture = -1;
+            audio().play("close", kUiVolume);
+        } else if (m_bindsOpen) {
+            m_bindsOpen = false;
+            audio().play("close", kUiVolume);
+        } else {
+            closeSettingsUi();
+        }
     } else if (m_pauseOpen) {
         closePauseMenu();
     } else {

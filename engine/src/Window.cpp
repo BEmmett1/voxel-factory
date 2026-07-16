@@ -105,4 +105,15 @@ namespace engine {
         SDL_SetWindowTitle(m_window, title.c_str());
     }
 
+    void Window::setFullscreen(bool on) {
+        // SDL3 defaults to borderless desktop fullscreen (no exclusive mode
+        // set). The per-frame aspect/viewport refresh in Application::run
+        // absorbs the size change; nothing else needs to know.
+        SDL_SetWindowFullscreen(m_window, on);
+    }
+
+    void Window::setVsync(bool on) {
+        SDL_GL_SetSwapInterval(on ? 1 : 0);
+    }
+
 } // namespace engine

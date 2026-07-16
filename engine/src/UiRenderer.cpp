@@ -77,6 +77,8 @@ void main() {
             { 0,  0,  0,  0,  4,  4,  8}, // ,     (43)
             {16,  8,  4,  2,  4,  8, 16}, // >     (44)
             { 0,  4,  4, 31,  4,  4,  0}, // +     (45)
+            { 1,  2,  4,  8,  4,  2,  1}, // <     (46)
+            {25, 26,  2,  4,  8, 11, 19}, // %     (47)
         };
 
         // Maps a character to its glyph index, or -1 if unsupported.
@@ -95,13 +97,15 @@ void main() {
                 case ',': return 43;
                 case '>': return 44;
                 case '+': return 45;
+                case '<': return 46;
+                case '%': return 47;
                 default:  return -1;
             }
         }
 
         constexpr int kCellW = 6;  // glyph (5) + 1px spacing
         constexpr int kCellH = 8;  // glyph (7) + 1px spacing
-        constexpr int kGlyphs = 46;
+        constexpr int kGlyphs = 48;
         constexpr int kFontW = kCellW * kGlyphs;
         constexpr int kFontH = kCellH;
     } // namespace

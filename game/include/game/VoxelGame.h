@@ -10,6 +10,7 @@
 #include "game/Block.h"
 #include "game/Item.h"
 #include "game/Inventory.h"
+#include "game/Settings.h"
 #include "game/Recipes.h"
 #include "game/Machine.h"
 #include "game/Belt.h"
@@ -58,6 +59,13 @@ private:
     void closePauseMenu();       // resume
     void updatePauseMenu();      // keyboard + mouse interaction
     void drawPauseMenu();
+    void openSettingsUi();       // from the pause menu's SETTINGS row
+    void closeSettingsUi();      // writes settings.cfg; back to the pause menu
+    void updateSettingsUi();     // both panels + key capture
+    void drawSettingsUi();
+    void applySettings();        // push fullscreen/vsync/volume to the engine
+    // The scancode bound to a gameplay action (UNKNOWN = unbound, inert).
+    SDL_Scancode key(Action a) const { return m_settings.key(a); }
     void openMachineUi(const glm::ivec3& pos);
     void closeMachineUi();
     void updateMachineUi();      // keyboard + mouse interaction with the panel
@@ -171,6 +179,16 @@ private:
     int  m_menuSelection = 0;
     bool m_pauseOpen = false;            // pause menu (Esc); sim time frozen
     int  m_pauseSel = 0;
+
+    // Settings panel (opened from the pause menu; m_pauseOpen stays true so
+    // the sim stays frozen). m_bindCapture = the Action index awaiting a key.
+    Settings    m_settings;
+    std::string m_settingsPath;          // settings.cfg in the SDL pref dir
+    bool m_settingsOpen = false;
+    int  m_settingsSel  = 0;
+    bool m_bindsOpen    = false;         // keybinds subpanel
+    int  m_bindsSel     = 0;
+    int  m_bindCapture  = -1;
 
     // Rolling frame times + costs of the heavy passes, shown by F3.
     struct PerfStats {

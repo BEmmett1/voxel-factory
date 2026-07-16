@@ -10,6 +10,7 @@ add_executable(voxel-factory
     src/Raycast.cpp
     src/PowerSystem.cpp
     src/SaveSystem.cpp
+    src/Settings.cpp
     src/VoxelGame.cpp
     src/VoxelGameWorldGen.cpp
     src/VoxelGameSim.cpp

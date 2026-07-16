@@ -157,13 +157,36 @@ World & closed-loop economy:
   re-enables them. Fresh games and pre-v12 saves seed `vg::kDefaultHotbar` (the ten
   machine placeables). Tab/E/F1 overlays are mutually exclusive.
 
-UI: an **F1 help overlay** (goal + quickstart + controls) built on `UiRenderer`; the
-bitmap font also supports `>` and `+`. Esc closes the topmost overlay (machine panel,
-inventory, help, crafting menu); with nothing open it toggles the **pause menu** (RESUME /
-SAVE GAME / SAVE AND QUIT). While paused the engine stops accruing simulation time
-(`Application::setPaused` — onTick simply doesn't run, and no backlog builds up),
-so machines, growth, and weather truly freeze. Quitting lives on the pause menu's
-SAVE AND QUIT row (the window close button still quits + saves too).
+UI: an **F1 help overlay** (goal + quickstart + controls — the controls lines are
+built per draw from the current keybinds) on `UiRenderer`; the bitmap font also
+supports `>`, `+`, `<`, and `%`. Esc closes the topmost overlay (machine panel,
+inventory, help, crafting menu); with nothing open it toggles the **pause menu**
+(RESUME / SETTINGS / SAVE GAME / SAVE AND QUIT). While paused the engine stops
+accruing simulation time (`Application::setPaused` — onTick simply doesn't run, and
+no backlog builds up), so machines, growth, and weather truly freeze. Quitting lives
+on the pause menu's SAVE AND QUIT row (the window close button still quits + saves too).
+
+Settings (`Settings.h`/`Settings.cpp` own the model; UI in VoxelGameUi.cpp):
+- **SETTINGS panel** (pause menu row; sim stays frozen): fullscreen (SDL3 borderless
+  desktop via `Window::setFullscreen` — the per-frame aspect/viewport refresh absorbs
+  the mode change; fine on 100%-scale displays, Retina/scaled waits on the
+  HIGH_PIXEL_DENSITY ROADMAP item), vsync (`Window::setVsync`), mouse sensitivity
+  (0.02–0.40, read live at the one `addLook` site), master volume — all applied
+  live via `applySettings()`. A/D or arrows adjust; Enter/click flips.
+- **KEYBINDS subpanel**: the 11 `Action`s (move ×4, jump, sprint, craft, inventory,
+  wrench, quick save, help) rebind via press-to-capture (row shows PRESS A KEY;
+  Esc cancels the capture; reserved keys — Esc/Enter/arrows/hotbar digits/F3/F4 —
+  play deny). A key lives on at most one action: binding steals it and the robbed
+  row shows `---` (`SDL_SCANCODE_UNKNOWN` = unbound, safely inert); RESET DEFAULTS
+  recovers. Esc backs out one level: capture → keybinds → settings → pause.
+- **`settings.cfg`** (SDL pref dir, next to save.vxf): human-editable KEY=VALUE,
+  integer scancodes (0 = explicitly unbound), `#` comments; unknown keys skipped,
+  floats clamped, bad/reserved values keep defaults, duplicate binds sanitized
+  first-wins. Written atomically (tmp → .bak → rename) on settings-close and quit;
+  loaded + applied at the top of onStart. Covered by `--selftest` (round-trip,
+  rotation, tolerance, explicit-unbound preservation).
+- The old `vg::kLookSensitivity` / `vg::kMasterVolume` constants are gone — the
+  `Settings{}` member initializers are the single source of truth for defaults.
 
 - **Miner automation** — a powered Miner harvests the nearest grown resource node within
   radius 4, one per 4 s (`kMineSeconds`/`kMineRadius`, special-cased in `onTick` before

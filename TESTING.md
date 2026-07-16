@@ -27,11 +27,17 @@ an action and the result to expect.
 | Close menu / pause | **Esc** (with nothing open, Esc opens the **pause menu**) |
 | Quit | pause menu → **SAVE AND QUIT** (or close the window; both save) |
 
-**Observability note:** the hotbar shows every *placeable* item plus the three
-tools (Bucket, Healing Draught, Copper Sword). Raw-material counts (ore, herb, …)
-are not on the hotbar — confirm them via the crafting menu (a recipe row turns
-white when you can afford it, and shows `HAVE n`) or a machine panel's INVENTORY
-grid. The window title always names the held item and its count.
+**Keybinds note:** movement, jump, sprint, craft menu, inventory, wrench,
+quick-save, and help are the **defaults** — all rebindable in the pause menu's
+SETTINGS → KEYBINDS. Esc, mouse buttons, hotbar digits, menu navigation, and
+the F3/F4 dev keys are fixed.
+
+**Observability note:** the hotbar is ten player-assigned slots (fresh games
+seed the ten machine placeables; assign anything else via the **Tab** inventory
+overlay). Raw-material counts are on the Tab overlay's grid, the crafting menu
+(a recipe row turns white when you can afford it, and shows `HAVE n`), or a
+machine panel's INVENTORY grid. The window title always names the held item and
+its count.
 
 ## Build & launch
 
@@ -45,7 +51,7 @@ grid. The window title always names the held item and its count.
    mac-debug`, then run `out/build/mac-Debug/bin/voxel-factory` (saves land in
    `~/Library/Application Support/BennyThompson/voxel-factory/`).
 2. Run `out/build/x64-Debug/bin/voxel-factory.exe`.
-   **Expect:** a window titled `Voxel Factory v<version>  —  Holding: Healing Draught x0 …`,
+   **Expect:** a window titled `Voxel Factory v<version>  —  Holding: Conduit x0 …`,
    a centered crosshair, a hotbar along the bottom (all counts 0), and a row of ten
    hearts above the hotbar's left end. You spawn on a grassy plateau at the center of a
    **floating island** in a blue sky, with **one grown tree** somewhere on the plateau.
@@ -90,12 +96,30 @@ grid. The window title always names the held item and its count.
 ## 2b. Pause menu (Esc) — time stops
 
 - With no menu open, press **Esc**. **Expect:** the world dims and a `PAUSED` panel
-  opens (RESUME / SAVE GAME / SAVE AND QUIT; hover/click or W/S + Enter; the version
-  shows top-right). Watch a working machine's floating progress bar first: while
-  paused it does **not** advance — machines, patch growth, weather, and the creature are
+  opens (RESUME / SETTINGS / SAVE GAME / SAVE AND QUIT; hover/click or W/S + Enter;
+  the version shows top-right). Watch a working machine's floating progress bar first:
+  while paused it does **not** advance — machines, patch growth, weather, and the creature are
   frozen (machine hums go quiet; rain, if any, keeps sounding). **Esc** (or RESUME)
   resumes exactly where things left off, with no burst of catch-up activity.
   `SAVE GAME` quick-saves (title flashes SAVED).
+
+## 2c. Settings & keybinds (pause menu → SETTINGS)
+
+- Open SETTINGS from the pause menu. **Expect:** FULLSCREEN / VSYNC / SENSITIVITY /
+  VOLUME / KEYBINDS... / BACK, values right-aligned (`< OFF >`, `< 0.12 >`, `< 80% >`).
+  The sim stays frozen throughout (check a progress bar).
+- **FULLSCREEN** (A/D or Enter): the window goes borderless fullscreen **live**, UI
+  re-centers; toggle back. **VSYNC** off: the F3 frame average drops well below the
+  refresh period; on restores it. **SENSITIVITY** up + resume: look is visibly faster.
+  **VOLUME** to 0%: everything silent, live.
+- **KEYBINDS...**: rows show current key names. Enter on JUMP → `PRESS A KEY` (red);
+  press **W**. **Expect:** JUMP=W **and** MOVE FORWARD shows `---` (a key lives on one
+  action). Esc mid-capture only cancels the capture; a reserved key (Enter, a digit)
+  plays the deny sound and keeps capturing. RESET DEFAULTS restores everything.
+- Esc backs out one level per press: capture → keybinds → settings → pause. Closing
+  SETTINGS writes `settings.cfg` next to the save. Relaunch: **expect** every changed
+  value and bind (including a `---` unbound) to survive. Hand-edit the file with
+  `SENSITIVITY=99` and a junk line: **expect** a clean launch, value clamped to 0.40.
 
 ## 3. Mining (LMB) → inventory + patch regrowth
 
