@@ -11,6 +11,11 @@
 //                SandNode / Spring / EssenceVent
 //  - Sources:    glowing blocks that grow a patch of their resource's nodes
 //                nearby over time; mining one drops its (re-placeable) item
+//
+// APPEND-ONLY: the ordinal is the on-disk save encoding (SaveSystem writes raw
+// block bytes), so new blocks go immediately before Count and existing entries
+// never move. The kBlocks registry in Block.cpp is static_asserted against
+// this order — a missing or misplaced row is a compile error.
 enum class BlockId : std::uint8_t {
     Air = 0,
     Grass,
@@ -51,30 +56,44 @@ enum class BlockId : std::uint8_t {
     Count
 };
 
+// Defined in Item.h; only the drop field below needs the type.
+enum class ItemId : std::uint8_t;
+
+// What mining a block yields ({None, 0} = nothing).
+struct BlockDrop {
+    ItemId item  = ItemId{}; // ItemId::None
+    int    count = 0;
+};
+
+// A block's atlas tiles by face; the four side faces share one tile.
+// (Atlas geometry — grid size, UV math — lives in Atlas.h.)
+struct BlockTiles {
+    int top    = 0;
+    int side   = 0;
+    int bottom = 0;
+};
+
+// Everything static about a block type, one registry row per BlockId.
 struct BlockInfo {
-    bool      solid;    // does it occlude neighbors / get meshed?
-    glm::vec3 color;    // flat base color (pre-lighting)
-    float     emissive; // constant self-illumination (sources glow)
+    BlockId     id;                 // must equal the row's position (static_asserted)
+    const char* name = "?";         // human-readable, e.g. for UI / window title
+    bool        solid = true;       // does it occlude neighbors / get meshed?
+    glm::vec3   color {0.0f};       // flat base color (pre-lighting)
+    float       emissive = 0.0f;    // constant self-illumination (sources glow)
+    bool        machine = false;    // processing machine (has a Machine entity)
+    bool        source = false;     // resource source (patch spawner)
+    bool        node = false;       // harvestable resource node (what Miners collect)
+    BlockId     spawnsNode = BlockId::Air; // the node a source grows (sources only)
+    BlockDrop   drop {};            // what mining it yields
+    BlockTiles  tiles {};           // atlas tiles per face
 };
 
 // Static properties for a block type.
 const BlockInfo& blockInfo(BlockId id);
 
-// Human-readable name, e.g. for UI / window title.
-const char* blockName(BlockId id);
-
-inline bool isSolid(BlockId id) {
-    return blockInfo(id).solid;
-}
-
-// A processing machine (grinder/cauldron/infuser/alembic/miner).
-bool isMachine(BlockId id);
-
-// A resource source (patch spawner).
-bool isSource(BlockId id);
-
-// A harvestable resource node (grown by a source; what Miners collect).
-bool isResourceNode(BlockId id);
-
-// The node block a source grows (Air if `id` is not a source).
-BlockId sourceSpawnsNode(BlockId id);
+inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
+inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }
+inline bool isMachine(BlockId id)          { return blockInfo(id).machine; }
+inline bool isSource(BlockId id)           { return blockInfo(id).source; }
+inline bool isResourceNode(BlockId id)     { return blockInfo(id).node; }
+inline BlockId sourceSpawnsNode(BlockId id){ return blockInfo(id).spawnsNode; }

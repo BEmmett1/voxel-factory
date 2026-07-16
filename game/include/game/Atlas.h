@@ -21,13 +21,10 @@ namespace Atlas {
     // toward +v; the mesher rotates UVs to match each belt's facing).
     constexpr int BeltArrowTile = 20;
 
-    // A block's tiles by face; the four side faces share one tile.
-    struct BlockTiles {
-        int top;
-        int side;
-        int bottom;
-    };
-    const BlockTiles& tilesForBlock(BlockId id);
+    // A block's tiles by face live on its BlockInfo registry row (Block.h) —
+    // one row per block holds everything, so the tables can't drift apart.
+    using BlockTiles = ::BlockTiles;
+    inline const BlockTiles& tilesForBlock(BlockId id) { return blockInfo(id).tiles; }
 
     // UV rectangle for a tile index, inset by half a texel to avoid bleeding
     // into neighboring tiles under nearest-neighbor sampling.

@@ -86,6 +86,11 @@ stay in their file's anonymous namespace.
 ## Conventions
 
 - Engine code in `engine::`; game code in the global namespace.
+- Block/item content lives in id-tagged registry tables (`kBlocks` in Block.cpp,
+  `kItems` in Item.cpp — name, flags, drops, atlas tiles, all of it), one
+  designated-initializer row per enum value, `static_assert`ed against enum order.
+  Adding content = append the enum value + one row; enums are APPEND-ONLY because
+  ordinals are the save encoding (see SCALABILITY.md).
 - Private members prefixed `m_`; ownership via `std::unique_ptr`, no raw `delete`.
 - Headers in `include/`, implementations in `src/`.
 - All movement/logic scaled by `dt`; simulation logic belongs in `onTick()`.

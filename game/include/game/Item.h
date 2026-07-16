@@ -6,6 +6,11 @@
 
 // Things the player can hold in their inventory. Distinct from BlockId: some
 // items are placeable (they place a block when used), most are materials.
+//
+// APPEND-ONLY: the save format serializes inventories by enum index and
+// accepts older, shorter item sets, so new items go immediately before Count
+// and existing entries never move. The kItems registry in Item.cpp is
+// static_asserted against this order.
 enum class ItemId : std::uint8_t {
     None = 0,
     // Raw materials (mined from world nodes)
@@ -76,10 +81,12 @@ enum class ItemId : std::uint8_t {
 inline constexpr int kHotbarSlots = 10;
 
 struct ItemInfo {
-    const char* name;
-    int         atlasTile;   // icon tile for materials; -1 for placeables (see iconTile)
-    bool        placeable;   // can it be placed in the world?
-    BlockId     placesBlock; // which block it places (Air if not placeable)
+    ItemId      id;                        // must equal the row's position (static_asserted)
+    const char* name = "-";
+    int         atlasTile = -1;            // icon tile for materials; -1 for placeables (see iconTile)
+    bool        placeable = false;         // can it be placed in the world?
+    BlockId     placesBlock = BlockId::Air; // which block it places
+    BlockId     nodeBlock = BlockId::Air;  // the node that yields this raw (see nodeForRaw)
 };
 
 struct ItemStack {

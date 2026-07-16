@@ -2,62 +2,98 @@
 
 #include "game/Atlas.h"
 
-#include <array>
+#include <cstddef>
+#include <iterator>
 
 namespace {
-    // Indexed by ItemId. Keep in sync with the enum order.
-    // Fields: name, atlasTile, placeable, placesBlock.
+
+    using B = BlockId;
+    using I = ItemId;
+
+    // One row per ItemId, in enum order — static_asserted below, so a missing
+    // or misplaced row is a compile error. Omitted fields take ItemInfo's
+    // defaults (not placeable, no icon tile, no node).
     // Material icons live in atlas rows 4-5 (tiles 64+; see assets/ATLAS.md).
-    // Placeables carry -1: their icon is the placed block's side tile.
-    const std::array<ItemInfo, static_cast<std::size_t>(ItemId::Count)> kItems = {{
-        /* None                 */ {"-",                    -1, false, BlockId::Air},
-        /* Stone                */ {"Stone",                64, false, BlockId::Air},
-        /* CopperOre            */ {"Copper Ore",           65, false, BlockId::Air},
-        /* Sand                 */ {"Sand",                 66, false, BlockId::Air},
-        /* Herb                 */ {"Herb",                 67, false, BlockId::Air},
-        /* Crystal              */ {"Crystal",              68, false, BlockId::Air},
-        /* SpringWater          */ {"Rain Water",           69, false, BlockId::Air},
-        /* Essence              */ {"Essence",              70, false, BlockId::Air},
-        /* CopperIngot          */ {"Copper Ingot",         71, false, BlockId::Air},
-        /* CopperPlate          */ {"Copper Plate",         72, false, BlockId::Air},
-        /* Glass                */ {"Glass",                73, false, BlockId::Air},
-        /* Vial                 */ {"Vial",                 74, false, BlockId::Air},
-        /* MachineFrame         */ {"Machine Frame",        75, false, BlockId::Air},
-        /* GroundHerb           */ {"Ground Herb",          80, false, BlockId::Air},
-        /* CrystalDust          */ {"Crystal Dust",         81, false, BlockId::Air},
-        /* HerbalTincture       */ {"Herbal Tincture",      82, false, BlockId::Air},
-        /* MineralSolution      */ {"Mineral Solution",     83, false, BlockId::Air},
-        /* HealingDraught       */ {"Healing Draught",      84, false, BlockId::Air},
-        /* ManaVial             */ {"Mana Vial",            85, false, BlockId::Air},
-        /* ElixirOfVigor        */ {"Elixir of Vigor",      86, false, BlockId::Air},
-        /* RefinedElixir        */ {"Refined Elixir",       87, false, BlockId::Air},
-        /* PhilosophersCatalyst */ {"Philosopher's Catalyst", 88, false, BlockId::Air},
-        /* PhilosophersStone    */ {"Philosopher's Stone",  89, false, BlockId::Air},
-        /* Conduit              */ {"Conduit",              -1, true,  BlockId::Belt},
-        /* WireItem             */ {"Wire",                 -1, true,  BlockId::Wire},
-        /* GeneratorItem        */ {"Generator",            -1, true,  BlockId::Generator},
-        /* GrinderItem          */ {"Grinder",              -1, true,  BlockId::Grinder},
-        /* CauldronItem         */ {"Cauldron",             -1, true,  BlockId::Cauldron},
-        /* InfuserItem          */ {"Infuser",              -1, true,  BlockId::Infuser},
-        /* AlembicItem          */ {"Alembic",              -1, true,  BlockId::Alembic},
-        /* DistillerItem        */ {"Distiller",            -1, true,  BlockId::Distiller},
-        /* TransmuterItem       */ {"Transmuter",           -1, true,  BlockId::Transmuter},
-        /* MinerItem            */ {"Miner",                -1, true,  BlockId::Miner},
-        /* HerbSourceItem       */ {"Herb Source",          -1, true,  BlockId::SourceHerb},
-        /* CrystalSourceItem    */ {"Crystal Source",       -1, true,  BlockId::SourceCrystal},
-        /* CopperSourceItem     */ {"Copper Source",        -1, true,  BlockId::SourceCopper},
-        /* SandSourceItem       */ {"Sand Source",          -1, true,  BlockId::SourceSand},
-        /* EssenceSourceItem    */ {"Essence Source",       -1, true,  BlockId::SourceEssence},
-        /* Wrench               */ {"Wrench",               78, false, BlockId::Air},
-        /* DirtItem             */ {"Dirt",                 -1, true,  BlockId::Dirt},
-        /* GrassItem            */ {"Grass",                -1, true,  BlockId::Grass},
-        /* ScaffoldItem         */ {"Scaffold",             -1, true,  BlockId::Scaffold},
-        /* Wood                 */ {"Wood",                 76, false, BlockId::Air},
-        /* SaplingItem          */ {"Sapling",              -1, true,  BlockId::Sapling},
-        /* Bucket               */ {"Bucket",               77, false, BlockId::Air},
-        /* RainBarrelItem       */ {"Rain Barrel",          -1, true,  BlockId::RainBarrel},
-        /* CopperSword          */ {"Copper Sword",         79, false, BlockId::Air},
-    }};
+    // Placeables keep atlasTile = -1: their icon is the placed block's side
+    // tile (see iconTile). Raws that a Miner can target carry the node block
+    // that yields them in nodeBlock.
+    constexpr ItemInfo kItems[] = {
+        {.id = I::None, .name = "-"},
+        // Raw materials (mined from world nodes).
+        {.id = I::Stone, .name = "Stone", .atlasTile = 64},
+        {.id = I::CopperOre, .name = "Copper Ore", .atlasTile = 65, .nodeBlock = B::CopperOre},
+        {.id = I::Sand, .name = "Sand", .atlasTile = 66, .nodeBlock = B::SandNode},
+        {.id = I::Herb, .name = "Herb", .atlasTile = 67, .nodeBlock = B::HerbBush},
+        {.id = I::Crystal, .name = "Crystal", .atlasTile = 68, .nodeBlock = B::CrystalNode},
+        {.id = I::SpringWater, .name = "Rain Water", .atlasTile = 69},
+        {.id = I::Essence, .name = "Essence", .atlasTile = 70, .nodeBlock = B::EssenceVent},
+        // Equipment intermediates (hand-crafted).
+        {.id = I::CopperIngot, .name = "Copper Ingot", .atlasTile = 71},
+        {.id = I::CopperPlate, .name = "Copper Plate", .atlasTile = 72},
+        {.id = I::Glass, .name = "Glass", .atlasTile = 73},
+        {.id = I::Vial, .name = "Vial", .atlasTile = 74},
+        {.id = I::MachineFrame, .name = "Machine Frame", .atlasTile = 75},
+        // Alchemy intermediates (machine-processed).
+        {.id = I::GroundHerb, .name = "Ground Herb", .atlasTile = 80},
+        {.id = I::CrystalDust, .name = "Crystal Dust", .atlasTile = 81},
+        {.id = I::HerbalTincture, .name = "Herbal Tincture", .atlasTile = 82},
+        {.id = I::MineralSolution, .name = "Mineral Solution", .atlasTile = 83},
+        // Products.
+        {.id = I::HealingDraught, .name = "Healing Draught", .atlasTile = 84},
+        {.id = I::ManaVial, .name = "Mana Vial", .atlasTile = 85},
+        {.id = I::ElixirOfVigor, .name = "Elixir of Vigor", .atlasTile = 86},
+        {.id = I::RefinedElixir, .name = "Refined Elixir", .atlasTile = 87},
+        {.id = I::PhilosophersCatalyst, .name = "Philosopher's Catalyst", .atlasTile = 88},
+        {.id = I::PhilosophersStone, .name = "Philosopher's Stone", .atlasTile = 89},
+        // Placeables (each places a block).
+        {.id = I::Conduit, .name = "Conduit", .placeable = true, .placesBlock = B::Belt},
+        {.id = I::WireItem, .name = "Wire", .placeable = true, .placesBlock = B::Wire},
+        {.id = I::GeneratorItem, .name = "Generator", .placeable = true, .placesBlock = B::Generator},
+        {.id = I::GrinderItem, .name = "Grinder", .placeable = true, .placesBlock = B::Grinder},
+        {.id = I::CauldronItem, .name = "Cauldron", .placeable = true, .placesBlock = B::Cauldron},
+        {.id = I::InfuserItem, .name = "Infuser", .placeable = true, .placesBlock = B::Infuser},
+        {.id = I::AlembicItem, .name = "Alembic", .placeable = true, .placesBlock = B::Alembic},
+        {.id = I::DistillerItem, .name = "Distiller", .placeable = true, .placesBlock = B::Distiller},
+        {.id = I::TransmuterItem, .name = "Transmuter", .placeable = true, .placesBlock = B::Transmuter},
+        {.id = I::MinerItem, .name = "Miner", .placeable = true, .placesBlock = B::Miner},
+        // Placeable resource sources (relocatable / end-game craftable).
+        {.id = I::HerbSourceItem, .name = "Herb Source", .placeable = true, .placesBlock = B::SourceHerb},
+        {.id = I::CrystalSourceItem, .name = "Crystal Source", .placeable = true, .placesBlock = B::SourceCrystal},
+        {.id = I::CopperSourceItem, .name = "Copper Source", .placeable = true, .placesBlock = B::SourceCopper},
+        {.id = I::SandSourceItem, .name = "Sand Source", .placeable = true, .placesBlock = B::SourceSand},
+        {.id = I::EssenceSourceItem, .name = "Essence Source", .placeable = true, .placesBlock = B::SourceEssence},
+        // Tools.
+        {.id = I::Wrench, .name = "Wrench", .atlasTile = 78},
+        // Collected terrain (placeable back; conserves the island's material).
+        {.id = I::DirtItem, .name = "Dirt", .placeable = true, .placesBlock = B::Dirt},
+        {.id = I::GrassItem, .name = "Grass", .placeable = true, .placesBlock = B::Grass},
+        // Structural.
+        {.id = I::ScaffoldItem, .name = "Scaffold", .placeable = true, .placesBlock = B::Scaffold},
+        // Forestry (wood is the raw; saplings replant).
+        {.id = I::Wood, .name = "Wood", .atlasTile = 76},
+        {.id = I::SaplingItem, .name = "Sapling", .placeable = true, .placesBlock = B::Sapling},
+        {.id = I::Bucket, .name = "Bucket", .atlasTile = 77},
+        // Rain collection (rain is the only water).
+        {.id = I::RainBarrelItem, .name = "Rain Barrel", .placeable = true, .placesBlock = B::RainBarrel},
+        // Combat.
+        {.id = I::CopperSword, .name = "Copper Sword", .atlasTile = 79},
+    };
+
+    static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),
+                  "kItems needs exactly one row per ItemId");
+
+    constexpr bool itemsInEnumOrder() {
+        for (std::size_t i = 0; i < std::size(kItems); ++i) {
+            if (kItems[i].id != static_cast<ItemId>(i)) return false;
+        }
+        return true;
+    }
+    static_assert(itemsInEnumOrder(), "kItems rows must be in ItemId enum order");
+
+} // namespace
+
+const ItemInfo& itemInfo(ItemId id) {
+    return kItems[static_cast<std::size_t>(id)];
 }
 
 int iconTile(ItemId id) {
@@ -68,59 +104,11 @@ int iconTile(ItemId id) {
     return info.atlasTile;
 }
 
-const ItemInfo& itemInfo(ItemId id) {
-    return kItems[static_cast<std::size_t>(id)];
-}
-
 BlockId nodeForRaw(ItemId id) {
-    switch (id) {
-        case ItemId::Herb:        return BlockId::HerbBush;
-        case ItemId::Crystal:     return BlockId::CrystalNode;
-        case ItemId::CopperOre:   return BlockId::CopperOre;
-        case ItemId::Sand:        return BlockId::SandNode;
-        case ItemId::Essence:     return BlockId::EssenceVent;
-        default:                  return BlockId::Air;
-    }
+    return itemInfo(id).nodeBlock;
 }
 
 ItemStack blockDrop(BlockId id) {
-    switch (id) {
-        // Resource nodes -> raw materials.
-        case BlockId::HerbBush:    return {ItemId::Herb, 1};
-        case BlockId::CrystalNode: return {ItemId::Crystal, 1};
-        case BlockId::CopperOre:   return {ItemId::CopperOre, 1};
-        case BlockId::SandNode:    return {ItemId::Sand, 1};
-        case BlockId::EssenceVent: return {ItemId::Essence, 1};
-        case BlockId::Stone:       return {ItemId::Stone, 1};
-        // Sources -> their placeable item (relocatable).
-        case BlockId::SourceHerb:    return {ItemId::HerbSourceItem, 1};
-        case BlockId::SourceCrystal: return {ItemId::CrystalSourceItem, 1};
-        case BlockId::SourceCopper:  return {ItemId::CopperSourceItem, 1};
-        case BlockId::SourceSand:    return {ItemId::SandSourceItem, 1};
-        case BlockId::SourceEssence: return {ItemId::EssenceSourceItem, 1};
-        // Placed equipment -> its placeable item back.
-        case BlockId::Generator:   return {ItemId::GeneratorItem, 1};
-        case BlockId::Wire:        return {ItemId::WireItem, 1};
-        case BlockId::Belt:        return {ItemId::Conduit, 1};
-        case BlockId::Grinder:     return {ItemId::GrinderItem, 1};
-        case BlockId::Cauldron:    return {ItemId::CauldronItem, 1};
-        case BlockId::Infuser:     return {ItemId::InfuserItem, 1};
-        case BlockId::Alembic:     return {ItemId::AlembicItem, 1};
-        case BlockId::Distiller:   return {ItemId::DistillerItem, 1};
-        case BlockId::Transmuter:  return {ItemId::TransmuterItem, 1};
-        case BlockId::Miner:       return {ItemId::MinerItem, 1};
-        // Terrain is collectable (and placeable back) -- the island's material
-        // is conserved rather than lost.
-        case BlockId::Dirt:        return {ItemId::DirtItem, 1};
-        case BlockId::Grass:       return {ItemId::GrassItem, 1};
-        case BlockId::Scaffold:    return {ItemId::ScaffoldItem, 1};
-        // Forestry: logs yield wood; leaves drop nothing here (the chance
-        // sapling drop is rolled at the mining site, not in this table).
-        case BlockId::Sapling:     return {ItemId::SaplingItem, 1};
-        // Wood is fuel AND structure now, so a log splits into two.
-        case BlockId::Log:         return {ItemId::Wood, 2};
-        case BlockId::RainBarrel:  return {ItemId::RainBarrelItem, 1};
-        // Air -> nothing.
-        default:                   return {ItemId::None, 0};
-    }
+    const BlockDrop& d = blockInfo(id).drop;
+    return {d.item, d.count};
 }
