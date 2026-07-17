@@ -152,8 +152,14 @@ them change the save format (enum ordinals stay put). Green-light individually.
 
 ### Architecture track (ordered by cost/value)
 
-- **A1 — UI toolkit.** Extract `MenuList` and `ItemGrid` widgets inside
-  `VoxelGameUi.cpp`. Biggest LOC payoff, zero cross-file risk.
+- **A1 — UI toolkit.** ✅ **Done (July 2026).** File-local widgets in
+  VoxelGameUi.cpp's anonymous namespace: `menuNav()` (the one implementation of
+  W/S + arrows wrap-nav, wheel, hover-picks-row, Enter/LMB activation — used by
+  the machine panel, crafting menu, pause menu, and settings/keybinds),
+  `beginPanel()` (dim + slab + title framing), `drawItemGrid()` /
+  `hoveredItemIn()` (grids, strips, tooltips), `drawSimpleRow()` and a shared
+  panel palette. Net −39 lines while adding the toolkit; a new panel now costs
+  a layout struct + a row switch instead of re-rolling the idiom.
 - **A2 — CreatureSystem.** Lift `Creature` + entity assets/update/render out of
   `VoxelGame` — already nearly self-contained in `VoxelGameEntities.cpp`; outward
   coupling is only world collision, camera, and audio.

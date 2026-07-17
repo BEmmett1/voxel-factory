@@ -100,6 +100,106 @@ namespace {
                 y + PanelLayout::Cell - 13, 11.0f, cnt, glm::vec4(1.0f));
     }
 
+    // ---- The shared panel palette (every overlay draws from these). ----
+    constexpr glm::vec4 kPanelBg    {0.08f, 0.08f, 0.10f, 0.96f};
+    constexpr glm::vec4 kRowSelBg   {0.9f, 0.75f, 0.15f, 0.85f};
+    constexpr glm::vec4 kTextOnSel  {0.05f, 0.05f, 0.05f, 1.0f};
+    constexpr glm::vec4 kTextMain   {0.90f, 0.90f, 0.92f, 1.0f};
+    constexpr glm::vec4 kTextDim    {0.45f, 0.45f, 0.48f, 1.0f};
+    constexpr glm::vec4 kTextHeader {1.0f, 1.0f, 0.7f, 1.0f};
+    constexpr glm::vec4 kTextFooter {0.7f, 0.7f, 0.75f, 1.0f};
+    constexpr glm::vec4 kTextTooltip{1.0f, 1.0f, 0.8f, 1.0f};
+
+    // Row label color for the standard states: selected (dark on the gold
+    // slab), normal, or dimmed (unaffordable / informational).
+    glm::vec4 rowColor(bool selected, bool dim = false) {
+        return selected ? kTextOnSel : dim ? kTextDim : kTextMain;
+    }
+
+    // Frame a panel the way every overlay does: begin, full-screen dim,
+    // panel slab, header title (pass nullptr for none).
+    void beginPanel(engine::UiRenderer& ui, int w, int h, float px, float py,
+                    float panelW, float panelH, const char* title, float dimAlpha) {
+        ui.begin(w, h);
+        ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h),
+                glm::vec4(0, 0, 0, dimAlpha));
+        ui.rect(px, py, panelW, panelH, kPanelBg);
+        if (title) ui.text(px + 16, py + 12, 18.0f, title, kTextHeader);
+    }
+
+    // MenuList: one frame of the shared list idiom — W/S + arrows wrap-
+    // navigate, optional wheel, the cursor picks the row it moves over,
+    // Enter or LMB inside the rows activates. The caller owns the selection
+    // int, what activation means, and the sounds (play "click" on .changed).
+    struct MenuNav {
+        bool changed = false;     // selection moved this frame
+        bool enter = false;       // Enter / keypad Enter
+        bool clickedRows = false; // LMB pressed inside the rows area
+        int  hoverRow = -1;       // row under the cursor; -1 = outside
+        bool activated() const { return enter || clickedRows; }
+    };
+
+    MenuNav menuNav(engine::Input& in, int& sel, int rows,
+                    float px, float panelW, float rowsY, float rowH,
+                    bool useWheel = false) {
+        const int before = sel;
+        if (in.wasKeyPressed(SDL_SCANCODE_W) || in.wasKeyPressed(SDL_SCANCODE_UP)) {
+            sel = (sel - 1 + rows) % rows;
+        }
+        if (in.wasKeyPressed(SDL_SCANCODE_S) || in.wasKeyPressed(SDL_SCANCODE_DOWN)) {
+            sel = (sel + 1) % rows;
+        }
+        if (useWheel) {
+            const int wheel = in.wheelSteps();
+            if (wheel != 0) sel = ((sel - wheel) % rows + rows) % rows;
+        }
+        const float mx = in.mouseX(), my = in.mouseY();
+        const bool overRows = mx >= px && mx <= px + panelW &&
+                              my >= rowsY && my < rowsY + rows * rowH;
+        MenuNav r;
+        if (overRows) r.hoverRow = static_cast<int>((my - rowsY) / rowH);
+        if ((in.mouseRelX() != 0.0f || in.mouseRelY() != 0.0f) && overRows) {
+            sel = r.hoverRow;
+        }
+        sel = std::min(sel, rows - 1);
+        r.changed = (sel != before);
+        r.enter = in.wasKeyPressed(SDL_SCANCODE_RETURN) ||
+                  in.wasKeyPressed(SDL_SCANCODE_KP_ENTER);
+        r.clickedRows = in.wasMousePressed(SDL_BUTTON_LEFT) && overRows;
+        return r;
+    }
+
+    // ItemGrid: draw `items` as rows of `cols` cells at (x, y). Hit-testing
+    // and tooltips share the geometry via hitCell / hoveredItemIn.
+    void drawItemGrid(engine::UiRenderer& ui, const engine::Texture& atlas,
+                      float x, float y,
+                      const std::vector<std::pair<ItemId, int>>& items,
+                      int cols = PanelLayout::InvCols) {
+        for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+            drawItemCell(ui, atlas,
+                         x + (i % cols) * (PanelLayout::Cell + PanelLayout::Gap),
+                         y + (i / cols) * (PanelLayout::Cell + PanelLayout::Gap),
+                         items[i].first, items[i].second);
+        }
+    }
+
+    ItemId hoveredItemIn(const std::vector<std::pair<ItemId, int>>& items,
+                         float mx, float my, float x, float y,
+                         int cols = PanelLayout::InvCols) {
+        const int i = hitCell(mx, my, x, y, static_cast<int>(items.size()), cols);
+        return i >= 0 ? items[i].first : ItemId::None;
+    }
+
+    // A plain text menu row (the pause + settings panels share this exact
+    // geometry: gold slab inset 6, label at +20/+6, size 14).
+    void drawSimpleRow(engine::UiRenderer& ui, float px, float panelW, float ry,
+                       float rowH, const std::string& label, bool selected) {
+        if (selected) {
+            ui.rect(px + 6, ry, panelW - 12, rowH - 4, kRowSelBg);
+        }
+        ui.text(px + 20, ry + 6, 14.0f, label, rowColor(selected));
+    }
+
     // Crafting-menu layout (rows + a materials grid); shared by update + draw.
     struct CraftLayout {
         static constexpr float RowH = 22.0f;
@@ -204,14 +304,11 @@ void VoxelGame::drawMachineUi() {
     const PanelLayout L = panelLayout(w, h, rows, static_cast<int>(invItems.size()));
     const float mx = input().mouseX(), my = input().mouseY();
 
-    m_ui.begin(w, h);
-    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.45f));
-    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, blockName(mac.type), 0.45f);
 
-    // Header: machine name + status (generators report their burn instead of
-    // network power -- their energized state is their own doing).
+    // Header status (generators report their burn instead of network power --
+    // their energized state is their own doing).
     const MachineTraits& traits = machineTraits(mac.type);
-    m_ui.text(L.px + 16, L.py + 12, 18.0f, blockName(mac.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
     switch (traits.kind) {
         case MachineKind::Generator: {
             const bool burning = mac.progress > 0.0f;
@@ -245,8 +342,7 @@ void VoxelGame::drawMachineUi() {
         const float ry = L.rowsY + i * PanelLayout::RowH;
         const bool selected = (i == m_machineUiSel);
         if (selected) {
-            m_ui.rect(L.px + 6, ry, L.panelW - 12, PanelLayout::RowH - 2,
-                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+            m_ui.rect(L.px + 6, ry, L.panelW - 12, PanelLayout::RowH - 2, kRowSelBg);
         }
 
         std::string label;
@@ -298,15 +394,8 @@ void VoxelGame::drawMachineUi() {
             }
         }
 
-        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
-                            : actionable ? glm::vec4(0.90f, 0.90f, 0.92f, 1.0f)
-                                         : glm::vec4(0.45f, 0.45f, 0.48f, 1.0f);
-        m_ui.text(L.px + 16, ry + 5, 14.0f, label, col);
+        m_ui.text(L.px + 16, ry + 5, 14.0f, label, rowColor(selected, !actionable));
     }
-
-    auto drawCell = [&](float x, float y, ItemId id, int count) {
-        drawItemCell(m_ui, m_atlas, x, y, id, count);
-    };
 
     // IN strip (highlighted as the drop target while dragging from inventory).
     if (m_drag.active() && m_drag.source == Drag::Source::PlayerInv) {
@@ -315,17 +404,11 @@ void VoxelGame::drawMachineUi() {
                   ok ? glm::vec4(0.20f, 0.55f, 0.25f, 0.45f) : glm::vec4(0.55f, 0.20f, 0.20f, 0.45f));
     }
     m_ui.text(L.px + 16, L.inY + 16, 13.0f, "IN:", glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
-    for (int i = 0; i < static_cast<int>(inItems.size()); ++i) {
-        drawCell(L.stripCellsX + i * (PanelLayout::Cell + PanelLayout::Gap), L.inY + 6.0f,
-                 inItems[i].first, inItems[i].second);
-    }
+    drawItemGrid(m_ui, m_atlas, L.stripCellsX, L.inY + 6.0f, inItems, /*cols=*/99);
 
     // OUT strip.
     m_ui.text(L.px + 16, L.outY + 16, 13.0f, "OUT:", glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
-    for (int i = 0; i < static_cast<int>(outItems.size()); ++i) {
-        drawCell(L.stripCellsX + i * (PanelLayout::Cell + PanelLayout::Gap), L.outY + 6.0f,
-                 outItems[i].first, outItems[i].second);
-    }
+    drawItemGrid(m_ui, m_atlas, L.stripCellsX, L.outY + 6.0f, outItems, /*cols=*/99);
 
     // Progress bar.
     m_ui.rect(L.px + 16, L.barY, L.panelW - 32, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
@@ -335,33 +418,24 @@ void VoxelGame::drawMachineUi() {
     }
 
     // Inventory grid.
-    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
-    for (int i = 0; i < static_cast<int>(invItems.size()); ++i) {
-        drawCell(L.px + 16.0f + (i % PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                 L.invY + (i / PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                 invItems[i].first, invItems[i].second);
-    }
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
     // Tooltip: name of the hovered cell (any of the three regions).
-    ItemId hovered = ItemId::None;
-    int ci;
-    if ((ci = hitCell(mx, my, L.px + 16.0f, L.invY,
-                      static_cast<int>(invItems.size()), PanelLayout::InvCols)) >= 0) {
-        hovered = invItems[ci].first;
-    } else if ((ci = hitCell(mx, my, L.stripCellsX, L.inY + 6.0f,
-                             static_cast<int>(inItems.size()), 99)) >= 0) {
-        hovered = inItems[ci].first;
-    } else if ((ci = hitCell(mx, my, L.stripCellsX, L.outY + 6.0f,
-                             static_cast<int>(outItems.size()), 99)) >= 0) {
-        hovered = outItems[ci].first;
+    ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
+    if (hovered == ItemId::None) {
+        hovered = hoveredItemIn(inItems, mx, my, L.stripCellsX, L.inY + 6.0f, 99);
+    }
+    if (hovered == ItemId::None) {
+        hovered = hoveredItemIn(outItems, mx, my, L.stripCellsX, L.outY + 6.0f, 99);
     }
     if (hovered != ItemId::None) {
-        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), glm::vec4(1.0f, 1.0f, 0.8f, 1.0f));
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), kTextTooltip);
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
               "DRAG ITEMS: LMB STACK / RMB ONE   ROWS: CLICK OR W/S + ENTER   ESC CLOSE",
-              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+              kTextFooter);
 
     // Drag payload rides the cursor, drawn last so it sits on top.
     if (m_drag.active()) {
@@ -431,21 +505,9 @@ void VoxelGame::updateMachineUi() {
     const float mx = input().mouseX(), my = input().mouseY();
     const bool inPanelX = mx >= L.px && mx <= L.px + L.panelW;
 
-    const int selBefore = m_machineUiSel;
-    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
-        m_machineUiSel = (m_machineUiSel - 1 + rows) % rows;
-    }
-    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
-        m_machineUiSel = (m_machineUiSel + 1) % rows;
-    }
-
-    // Hover: while the cursor moves over the rows area, it picks the row.
-    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && inPanelX) {
-        const int row = static_cast<int>((my - L.rowsY) / PanelLayout::RowH);
-        if (row >= 0 && row < rows) m_machineUiSel = row;
-    }
-    m_machineUiSel = std::min(m_machineUiSel, rows - 1);
-    if (m_machineUiSel != selBefore) audio().play("click", kUiVolume);
+    const MenuNav nav = menuNav(input(), m_machineUiSel, rows, L.px, L.panelW,
+                                L.rowsY, PanelLayout::RowH);
+    if (nav.changed) audio().play("click", kUiVolume);
 
     const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
     const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
@@ -499,12 +561,9 @@ void VoxelGame::updateMachineUi() {
         clickConsumed = true;
     }
 
-    // --- Row activation: Enter always; LMB only when over the rows area. ---
-    const bool clickOnRows = lmb && !clickConsumed && inPanelX &&
-                             my >= L.rowsY && my < L.rowsY + rows * PanelLayout::RowH;
-    if (!m_drag.active() &&
-        (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
-         input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) || clickOnRows)) {
+    // --- Row activation: Enter always; LMB only when over the rows area
+    // and not already consumed by a drag pickup/drop. ---
+    if (!m_drag.active() && (nav.enter || (nav.clickedRows && !clickConsumed))) {
         audio().play("click", kUiVolume);
         if (m_machineUiSel == 0) {
             // AUTO: run whichever recipe's inputs are ready first. (For
@@ -576,34 +635,16 @@ void VoxelGame::updateMenu() {
     const auto invItems = itemsOf(m_inventory);
     const CraftLayout L = craftLayout(window().width(), window().height(), n,
                                       static_cast<int>(invItems.size()));
-    const float mx = input().mouseX(), my = input().mouseY();
 
-    const int selBefore = m_menuSelection;
-    if (input().wasKeyPressed(SDL_SCANCODE_UP) || input().wasKeyPressed(SDL_SCANCODE_W)) {
-        m_menuSelection = (m_menuSelection - 1 + n) % n;
-    }
-    if (input().wasKeyPressed(SDL_SCANCODE_DOWN) || input().wasKeyPressed(SDL_SCANCODE_S)) {
-        m_menuSelection = (m_menuSelection + 1) % n;
-    }
-    const int wheel = input().wheelSteps();
-    if (wheel != 0) {
-        m_menuSelection = ((m_menuSelection - wheel) % n + n) % n;
-    }
-
-    // Hover: while the cursor moves over the rows area, it picks the row.
-    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
-                          my >= L.rowsY && my < L.rowsY + n * CraftLayout::RowH;
-    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
-        m_menuSelection = static_cast<int>((my - L.rowsY) / CraftLayout::RowH);
-    }
-    if (m_menuSelection != selBefore) audio().play("click", kUiVolume);
+    const MenuNav nav = menuNav(input(), m_menuSelection, n, L.px, L.panelW,
+                                L.rowsY, CraftLayout::RowH, /*useWheel=*/true);
+    if (nav.changed) audio().play("click", kUiVolume);
 
     // Enter always crafts the selection; LMB crafts the row it lands on.
-    if (input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
-        input().wasKeyPressed(SDL_SCANCODE_KP_ENTER)) {
+    if (nav.enter) {
         tryCraft(recipes[m_menuSelection]);
-    } else if (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows) {
-        m_menuSelection = static_cast<int>((my - L.rowsY) / CraftLayout::RowH);
+    } else if (nav.clickedRows) {
+        m_menuSelection = nav.hoverRow;
         tryCraft(recipes[m_menuSelection]);
     }
 
@@ -689,22 +730,14 @@ void VoxelGame::drawInventoryUi() {
     const InvLayout L = invLayout(w, h, static_cast<int>(invItems.size()));
     const float mx = input().mouseX(), my = input().mouseY();
 
-    m_ui.begin(w, h);
-    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.5f));
-    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
-    m_ui.text(L.px + 16, L.py + 12, 18.0f, "INVENTORY", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "INVENTORY", 0.5f);
 
     // Everything the player owns, with counts.
-    for (int i = 0; i < static_cast<int>(invItems.size()); ++i) {
-        drawItemCell(m_ui, m_atlas,
-                     L.px + 16.0f + (i % PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                     L.invY + (i / PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                     invItems[i].first, invItems[i].second);
-    }
+    drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
     // The hotbar strip: assignment slots (empty slab / greyed at count 0),
     // with the selected slot outlined like the HUD.
-    m_ui.text(L.px + 16, L.hotbarLabelY + 2, 13.0f, "HOTBAR", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    m_ui.text(L.px + 16, L.hotbarLabelY + 2, 13.0f, "HOTBAR", kTextHeader);
     const int slotHover = hitCell(mx, my, L.px + 16.0f, L.hotbarY, kHotbarSlots,
                                   PanelLayout::InvCols);
     for (int i = 0; i < kHotbarSlots; ++i) {
@@ -736,22 +769,17 @@ void VoxelGame::drawInventoryUi() {
     }
 
     // Tooltip: name of the hovered cell (grid or hotbar strip).
-    ItemId hovered = ItemId::None;
-    const int gi = hitCell(mx, my, L.px + 16.0f, L.invY,
-                           static_cast<int>(invItems.size()), PanelLayout::InvCols);
-    if (gi >= 0) {
-        hovered = invItems[gi].first;
-    } else if (slotHover >= 0) {
+    ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
+    if (hovered == ItemId::None && slotHover >= 0) {
         hovered = m_hotbar[slotHover];
     }
     if (hovered != ItemId::None) {
-        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered),
-                  glm::vec4(1.0f, 1.0f, 0.8f, 1.0f));
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), kTextTooltip);
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
               "DRAG TO A SLOT TO ASSIGN   RMB SLOT CLEAR   TAB / ESC CLOSE",
-              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+              kTextFooter);
 
     // The dragged assignment rides the cursor, drawn last so it sits on top
     // (no count: it's a reference, not a stack).
@@ -892,13 +920,7 @@ void VoxelGame::drawCraftMenu() {
     const CraftLayout L = craftLayout(w, h, n, static_cast<int>(invItems.size()));
     const float mx = input().mouseX(), my = input().mouseY();
 
-    m_ui.begin(w, h);
-
-    // Dim the world behind the menu.
-    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.5f));
-
-    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
-    m_ui.text(L.px + 16, L.py + 12, 18.0f, "CRAFTING", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "CRAFTING", 0.5f);
 
     for (int i = 0; i < n; ++i) {
         const Recipe& r = recipes[i];
@@ -907,12 +929,9 @@ void VoxelGame::drawCraftMenu() {
         const bool selected = (i == m_menuSelection);
 
         if (selected) {
-            m_ui.rect(L.px + 6, ry - 1, L.panelW - 12, CraftLayout::RowH - 2,
-                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
+            m_ui.rect(L.px + 6, ry - 1, L.panelW - 12, CraftLayout::RowH - 2, kRowSelBg);
         }
-        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
-                            : affordable ? glm::vec4(0.90f, 0.90f, 0.92f, 1.0f)
-                                         : glm::vec4(0.45f, 0.45f, 0.48f, 1.0f);
+        const glm::vec4 col = rowColor(selected, !affordable);
 
         std::string s = itemName(r.output.id);
         if (r.output.count > 1) s += " x" + std::to_string(r.output.count);
@@ -926,22 +945,15 @@ void VoxelGame::drawCraftMenu() {
     }
 
     // Materials on hand, with a hover tooltip.
-    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
-    for (int i = 0; i < static_cast<int>(invItems.size()); ++i) {
-        drawItemCell(m_ui, m_atlas,
-                     L.px + 16.0f + (i % PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                     L.invY + (i / PanelLayout::InvCols) * (PanelLayout::Cell + PanelLayout::Gap),
-                     invItems[i].first, invItems[i].second);
-    }
-    const int ci = hitCell(mx, my, L.px + 16.0f, L.invY,
-                           static_cast<int>(invItems.size()), PanelLayout::InvCols);
-    if (ci >= 0) {
-        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(invItems[ci].first),
-                  glm::vec4(1.0f, 1.0f, 0.8f, 1.0f));
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
+    const ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
+    if (hovered != ItemId::None) {
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), kTextTooltip);
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
-              "CLICK / WHEEL / W/S + ENTER CRAFT   E CLOSE", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+              "CLICK / WHEEL / W/S + ENTER CRAFT   E CLOSE", kTextFooter);
 
     m_ui.end();
 }
@@ -1018,28 +1030,12 @@ void VoxelGame::closePauseMenu() {
 
 void VoxelGame::updatePauseMenu() {
     const PauseLayout L = pauseLayout(window().width(), window().height());
-    const float mx = input().mouseX(), my = input().mouseY();
 
-    const int selBefore = m_pauseSel;
-    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
-        m_pauseSel = (m_pauseSel - 1 + kPauseRowCount) % kPauseRowCount;
-    }
-    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
-        m_pauseSel = (m_pauseSel + 1) % kPauseRowCount;
-    }
+    const MenuNav nav = menuNav(input(), m_pauseSel, kPauseRowCount,
+                                L.px, L.panelW, L.rowsY, PauseLayout::RowH);
+    if (nav.changed) audio().play("click", kUiVolume);
 
-    // Hover: while the cursor moves over the rows area, it picks the row.
-    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
-                          my >= L.rowsY && my < L.rowsY + kPauseRowCount * PauseLayout::RowH;
-    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
-        m_pauseSel = static_cast<int>((my - L.rowsY) / PauseLayout::RowH);
-    }
-    if (m_pauseSel != selBefore) audio().play("click", kUiVolume);
-
-    const bool activate = input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
-                          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
-                          (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows);
-    if (activate) {
+    if (nav.activated()) {
         switch (m_pauseSel) {
             case 0:
                 closePauseMenu();
@@ -1066,28 +1062,16 @@ void VoxelGame::drawPauseMenu() {
     const int h = window().height();
     const PauseLayout L = pauseLayout(w, h);
 
-    m_ui.begin(w, h);
-    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.6f));
-    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
-
-    m_ui.text(L.px + 16, L.py + 12, 18.0f, "PAUSED", glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "PAUSED", 0.6f);
     m_ui.text(L.px + L.panelW - 16 - m_ui.textWidth(12.0f, "V" VOXEL_FACTORY_VERSION),
               L.py + 16, 12.0f, "V" VOXEL_FACTORY_VERSION, glm::vec4(0.6f, 0.6f, 0.65f, 1.0f));
 
     for (int i = 0; i < kPauseRowCount; ++i) {
-        const float ry = L.rowsY + i * PauseLayout::RowH;
-        const bool selected = (i == m_pauseSel);
-        if (selected) {
-            m_ui.rect(L.px + 6, ry, L.panelW - 12, PauseLayout::RowH - 4,
-                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
-        }
-        m_ui.text(L.px + 20, ry + 6, 14.0f, kPauseRows[i],
-                  selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
-                           : glm::vec4(0.90f, 0.90f, 0.92f, 1.0f));
+        drawSimpleRow(m_ui, L.px, L.panelW, L.rowsY + i * PauseLayout::RowH,
+                      PauseLayout::RowH, kPauseRows[i], i == m_pauseSel);
     }
 
-    m_ui.text(L.px + 16, L.footerY, 12.0f, "W/S + ENTER   ESC RESUME",
-              glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+    m_ui.text(L.px + 16, L.footerY, 12.0f, "W/S + ENTER   ESC RESUME", kTextFooter);
 
     m_ui.end();
 }
@@ -1145,26 +1129,11 @@ void VoxelGame::updateSettingsUi() {
     const int rows = m_bindsOpen ? kBindsRowCount : kSettingsRowCount;
     int& sel = m_bindsOpen ? m_bindsSel : m_settingsSel;
     const SettingsLayout L = settingsLayout(window().width(), window().height(), rows);
-    const float mx = input().mouseX(), my = input().mouseY();
 
-    const int selBefore = sel;
-    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
-        sel = (sel - 1 + rows) % rows;
-    }
-    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
-        sel = (sel + 1) % rows;
-    }
-    const bool overRows = mx >= L.px && mx <= L.px + L.panelW &&
-                          my >= L.rowsY && my < L.rowsY + rows * SettingsLayout::RowH;
-    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && overRows) {
-        sel = static_cast<int>((my - L.rowsY) / SettingsLayout::RowH);
-    }
-    sel = std::min(sel, rows - 1);
-    if (sel != selBefore) audio().play("click", kUiVolume);
-
-    const bool activate = input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
-                          input().wasKeyPressed(SDL_SCANCODE_KP_ENTER) ||
-                          (input().wasMousePressed(SDL_BUTTON_LEFT) && overRows);
+    const MenuNav nav = menuNav(input(), sel, rows, L.px, L.panelW,
+                                L.rowsY, SettingsLayout::RowH);
+    if (nav.changed) audio().play("click", kUiVolume);
+    const bool activate = nav.activated();
 
     if (m_bindsOpen) {
         if (!activate) return;
@@ -1247,22 +1216,13 @@ void VoxelGame::drawSettingsUi() {
     const int sel = m_bindsOpen ? m_bindsSel : m_settingsSel;
     const SettingsLayout L = settingsLayout(w, h, rows);
 
-    m_ui.begin(w, h);
-    m_ui.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0, 0, 0, 0.6f));
-    m_ui.rect(L.px, L.py, L.panelW, L.panelH, glm::vec4(0.08f, 0.08f, 0.10f, 0.96f));
-    m_ui.text(L.px + 16, L.py + 12, 18.0f, m_bindsOpen ? "KEYBINDS" : "SETTINGS",
-              glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH,
+               m_bindsOpen ? "KEYBINDS" : "SETTINGS", 0.6f);
 
     char buf[32];
     for (int i = 0; i < rows; ++i) {
         const float ry = L.rowsY + i * SettingsLayout::RowH;
         const bool selected = (i == sel);
-        if (selected) {
-            m_ui.rect(L.px + 6, ry, L.panelW - 12, SettingsLayout::RowH - 4,
-                      glm::vec4(0.9f, 0.75f, 0.15f, 0.85f));
-        }
-        const glm::vec4 col = selected ? glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)
-                                       : glm::vec4(0.90f, 0.90f, 0.92f, 1.0f);
 
         std::string label, value;
         bool capturing = false;
@@ -1295,9 +1255,10 @@ void VoxelGame::drawSettingsUi() {
             }
         }
 
-        m_ui.text(L.px + 20, ry + 6, 14.0f, label, col);
+        drawSimpleRow(m_ui, L.px, L.panelW, ry, SettingsLayout::RowH, label, selected);
         if (!value.empty()) {
-            const glm::vec4 vcol = capturing ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f) : col;
+            const glm::vec4 vcol = capturing ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f)
+                                             : rowColor(selected);
             m_ui.text(L.px + L.panelW - 20 - m_ui.textWidth(14.0f, value), ry + 6, 14.0f,
                       value, vcol);
         }
@@ -1306,7 +1267,7 @@ void VoxelGame::drawSettingsUi() {
     const char* footer = m_bindCapture >= 0 ? "PRESS A KEY   ESC CANCEL"
                        : m_bindsOpen        ? "W/S + ENTER REBIND   ESC BACK"
                                             : "A/D ADJUST   ENTER SELECT   ESC BACK";
-    m_ui.text(L.px + 16, L.footerY, 12.0f, footer, glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+    m_ui.text(L.px + 16, L.footerY, 12.0f, footer, kTextFooter);
 
     m_ui.end();
 }
