@@ -10,25 +10,23 @@
 namespace PowerSystem {
 
     namespace {
-        constexpr int kGeneratorOutput = 10;
-        constexpr int kMachineDemand = 5;
-
         const std::array<glm::ivec3, 6> kNeighbors = {{
             {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
         }};
     } // namespace
 
     bool isPowerNode(BlockId id) {
-        // Rain barrels are machines (panel, belts, save) but run unpowered
-        // and must not conduct or glow.
-        return id == BlockId::Generator || id == BlockId::Wire ||
-               (isMachine(id) && id != BlockId::RainBarrel);
+        // Wire conducts; a machine joins its network if it draws or produces
+        // power. Machines that run unpowered (traits demand 0, no output —
+        // e.g. the Rain Barrel) stay out and must not conduct or glow.
+        if (id == BlockId::Wire) return true;
+        if (!isMachine(id)) return false;
+        const MachineTraits& t = machineTraits(id);
+        return t.demand > 0 || t.powerOutput > 0;
     }
 
     int demand(BlockId id) {
-        // Generators produce rather than consume; rain barrels run unpowered.
-        if (id == BlockId::Generator || id == BlockId::RainBarrel) return 0;
-        return isMachine(id) ? kMachineDemand : 0;
+        return isMachine(id) ? machineTraits(id).demand : 0;
     }
 
     PowerState solve(const World& world,
@@ -68,15 +66,18 @@ namespace PowerSystem {
                             component.push_back(c);
 
                             const BlockId id = world.getBlock(c.x, c.y, c.z);
-                            if (id == BlockId::Generator) {
-                                generators.push_back(c);
-                                // Only a burning generator produces.
-                                const auto mit = machines.find(c);
-                                if (mit != machines.end() && mit->second.progress > 0.0f) {
-                                    totalProduction += kGeneratorOutput;
+                            if (isMachine(id)) {
+                                const MachineTraits& t = machineTraits(id);
+                                if (t.powerOutput > 0) {
+                                    generators.push_back(c);
+                                    // Only a burning generator produces.
+                                    const auto mit = machines.find(c);
+                                    if (mit != machines.end() && mit->second.progress > 0.0f) {
+                                        totalProduction += t.powerOutput;
+                                    }
                                 }
+                                totalDemand += t.demand;
                             }
-                            totalDemand += demand(id);
 
                             for (const glm::ivec3& n : kNeighbors) {
                                 const glm::ivec3 nc = c + n;

@@ -138,11 +138,17 @@ them change the save format (enum ordinals stay put). Green-light individually.
   `ItemInfo` field. Adding a plain block or item is now: append the enum value +
   one registry row (+ icon art). Killed hotspots 1 and 4 and the `isMachine`
   ladder. No save-format change.
-- **C2 — Machine traits table.** One `MachineTraits` record per machine type:
-  accepts-filter, powered/demand, tick kind, panel status/action strings. The
-  sim/UI/power ladders dispatch through it; bespoke ticks (Miner) become named
-  functions referenced from the table. A new standard machine becomes pure data;
-  kills hotspots 2, 3, and 5.
+- **C2 — Machine traits table.** ✅ **Done (July 2026).** `kMachineTraits` in
+  Machine.h: one row per machine type (`MachineKind` Processor/Generator/
+  Collector/Miner + demand, power output, fuel + burn time, collected item +
+  cap/cadence), cross-`static_assert`ed in Block.cpp against the `BlockInfo`
+  machine flags. The sim tick, `machineAccepts`, the power solve, and the panel
+  header/row-0 each dispatch on the kind exactly once; the bespoke ticks are
+  named functions (`tickGenerator`/`tickCollector`/`tickMiner` in
+  VoxelGameSim.cpp). The Generator/Barrel knobs moved into their rows —
+  per-machine data (a higher-tier generator is now just another row). A new
+  standard recipe machine is pure data; killed hotspots 2, 3, and 5. No
+  save-format change.
 
 ### Architecture track (ordered by cost/value)
 

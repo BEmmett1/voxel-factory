@@ -72,8 +72,13 @@ F1 0x3B, F3 0x3D, F5 0x3F, digits 1-9 0x02-0x0A, 0 0x0B.
 - `Tab` inventory overlay: owned grid + hotbar assignments.
 - `Esc` chain: closes topmost overlay; with nothing open, pause menu
   (RESUME/SETTINGS/SAVE GAME/SAVE AND QUIT). Quit = Esc, S, S, Enter.
-- Mouse look = relative `MOUSEEVENTF_MOVE` (~15-count steps; 150 counts ≈ 40°);
-  overlay clicks = `SetCursorPos` in screen coords (client is unscaled at 100%).
+- Mouse look = relative `MOUSEEVENTF_MOVE` in ~15-count steps. Counts-per-degree
+  drifts between sessions (seen 3.75 and 7.5) — calibrate from an aim screenshot
+  in-run, don't trust a constant. Overlay clicks = `SetCursorPos` in screen
+  coords (client is unscaled at 100%).
+- Structure GUI drives as single-purpose passes (launch → act → shot → kill):
+  after a missed RMB, Esc opens the pause menu instead of closing a panel and a
+  blind sequence can't recover. Kill between passes; it also skips the auto-save.
 
 ## Gotchas
 

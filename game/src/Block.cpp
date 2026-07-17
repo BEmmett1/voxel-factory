@@ -1,6 +1,7 @@
 #include "game/Block.h"
 
 #include "game/Item.h"
+#include "game/Machine.h"
 
 #include <cstddef>
 #include <iterator>
@@ -97,6 +98,20 @@ namespace {
         return true;
     }
     static_assert(blocksInEnumOrder(), "kBlocks rows must be in BlockId enum order");
+
+    // The machine traits registry (Machine.h) and the machine flags here must
+    // name exactly the same blocks — a machine without a traits row (or a
+    // traits row for a non-machine) is a compile error, not a runtime surprise.
+    static_assert([] {
+        for (const BlockInfo& b : kBlocks) {
+            bool hasTraits = false;
+            for (const MachineTraits& t : kMachineTraits) {
+                if (t.block == b.id) hasTraits = true;
+            }
+            if (b.machine != hasTraits) return false;
+        }
+        return true;
+    }(), "kMachineTraits must have one row per machine block (and only machine blocks)");
 
 } // namespace
 

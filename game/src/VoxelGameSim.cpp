@@ -18,40 +18,119 @@
 
 using namespace vg;
 
-// Generators burn fuel; a new Wood is lit only when the network wants power
-// (the hungry set from the last solve), but a lit one burns out fully.
-// Machine::progress holds the burn seconds LEFT. When any generator's burn
-// state flips, the power network is re-solved once.
+namespace {
+
+    // A generator burns fuel; a new unit is lit only when the network wants
+    // power (`hungry`, from the last solve), but a lit one burns out fully.
+    // Machine::progress holds the burn seconds LEFT. Returns true when the
+    // burn state flipped (the caller re-solves power once per tick).
+    bool tickGenerator(Machine& m, const MachineTraits& t, bool hungry) {
+        const bool wasBurning = m.progress > 0.0f;
+        if (m.progress > 0.0f) {
+            m.progress = std::max(0.0f, m.progress - kTickSeconds);
+        }
+        if (m.progress <= 0.0f && hungry && m.input.count(t.fuel) > 0) {
+            m.input.remove(t.fuel, 1);
+            m.progress = t.burnSeconds;
+        }
+        m.crafting = m.progress > 0.0f;
+        m.craftTime = t.burnSeconds;
+        return (m.progress > 0.0f) != wasBurning;
+    }
+
+    // A collector gathers its item from the environment while conditions
+    // hold (for the Rain Barrel: raining + open sky). Needs no power.
+    void tickCollector(Machine& m, const MachineTraits& t, bool gathering) {
+        const bool filling = gathering && m.output.count(t.collects) < t.collectCap;
+        m.crafting = filling;
+        m.craftTime = t.collectSeconds;
+        if (!filling) return;
+        m.progress += kTickSeconds;
+        if (m.progress >= t.collectSeconds) {
+            m.progress = 0.0f;
+            m.output.add(t.collects, 1);
+        }
+    }
+
+    // A miner harvests the nearest grown resource node in reach instead of
+    // running recipes; the patch regrows from its source, bounding the rate.
+    void tickMiner(World& world, const glm::ivec3& pos, Machine& m) {
+        // A raw item in the input buffer acts as a filter: mine only that
+        // node type. Empty input = mine anything nearby.
+        const BlockId filterNode = nodeForRaw(minerFilter(m));
+
+        // The miner commits to one node per harvest. One cheap read per
+        // tick validates it (it may be mined away or the filter changed);
+        // the full reach scan runs only to acquire, every few ticks.
+        if (m.hasTarget) {
+            const BlockId t = world.getBlock(m.target.x, m.target.y, m.target.z);
+            if (!isResourceNode(t) ||
+                (filterNode != BlockId::Air && t != filterNode)) {
+                m.hasTarget = false;
+            }
+        }
+        if (!m.hasTarget) {
+            if (--m.rescanCooldown > 0) {
+                m.progress = 0.0f;
+                return;
+            }
+            m.rescanCooldown = kMinerIdleRescanTicks;
+
+            glm::ivec3 best{0};
+            int bestDist2 = INT_MAX;
+            for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
+                for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
+                    for (int dy = -3; dy <= 3; ++dy) {
+                        const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
+                        const BlockId node = world.getBlock(c.x, c.y, c.z);
+                        if (!isResourceNode(node)) continue;
+                        if (filterNode != BlockId::Air && node != filterNode) continue;
+                        const int d2 = dx * dx + dy * dy + dz * dz;
+                        if (d2 < bestDist2) {
+                            bestDist2 = d2;
+                            best = c;
+                        }
+                    }
+                }
+            }
+            if (bestDist2 == INT_MAX) {
+                m.progress = 0.0f; // nothing in reach; idle until the patch regrows
+                return;
+            }
+            m.target = best;
+            m.hasTarget = true;
+        }
+
+        m.crafting = true;
+        m.craftTime = kMineSeconds;
+        m.progress += kTickSeconds;
+        if (m.progress >= kMineSeconds) {
+            m.progress = 0.0f;
+            const ItemStack drop = blockDrop(world.getBlock(m.target.x, m.target.y, m.target.z));
+            m.output.add(drop.id, drop.count);
+            world.setBlock(m.target.x, m.target.y, m.target.z, BlockId::Air);
+            m.hasTarget = false;
+        }
+    }
+
+} // namespace
+
+// Generators and collectors run before the powered machines: their state does
+// not gate on network power (generators CREATE it), and a generator's burn
+// flip re-solves the network once per tick.
 void VoxelGame::updateGeneratorsAndBarrels() {
     bool powerChanged = false;
     for (auto& [pos, m] : m_machines) {
-        if (m.type == BlockId::Generator) {
-            const bool wasBurning = m.progress > 0.0f;
-            if (m.progress > 0.0f) {
-                m.progress = std::max(0.0f, m.progress - kTickSeconds);
-            }
-            if (m.progress <= 0.0f && m_hungryGenerators.count(pos) > 0 &&
-                m.input.count(ItemId::Wood) > 0) {
-                m.input.remove(ItemId::Wood, 1);
-                m.progress = kWoodBurnSeconds;
-            }
-            m.crafting = m.progress > 0.0f;
-            m.craftTime = kWoodBurnSeconds;
-            if ((m.progress > 0.0f) != wasBurning) powerChanged = true;
-        } else if (m.type == BlockId::RainBarrel) {
-            // Barrels need no power -- just rain and open sky above.
-            const bool filling = m_weatherRaining &&
-                m.output.count(ItemId::SpringWater) < kBarrelCap &&
-                skyVisible(pos.x, pos.y, pos.z);
-            m.crafting = filling;
-            m.craftTime = kBarrelFillSeconds;
-            if (filling) {
-                m.progress += kTickSeconds;
-                if (m.progress >= kBarrelFillSeconds) {
-                    m.progress = 0.0f;
-                    m.output.add(ItemId::SpringWater, 1);
-                }
-            }
+        const MachineTraits& t = machineTraits(m.type);
+        switch (t.kind) {
+            case MachineKind::Generator:
+                powerChanged |= tickGenerator(m, t, m_hungryGenerators.count(pos) > 0);
+                break;
+            case MachineKind::Collector:
+                tickCollector(m, t, m_weatherRaining && skyVisible(pos.x, pos.y, pos.z));
+                break;
+            default:
+                break;
         }
     }
     if (powerChanged) {
@@ -111,7 +190,7 @@ void VoxelGame::updateHums() {
     std::vector<glm::ivec3> wanted;
     for (const auto& [pos, m] : m_machines) {
         if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
-        if (m.type == BlockId::Generator && m.progress <= 0.0f) continue;
+        if (machineTraits(m.type).kind == MachineKind::Generator && m.progress <= 0.0f) continue;
         wanted.push_back(pos);
     }
     if (static_cast<int>(wanted.size()) > kMaxHums) {
@@ -409,71 +488,17 @@ void VoxelGame::onTick() {
 
     // Powered machines process their input buffer into outputs over time.
     for (auto& [pos, m] : m_machines) {
-        // Generators and barrels run in the pre-pass above (their state does
-        // not gate on power, and the recipe fallthrough would zero progress).
-        if (m.type == BlockId::Generator || m.type == BlockId::RainBarrel) continue;
+        const MachineTraits& traits = machineTraits(m.type);
+        // Generators and collectors ran in the pre-pass above (their state
+        // does not gate on power, and the recipe fallthrough would zero
+        // their progress).
+        if (traits.kind == MachineKind::Generator ||
+            traits.kind == MachineKind::Collector) continue;
         m.crafting = false;
-        if (!m_power.energized(pos.x, pos.y, pos.z)) continue;
+        if (traits.demand > 0 && !m_power.energized(pos.x, pos.y, pos.z)) continue;
 
-        // Miners harvest the nearest grown resource node in reach instead of
-        // running recipes; the patch regrows from its source, bounding the rate.
-        if (m.type == BlockId::Miner) {
-            // A raw item in the input buffer acts as a filter: mine only that
-            // node type. Empty input = mine anything nearby.
-            const BlockId filterNode = nodeForRaw(minerFilter(m));
-
-            // The miner commits to one node per harvest. One cheap read per
-            // tick validates it (it may be mined away or the filter changed);
-            // the full reach scan runs only to acquire, every few ticks.
-            if (m.hasTarget) {
-                const BlockId t = m_world->getBlock(m.target.x, m.target.y, m.target.z);
-                if (!isResourceNode(t) ||
-                    (filterNode != BlockId::Air && t != filterNode)) {
-                    m.hasTarget = false;
-                }
-            }
-            if (!m.hasTarget) {
-                if (--m.rescanCooldown > 0) {
-                    m.progress = 0.0f;
-                    continue;
-                }
-                m.rescanCooldown = kMinerIdleRescanTicks;
-
-                glm::ivec3 best{0};
-                int bestDist2 = INT_MAX;
-                for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
-                    for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
-                        for (int dy = -3; dy <= 3; ++dy) {
-                            const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
-                            const BlockId node = m_world->getBlock(c.x, c.y, c.z);
-                            if (!isResourceNode(node)) continue;
-                            if (filterNode != BlockId::Air && node != filterNode) continue;
-                            const int d2 = dx * dx + dy * dy + dz * dz;
-                            if (d2 < bestDist2) {
-                                bestDist2 = d2;
-                                best = c;
-                            }
-                        }
-                    }
-                }
-                if (bestDist2 == INT_MAX) {
-                    m.progress = 0.0f; // nothing in reach; idle until the patch regrows
-                    continue;
-                }
-                m.target = best;
-                m.hasTarget = true;
-            }
-
-            m.crafting = true;
-            m.craftTime = kMineSeconds;
-            m.progress += kTickSeconds;
-            if (m.progress >= kMineSeconds) {
-                m.progress = 0.0f;
-                const ItemStack drop = blockDrop(m_world->getBlock(m.target.x, m.target.y, m.target.z));
-                m.output.add(drop.id, drop.count);
-                m_world->setBlock(m.target.x, m.target.y, m.target.z, BlockId::Air);
-                m.hasTarget = false;
-            }
+        if (traits.kind == MachineKind::Miner) {
+            tickMiner(*m_world, pos, m);
             continue;
         }
 

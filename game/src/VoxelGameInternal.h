@@ -111,11 +111,10 @@ namespace vg {
     inline constexpr float kRainSpan        = 24.0f;   // vertical wrap span
     inline constexpr int   kSkyTopY         = 64;      // sky-visibility scan ceiling
     inline constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
-    inline constexpr float kWoodBurnSeconds = 20.0f;   // generator burn time per Wood
     inline constexpr int   kDemoFuelWood    = 8;       // wood preloaded in demo generators
-    inline constexpr float kBarrelFillSeconds = 12.0f; // rain-to-water cadence per barrel
-    inline constexpr int   kBarrelCap       = 10;      // max water buffered in a barrel
     inline constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
+    // (Generator burn time / barrel fill cadence + cap are per-machine data
+    // now: see kMachineTraits in Machine.h.)
     inline constexpr float kSourceMinRadius = 22.0f;   // sources scatter beyond this ring
 
     // ---- Entities: the test creature. Tune freely. ----
@@ -193,16 +192,13 @@ namespace vg {
     // recipe only accepts that recipe's inputs (so belts can't overfill it
     // with ingredients it will never consume).
     inline bool machineAccepts(const Machine& mac, ItemId item) {
-        // Generators take fuel; barrels take nothing (rain fills them);
-        // miners take raw items as filters (not consumed).
-        if (mac.type == BlockId::Generator) {
-            return item == ItemId::Wood;
-        }
-        if (mac.type == BlockId::RainBarrel) {
-            return false;
-        }
-        if (mac.type == BlockId::Miner) {
-            return nodeForRaw(item) != BlockId::Air;
+        const MachineTraits& t = machineTraits(mac.type);
+        switch (t.kind) {
+            case MachineKind::Generator: return item == t.fuel;
+            case MachineKind::Collector: return false; // the environment fills it
+            case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
+                                         // raws are filters (not consumed)
+            case MachineKind::Processor: break;
         }
         const auto recipes = recipesForMachine(mac.type);
         for (std::size_t i = 0; i < recipes.size(); ++i) {

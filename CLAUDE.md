@@ -91,6 +91,13 @@ stay in their file's anonymous namespace.
   designated-initializer row per enum value, `static_assert`ed against enum order.
   Adding content = append the enum value + one row; enums are APPEND-ONLY because
   ordinals are the save encoding (see SCALABILITY.md).
+- Machine behavior is data too: `kMachineTraits` in Machine.h (one row per
+  machine — `MachineKind`, power demand/output, fuel + burn time, collection),
+  cross-`static_assert`ed against the BlockInfo machine flags. The sim tick,
+  `machineAccepts`, the power solve, and the panel UI dispatch on the kind, never
+  on BlockIds; bespoke ticks are named functions in VoxelGameSim.cpp. A standard
+  recipe machine = a Processor row; the Generator/Rain Barrel knobs live in
+  their rows (generator tiers = more rows).
 - Private members prefixed `m_`; ownership via `std::unique_ptr`, no raw `delete`.
 - Headers in `include/`, implementations in `src/`.
 - All movement/logic scaled by `dt`; simulation logic belongs in `onTick()`.

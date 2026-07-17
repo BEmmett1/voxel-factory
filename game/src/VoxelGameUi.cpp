@@ -210,26 +210,34 @@ void VoxelGame::drawMachineUi() {
 
     // Header: machine name + status (generators report their burn instead of
     // network power -- their energized state is their own doing).
+    const MachineTraits& traits = machineTraits(mac.type);
     m_ui.text(L.px + 16, L.py + 12, 18.0f, blockName(mac.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
-    if (mac.type == BlockId::Generator) {
-        const bool burning = mac.progress > 0.0f;
-        const bool hungry = m_hungryGenerators.count(m_machineUiPos) > 0;
-        const char* status = burning ? "BURNING" : hungry ? "OUT OF FUEL" : "IDLE";
-        const glm::vec4 col = burning ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f)
-                            : hungry  ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f)
-                                      : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
-        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, status, col);
-    } else if (mac.type == BlockId::RainBarrel) {
-        const bool full = mac.output.count(ItemId::SpringWater) >= kBarrelCap;
-        const char* status = full ? "FULL" : mac.crafting ? "COLLECTING" : "WAITING FOR RAIN";
-        const glm::vec4 col = full ? glm::vec4(1.0f, 0.85f, 0.3f, 1.0f)
-                            : mac.crafting ? glm::vec4(0.45f, 0.7f, 0.95f, 1.0f)
-                                           : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
-        m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status, col);
-    } else {
-        const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
-        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
-                  powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+    switch (traits.kind) {
+        case MachineKind::Generator: {
+            const bool burning = mac.progress > 0.0f;
+            const bool hungry = m_hungryGenerators.count(m_machineUiPos) > 0;
+            const char* status = burning ? "BURNING" : hungry ? "OUT OF FUEL" : "IDLE";
+            const glm::vec4 col = burning ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f)
+                                : hungry  ? glm::vec4(0.95f, 0.4f, 0.35f, 1.0f)
+                                          : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
+            m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, status, col);
+            break;
+        }
+        case MachineKind::Collector: {
+            const bool full = mac.output.count(traits.collects) >= traits.collectCap;
+            const char* status = full ? "FULL" : mac.crafting ? "COLLECTING" : "WAITING FOR RAIN";
+            const glm::vec4 col = full ? glm::vec4(1.0f, 0.85f, 0.3f, 1.0f)
+                                : mac.crafting ? glm::vec4(0.45f, 0.7f, 0.95f, 1.0f)
+                                               : glm::vec4(0.6f, 0.6f, 0.65f, 1.0f);
+            m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status, col);
+            break;
+        }
+        default: {
+            const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+            m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
+                      powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+            break;
+        }
     }
 
     // Action rows.
@@ -244,24 +252,33 @@ void VoxelGame::drawMachineUi() {
         std::string label;
         bool actionable = false;
         if (i == 0) {
-            if (mac.type == BlockId::Generator) {
-                label = "  BURNS WOOD ( " +
-                        std::to_string(static_cast<int>(kWoodBurnSeconds)) +
-                        "S PER WOOD, ONLY WHILE A NETWORK NEEDS POWER )";
-                actionable = true;
-            } else if (mac.type == BlockId::RainBarrel) {
-                label = "  COLLECTS RAIN WATER ( NEEDS OPEN SKY ABOVE )";
-                actionable = true;
-            } else if (recipes.empty()) { // the Miner: status row shows its filter
-                const ItemId filter = minerFilter(mac);
-                label = (filter == ItemId::None)
-                    ? "  MINES: ANY NEARBY NODE ( RADIUS 4 )"
-                    : std::string("  MINES: ") + itemName(filter) + " ONLY ( RADIUS 4 )";
-                actionable = true;
-            } else {
-                label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
-                        "AUTO ( FIRST READY RECIPE )";
-                actionable = true;
+            // Row 0 is the machine's personality: an info line for the
+            // bespoke kinds, the AUTO selector for recipe machines.
+            actionable = true;
+            switch (traits.kind) {
+                case MachineKind::Generator:
+                    label = std::string("  BURNS ") + itemName(traits.fuel) + " ( " +
+                            std::to_string(static_cast<int>(traits.burnSeconds)) +
+                            "S PER " + itemName(traits.fuel) +
+                            ", ONLY WHILE A NETWORK NEEDS POWER )";
+                    break;
+                case MachineKind::Collector:
+                    label = std::string("  COLLECTS ") + itemName(traits.collects) +
+                            " ( NEEDS OPEN SKY ABOVE )";
+                    break;
+                case MachineKind::Miner: { // status row shows the filter
+                    const ItemId filter = minerFilter(mac);
+                    label = (filter == ItemId::None)
+                        ? "  MINES: ANY NEARBY NODE ( RADIUS " +
+                          std::to_string(kMineRadius) + " )"
+                        : std::string("  MINES: ") + itemName(filter) + " ONLY ( RADIUS " +
+                          std::to_string(kMineRadius) + " )";
+                    break;
+                }
+                case MachineKind::Processor:
+                    label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
+                            "AUTO ( FIRST READY RECIPE )";
+                    break;
             }
         } else if (i <= static_cast<int>(recipes.size())) {
             const MachineRecipe& r = *recipes[i - 1];
