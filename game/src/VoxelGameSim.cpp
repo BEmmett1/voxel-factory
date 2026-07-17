@@ -531,5 +531,5 @@ void VoxelGame::onTick() {
         beltStep();
     }
 
-    updateCreatures(); // wander + physics (VoxelGameEntities.cpp)
+    m_creatures.update(*m_world); // wander + physics (CreatureSystem.cpp)
 }

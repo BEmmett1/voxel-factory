@@ -1,12 +1,16 @@
 // The test creature: the first brick of the entity layer. Loads a Blockbench
 // model (game/assets/models/creature.bbmodel), spawns one wanderer on the
-// plateau, steps it in onTick (gravity + the shared box collision), and draws
+// plateau, steps it at 20 Hz (gravity + the shared box collision), and draws
 // it skinned through the entity shader. Deliberately NOT persisted -- a fresh
 // creature spawns each launch; save records arrive with the full entity layer.
 
-#include "game/VoxelGame.h"
+#include "game/CreatureSystem.h"
+
 #include "VoxelGameInternal.h"
 #include "game/Raycast.h"
+#include "game/World.h"
+#include "engine/Audio.h"
+#include "engine/Camera.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -55,58 +59,53 @@ namespace {
 
 } // namespace
 
-void VoxelGame::loadCreatureAssets() {
-    const char* base = SDL_GetBasePath(); // owned by SDL, do not free
-    const std::string dir = base ? base : "";
-
+void CreatureSystem::loadAssets(const std::string& dir) {
     // Content, not core: a missing/broken model means a creatureless game
     // with a log line, never a crash (same philosophy as atlas + sounds).
-    if (!engine::loadBbModel(dir + kCreatureModel, m_creatureModel,
-                             kMaxEntityBones)) {
+    if (!engine::loadBbModel(dir + kCreatureModel, m_model, kMaxEntityBones)) {
         SDL_Log("Entities: creature model unavailable -- running without it "
                 "(regenerate with: python tools/make_test_model.py)");
         return;
     }
 
-    if (!m_creatureModel.texture.rgba.empty()) {
-        m_creatureTex.createFromPixels(m_creatureModel.texture.width,
-                                       m_creatureModel.texture.height,
-                                       m_creatureModel.texture.rgba.data());
+    if (!m_model.texture.rgba.empty()) {
+        m_texture.createFromPixels(m_model.texture.width, m_model.texture.height,
+                                   m_model.texture.rgba.data());
     } else {
         // Loud-but-alive fallback: a magenta/black checker.
         const unsigned char checker[16] = {255, 0, 255, 255, 25, 25, 25, 255,
                                            25, 25, 25, 255, 255, 0, 255, 255};
-        m_creatureTex.createFromPixels(2, 2, checker);
+        m_texture.createFromPixels(2, 2, checker);
     }
 
-    m_creatureMesh.upload(m_creatureModel.vertexData, {3, 3, 2, 1});
+    m_mesh.upload(m_model.vertexData, {3, 3, 2, 1});
 
-    if (!m_entityShader.loadFromFiles(dir + "shaders/entity.vert",
-                                      dir + "shaders/entity.frag")) {
+    if (!m_shader.loadFromFiles(dir + "shaders/entity.vert",
+                                dir + "shaders/entity.frag")) {
         SDL_Log("Entities: entity shader failed to load -- running without "
                 "creatures");
         return;
     }
-    m_entityShader.use();
-    m_entityShader.setInt("uTex", 0);
+    m_shader.use();
+    m_shader.setInt("uTex", 0);
 
-    m_creatureReady = true;
+    m_ready = true;
 }
 
-void VoxelGame::spawnTestCreature() {
-    if (!m_creatureReady) return;
+void CreatureSystem::spawnTestCreature(const World& world, const glm::vec3& feetHint) {
+    if (!m_ready) return;
 
-    // A few blocks from the player spawn, snapped down onto solid ground
-    // (works on a modified saved island too). No ground = no creature.
-    glm::vec3 feet = spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f);
+    // At the hint's column, snapped down onto solid ground (works on a
+    // modified saved island too). No ground = no creature.
+    glm::vec3 feet = feetHint;
     const int x = static_cast<int>(std::floor(feet.x));
     const int z = static_cast<int>(std::floor(feet.z));
     for (int y = kPlateauY + 8; y >= 0; --y) {
-        if (isSolid(m_world->getBlock(x, y, z))) {
+        if (isSolid(world.getBlock(x, y, z))) {
             feet.y = static_cast<float>(y + 1);
             Creature c;
             c.pos = c.prevPos = c.home = c.target = feet;
-            c.anim = m_creatureModel.findAnimation("idle");
+            c.anim = m_model.findAnimation("idle");
             c.hp = kCreatureHealth;
             m_creatures.push_back(c);
             return;
@@ -115,19 +114,14 @@ void VoxelGame::spawnTestCreature() {
     SDL_Log("Entities: no ground at the creature spawn -- skipped");
 }
 
-// Swing the sword along the aim ray: strike the nearest creature within
-// reach, unless a solid block is in the way first. Returns true on a hit
-// (the caller then skips the mining path for this click).
-bool VoxelGame::tryMeleeAttack() {
-    const glm::vec3 o = camera().position;
-    const glm::vec3 d = camera().front();
-
+bool CreatureSystem::tryMeleeAttack(const World& world, engine::Audio& audio,
+                                    const glm::vec3& origin, const glm::vec3& dir) {
     // A wall between us and the creature blocks the swing.
     float tBlock = kReach;
-    const RaycastHit aim = raycastVoxel(*m_world, o, d, kReach);
+    const RaycastHit aim = raycastVoxel(world, origin, dir, kReach);
     if (aim.hit) {
         float t = kReach;
-        if (rayAabb(o, d, glm::vec3(aim.block), glm::vec3(aim.block) + 1.0f, t)) {
+        if (rayAabb(origin, dir, glm::vec3(aim.block), glm::vec3(aim.block) + 1.0f, t)) {
             tBlock = t;
         }
     }
@@ -140,7 +134,7 @@ bool VoxelGame::tryMeleeAttack() {
         const glm::vec3 hi = c.pos + glm::vec3(kCreatureHalfW, kCreatureHeight,
                                                kCreatureHalfW);
         float t = 0.0f;
-        if (rayAabb(o, d, lo, hi, t) && t <= kReach && t < bestT) {
+        if (rayAabb(origin, dir, lo, hi, t) && t <= kReach && t < bestT) {
             bestT = t;
             best = i;
         }
@@ -154,14 +148,14 @@ bool VoxelGame::tryMeleeAttack() {
     if (c.hp <= 0.0f) {
         // Down: a lower-pitched thud marks the kill. No drops yet -- boss
         // loot is the combat pillar's later answer to "why fight".
-        audio().playAt("hit", center, kHurtVolume, 0.7f);
+        audio.playAt("hit", center, kHurtVolume, 0.7f);
         m_creatures.erase(m_creatures.begin() + best);
         return true;
     }
-    audio().playAt("hit", center, kHurtVolume);
+    audio.playAt("hit", center, kHurtVolume);
 
     // Shove it away from the player and send it fleeing.
-    glm::vec3 away = c.pos - o;
+    glm::vec3 away = c.pos - origin;
     away.y = 0.0f;
     away = (glm::dot(away, away) > 1e-6f) ? glm::normalize(away)
                                           : glm::vec3(0.0f, 0.0f, 1.0f);
@@ -172,7 +166,7 @@ bool VoxelGame::tryMeleeAttack() {
     return true;
 }
 
-void VoxelGame::updateCreatures() {
+void CreatureSystem::update(const World& world) {
     const float dt = kTickSeconds;
 
     for (Creature& c : m_creatures) {
@@ -219,17 +213,17 @@ void VoxelGame::updateCreatures() {
         bool blockedX = false, blockedZ = false;
         glm::vec3 next = c.pos;
         next.x += c.vel.x * dt;
-        if (!boxCollides(*m_world, next, kCreatureHalfW, kCreatureHeight)) c.pos.x = next.x;
+        if (!boxCollides(world, next, kCreatureHalfW, kCreatureHeight)) c.pos.x = next.x;
         else blockedX = true;
         next = c.pos;
         next.z += c.vel.z * dt;
-        if (!boxCollides(*m_world, next, kCreatureHalfW, kCreatureHeight)) c.pos.z = next.z;
+        if (!boxCollides(world, next, kCreatureHalfW, kCreatureHeight)) c.pos.z = next.z;
         else blockedZ = true;
 
         c.grounded = false;
         next = c.pos;
         next.y += c.vel.y * dt;
-        if (!boxCollides(*m_world, next, kCreatureHalfW, kCreatureHeight)) {
+        if (!boxCollides(world, next, kCreatureHalfW, kCreatureHeight)) {
             c.pos.y = next.y;
         } else if (c.vel.y <= 0.0f) {
             c.pos.y = std::floor(next.y) + 1.0f; // land on the block top
@@ -254,7 +248,7 @@ void VoxelGame::updateCreatures() {
 
         // --- Animation state. ---
         const bool moving = c.walking && (!blockedX || !blockedZ);
-        const int want = m_creatureModel.findAnimation(moving ? "walk" : "idle");
+        const int want = m_model.findAnimation(moving ? "walk" : "idle");
         if (want != c.anim) {
             c.anim = want;
             c.animTime = 0.0f;
@@ -264,30 +258,40 @@ void VoxelGame::updateCreatures() {
     m_sinceTick = 0.0f;
 }
 
-void VoxelGame::renderCreatures() {
-    if (!m_creatureReady || m_creatures.empty()) return;
+// Animation clocks tick at render rate (menus keep animating, just like the
+// sim keeps ticking); the caller skips this while truly paused.
+void CreatureSystem::frameAdvance(float dt) {
+    m_sinceTick += dt;
+    for (Creature& c : m_creatures) {
+        c.animTime += dt;
+        c.hurtFlash = std::max(0.0f, c.hurtFlash - dt * kFlashDecay);
+    }
+}
 
-    m_entityShader.use();
-    m_entityShader.setMat4("uProj", camera().projection());
-    m_entityShader.setMat4("uView", camera().view());
-    m_entityShader.setVec3("uLightDir", kLightDir);
-    m_entityShader.setFloat("uRainDim", m_rainIntensity * kRainDimMax);
-    m_creatureTex.bind(0);
+void CreatureSystem::render(const engine::Camera& camera, float rainDim) {
+    if (!m_ready || m_creatures.empty()) return;
+
+    m_shader.use();
+    m_shader.setMat4("uProj", camera.projection());
+    m_shader.setMat4("uView", camera.view());
+    m_shader.setVec3("uLightDir", kLightDir);
+    m_shader.setFloat("uRainDim", rainDim);
+    m_texture.bind(0);
 
     // Blend between the last two ticks so 20 Hz movement renders smoothly.
     const float alpha = std::min(m_sinceTick / kTickSeconds, 1.0f);
 
     for (const Creature& c : m_creatures) {
-        engine::evaluateBbPose(m_creatureModel, c.anim, c.animTime, m_boneScratch);
+        engine::evaluateBbPose(m_model, c.anim, c.animTime, m_boneScratch);
         m_boneScratch.resize(kMaxEntityBones, glm::mat4(1.0f)); // pad to uBones[]
 
         const glm::vec3 p = glm::mix(c.prevPos, c.pos, alpha);
         glm::mat4 model = glm::translate(glm::mat4(1.0f), p);
         model = glm::rotate(model, glm::radians(c.yaw), {0.0f, 1.0f, 0.0f});
         model = glm::scale(model, glm::vec3(kCreatureScale));
-        m_entityShader.setMat4("uModel", model);
-        m_entityShader.setFloat("uFlash", c.hurtFlash * 0.7f);
-        m_entityShader.setMat4Array("uBones", m_boneScratch.data(), kMaxEntityBones);
-        m_creatureMesh.draw();
+        m_shader.setMat4("uModel", model);
+        m_shader.setFloat("uFlash", c.hurtFlash * 0.7f);
+        m_shader.setMat4Array("uBones", m_boneScratch.data(), kMaxEntityBones);
+        m_mesh.draw();
     }
 }

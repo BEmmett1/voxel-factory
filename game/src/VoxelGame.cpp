@@ -78,7 +78,7 @@ void VoxelGame::onStart() {
     // in onUpdate drives its gain (silent while clear).
     m_rainLoop = audio().createLoop("rain_loop", /*spatial=*/false, 0.0f);
 
-    loadCreatureAssets(); // .bbmodel + entity shader; creatureless on failure
+    m_creatures.loadAssets(dir); // .bbmodel + entity shader; creatureless on failure
 
     // Hotbar: ten player-assigned slots, curated in the Tab inventory overlay
     // (keys 1-9 and 0 select; the wheel cycles). Seed the default BEFORE
@@ -111,7 +111,9 @@ void VoxelGame::onStart() {
     // the first onRender) builds every mesh; power just needs one seed solve.
     m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
     updateHums(); // a loaded save's energized machines hum from frame one
-    spawnTestCreature(); // fresh each launch; not part of the save
+    // Fresh each launch; not part of the save. A few blocks from the player
+    // spawn, snapped to ground inside the system.
+    m_creatures.spawnTestCreature(*m_world, spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f));
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();

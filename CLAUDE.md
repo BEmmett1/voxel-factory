@@ -292,8 +292,12 @@ Entities (Blockbench import — the combat pillar's first brick):
   (onTick; gravity + the shared `vg::boxCollides` move-and-slide), and draws skinned
   in `renderCreatures()` (`game/shaders/entity.*`, `uBones[32]` = `kMaxEntityBones`,
   one draw per creature, prev/cur tick interpolation hides the 20 Hz step; same
-  `kLightDir` + `uRainDim` as the world). All logic in `game/src/VoxelGameEntities.cpp`;
-  knobs in the `// ---- Entities ----` block. Missing/corrupt model = creatureless
+  `kLightDir` + `uRainDim` as the world). All of it lives in the extracted
+  **`CreatureSystem`** (`game/include/game/CreatureSystem.h` + `game/src/
+  CreatureSystem.cpp`): owns the model/GPU assets and instances, API of
+  `loadAssets` / `spawnTestCreature` / `update(World&)` / `frameAdvance` /
+  `render(Camera&, rainDim)` / `tryMeleeAttack` — takes engine services as
+  parameters, never VoxelGame&. Knobs in the `// ---- Entities ----` block. Missing/corrupt model = creatureless
   launch + log; failed texture = magenta checker (never fatal).
 
 Weather & the water economy:

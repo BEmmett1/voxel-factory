@@ -284,7 +284,7 @@ void VoxelGame::onRender() {
     }
 
     // Creatures: skinned Blockbench models, depth-tested with the world.
-    renderCreatures();
+    m_creatures.render(camera(), m_rainIntensity * kRainDimMax);
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A

@@ -63,11 +63,7 @@ void VoxelGame::onUpdate(float dt) {
     // Entity animation clocks tick at render rate (menus keep animating, just
     // like onTick keeps simulating); a true pause freezes them.
     if (!paused()) {
-        m_sinceTick += dt;
-        for (auto& c : m_creatures) {
-            c.animTime += dt;
-            c.hurtFlash = std::max(0.0f, c.hurtFlash - dt * kFlashDecay);
-        }
+        m_creatures.frameAdvance(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
     }
 
@@ -282,7 +278,7 @@ void VoxelGame::onUpdate(float dt) {
         held == ItemId::CopperSword && m_inventory.has(held)) {
         m_attackCooldown = kSwordCooldown;
         audio().play("swing", kUiVolume);
-        swordHit = tryMeleeAttack();
+        swordHit = m_creatures.tryMeleeAttack(*m_world, audio(), cam.position, cam.front());
     }
 
     // Aim and edit.

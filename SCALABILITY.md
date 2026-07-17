@@ -160,9 +160,14 @@ them change the save format (enum ordinals stay put). Green-light individually.
   `hoveredItemIn()` (grids, strips, tooltips), `drawSimpleRow()` and a shared
   panel palette. Net −39 lines while adding the toolkit; a new panel now costs
   a layout struct + a row switch instead of re-rolling the idiom.
-- **A2 — CreatureSystem.** Lift `Creature` + entity assets/update/render out of
-  `VoxelGame` — already nearly self-contained in `VoxelGameEntities.cpp`; outward
-  coupling is only world collision, camera, and audio.
+- **A2 — CreatureSystem.** ✅ **Done (July 2026).** `CreatureSystem`
+  (game/include/game/CreatureSystem.h + game/src/CreatureSystem.cpp) owns the
+  Creature struct, model/GPU assets, instances, and the render-lerp clock;
+  `VoxelGameEntities.cpp` is gone and VoxelGame keeps a single member. API
+  follows the PowerSystem precedent — `update(World&)`,
+  `render(Camera&, rainDim)`, `tryMeleeAttack(World&, Audio&, origin, dir)` —
+  engine services passed in, never `VoxelGame&`. Eight members + a nested
+  struct left the god class.
 - **A3 — MachineSystem / BeltSim.** Move the onTick machine loop and `beltStep`
   into a system taking `(World&, machines, belts, PowerState&)`, following the
   `PowerSystem::solve` precedent. Prerequisite: unfuse `solvePowerAndMarkDirty`
