@@ -95,9 +95,16 @@ stay in their file's anonymous namespace.
   machine — `MachineKind`, power demand/output, fuel + burn time, collection),
   cross-`static_assert`ed against the BlockInfo machine flags. The sim tick,
   `machineAccepts`, the power solve, and the panel UI dispatch on the kind, never
-  on BlockIds; bespoke ticks are named functions in VoxelGameSim.cpp. A standard
-  recipe machine = a Processor row; the Generator/Rain Barrel knobs live in
-  their rows (generator tiers = more rows).
+  on BlockIds. A standard recipe machine = a Processor row; the Generator/Rain
+  Barrel knobs live in their rows (generator tiers = more rows).
+- The machine/belt simulation itself is **`MachineSystem`** (MachineSystem.h/.cpp):
+  free functions over `(World&, machine/belt maps, PowerState&)` — the
+  PowerSystem interface precedent. `tickSelfPowered` (generators/collectors)
+  returns whether a burn state flipped and onTick re-solves power BEFORE
+  `tickPowered` (miners/processors) so recipe machines see fresh power the same
+  tick; `beltStep` advances conduits. Machine input policy (`machineAccepts`,
+  `minerFilter`) lives there too. Power re-solve + chunk dirtying + hum-loop
+  audio stay VoxelGame glue (`solvePowerAndMarkDirty`/`updateHums`).
 - Private members prefixed `m_`; ownership via `std::unique_ptr`, no raw `delete`.
 - Headers in `include/`, implementations in `src/`.
 - All movement/logic scaled by `dt`; simulation logic belongs in `onTick()`.

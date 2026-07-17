@@ -6,6 +6,7 @@
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
 #include "game/Atlas.h"
+#include "game/MachineSystem.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -363,7 +364,7 @@ void VoxelGame::drawMachineUi() {
                             " ( NEEDS OPEN SKY ABOVE )";
                     break;
                 case MachineKind::Miner: { // status row shows the filter
-                    const ItemId filter = minerFilter(mac);
+                    const ItemId filter = MachineSystem::minerFilter(mac);
                     label = (filter == ItemId::None)
                         ? "  MINES: ANY NEARBY NODE ( RADIUS " +
                           std::to_string(kMineRadius) + " )"
@@ -399,7 +400,7 @@ void VoxelGame::drawMachineUi() {
 
     // IN strip (highlighted as the drop target while dragging from inventory).
     if (m_drag.active() && m_drag.source == Drag::Source::PlayerInv) {
-        const bool ok = machineAccepts(mac, m_drag.id);
+        const bool ok = MachineSystem::machineAccepts(mac, m_drag.id);
         m_ui.rect(L.px + 8, L.inY, L.panelW - 16, PanelLayout::StripH - 4,
                   ok ? glm::vec4(0.20f, 0.55f, 0.25f, 0.45f) : glm::vec4(0.55f, 0.20f, 0.20f, 0.45f));
     }
@@ -547,7 +548,8 @@ void VoxelGame::updateMachineUi() {
         const bool overIn = inPanelX && my >= L.inY && my < L.inY + PanelLayout::StripH;
         const bool overInv = inPanelX && my >= L.invY &&
                              my < L.invY + L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        if (overIn && m_drag.source == Drag::Source::PlayerInv && machineAccepts(mac, m_drag.id)) {
+        if (overIn && m_drag.source == Drag::Source::PlayerInv &&
+            MachineSystem::machineAccepts(mac, m_drag.id)) {
             mac.input.add(m_drag.id, m_drag.count);
             m_drag = Drag{};
         } else if (overInv && m_drag.source != Drag::Source::PlayerInv) {

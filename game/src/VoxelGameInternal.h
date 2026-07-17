@@ -178,36 +178,16 @@ namespace vg {
         }
     }
 
-    // The first raw item in a miner's input buffer; None = unfiltered (mine
-    // anything nearby). The filter item is a reference sample, never consumed.
-    inline ItemId minerFilter(const Machine& mac) {
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
-            const ItemId id = static_cast<ItemId>(i);
-            if (mac.input.count(id) > 0 && nodeForRaw(id) != BlockId::Air) return id;
-        }
-        return ItemId::None;
-    }
+    // (Machine input policy — machineAccepts / minerFilter — lives with the
+    // machine simulation now: MachineSystem.h.)
 
-    // Does this machine use `item` as an input? A machine locked to a specific
-    // recipe only accepts that recipe's inputs (so belts can't overfill it
-    // with ingredients it will never consume).
-    inline bool machineAccepts(const Machine& mac, ItemId item) {
-        const MachineTraits& t = machineTraits(mac.type);
-        switch (t.kind) {
-            case MachineKind::Generator: return item == t.fuel;
-            case MachineKind::Collector: return false; // the environment fills it
-            case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
-                                         // raws are filters (not consumed)
-            case MachineKind::Processor: break;
+    // Can this cell see the sky? (No solid block between it and the world
+    // top.) Shared by the rain collector, the held bucket, and the rain mesh.
+    inline bool skyVisible(const World& w, int wx, int wy, int wz) {
+        for (int y = wy + 1; y <= kSkyTopY; ++y) {
+            if (isSolid(w.getBlock(wx, y, wz))) return false;
         }
-        const auto recipes = recipesForMachine(mac.type);
-        for (std::size_t i = 0; i < recipes.size(); ++i) {
-            if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
-            for (const ItemStack& in : recipes[i]->inputs) {
-                if (in.id == item) return true;
-            }
-        }
-        return false;
+        return true;
     }
 
     // Does an AABB (feet at `feet`, half width halfW, height h) overlap any

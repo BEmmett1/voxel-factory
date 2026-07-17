@@ -88,15 +88,12 @@ private:
     void unregisterMachine(const glm::ivec3& pos); // returns buffered items
     void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
     void unregisterBelt(const glm::ivec3& pos);    // returns carried item
-    void beltStep();                                // advance items along conduits
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
     void updateLeafDecay();                         // wither leaves cut off from logs
     void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
     void updateWeather();                           // advance the rain/clear phases
-    bool skyVisible(int wx, int wy, int wz) const;  // nothing solid above this cell?
     void buildRainMesh();                           // per-frame falling streaks
-    void updateGeneratorsAndBarrels();              // burn fuel / collect rain
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?

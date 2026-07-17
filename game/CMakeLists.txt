@@ -12,6 +12,7 @@ add_executable(voxel-factory
     src/SaveSystem.cpp
     src/Settings.cpp
     src/CreatureSystem.cpp
+    src/MachineSystem.cpp
     src/VoxelGame.cpp
     src/VoxelGameWorldGen.cpp
     src/VoxelGameSim.cpp

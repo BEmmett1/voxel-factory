@@ -1,15 +1,16 @@
-// The fixed 20 Hz simulation: machines, belts, power, growth, weather — plus
-// the machine/belt registries the edit paths share. Everything here mutates
-// world/state and relies on the per-frame dirty sweep to update meshes.
+// The fixed 20 Hz simulation: growth, weather, power glue, and the calls into
+// MachineSystem — plus the machine/belt registries the edit paths share.
+// Everything here mutates world/state and relies on the per-frame dirty sweep
+// to update meshes.
 
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
+#include "game/MachineSystem.h"
 #include "game/PowerSystem.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <algorithm>
-#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -18,133 +19,14 @@
 
 using namespace vg;
 
-namespace {
-
-    // A generator burns fuel; a new unit is lit only when the network wants
-    // power (`hungry`, from the last solve), but a lit one burns out fully.
-    // Machine::progress holds the burn seconds LEFT. Returns true when the
-    // burn state flipped (the caller re-solves power once per tick).
-    bool tickGenerator(Machine& m, const MachineTraits& t, bool hungry) {
-        const bool wasBurning = m.progress > 0.0f;
-        if (m.progress > 0.0f) {
-            m.progress = std::max(0.0f, m.progress - kTickSeconds);
-        }
-        if (m.progress <= 0.0f && hungry && m.input.count(t.fuel) > 0) {
-            m.input.remove(t.fuel, 1);
-            m.progress = t.burnSeconds;
-        }
-        m.crafting = m.progress > 0.0f;
-        m.craftTime = t.burnSeconds;
-        return (m.progress > 0.0f) != wasBurning;
-    }
-
-    // A collector gathers its item from the environment while conditions
-    // hold (for the Rain Barrel: raining + open sky). Needs no power.
-    void tickCollector(Machine& m, const MachineTraits& t, bool gathering) {
-        const bool filling = gathering && m.output.count(t.collects) < t.collectCap;
-        m.crafting = filling;
-        m.craftTime = t.collectSeconds;
-        if (!filling) return;
-        m.progress += kTickSeconds;
-        if (m.progress >= t.collectSeconds) {
-            m.progress = 0.0f;
-            m.output.add(t.collects, 1);
-        }
-    }
-
-    // A miner harvests the nearest grown resource node in reach instead of
-    // running recipes; the patch regrows from its source, bounding the rate.
-    void tickMiner(World& world, const glm::ivec3& pos, Machine& m) {
-        // A raw item in the input buffer acts as a filter: mine only that
-        // node type. Empty input = mine anything nearby.
-        const BlockId filterNode = nodeForRaw(minerFilter(m));
-
-        // The miner commits to one node per harvest. One cheap read per
-        // tick validates it (it may be mined away or the filter changed);
-        // the full reach scan runs only to acquire, every few ticks.
-        if (m.hasTarget) {
-            const BlockId t = world.getBlock(m.target.x, m.target.y, m.target.z);
-            if (!isResourceNode(t) ||
-                (filterNode != BlockId::Air && t != filterNode)) {
-                m.hasTarget = false;
-            }
-        }
-        if (!m.hasTarget) {
-            if (--m.rescanCooldown > 0) {
-                m.progress = 0.0f;
-                return;
-            }
-            m.rescanCooldown = kMinerIdleRescanTicks;
-
-            glm::ivec3 best{0};
-            int bestDist2 = INT_MAX;
-            for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
-                for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
-                    for (int dy = -3; dy <= 3; ++dy) {
-                        const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
-                        const BlockId node = world.getBlock(c.x, c.y, c.z);
-                        if (!isResourceNode(node)) continue;
-                        if (filterNode != BlockId::Air && node != filterNode) continue;
-                        const int d2 = dx * dx + dy * dy + dz * dz;
-                        if (d2 < bestDist2) {
-                            bestDist2 = d2;
-                            best = c;
-                        }
-                    }
-                }
-            }
-            if (bestDist2 == INT_MAX) {
-                m.progress = 0.0f; // nothing in reach; idle until the patch regrows
-                return;
-            }
-            m.target = best;
-            m.hasTarget = true;
-        }
-
-        m.crafting = true;
-        m.craftTime = kMineSeconds;
-        m.progress += kTickSeconds;
-        if (m.progress >= kMineSeconds) {
-            m.progress = 0.0f;
-            const ItemStack drop = blockDrop(world.getBlock(m.target.x, m.target.y, m.target.z));
-            m.output.add(drop.id, drop.count);
-            world.setBlock(m.target.x, m.target.y, m.target.z, BlockId::Air);
-            m.hasTarget = false;
-        }
-    }
-
-} // namespace
-
-// Generators and collectors run before the powered machines: their state does
-// not gate on network power (generators CREATE it), and a generator's burn
-// flip re-solves the network once per tick.
-void VoxelGame::updateGeneratorsAndBarrels() {
-    bool powerChanged = false;
-    for (auto& [pos, m] : m_machines) {
-        const MachineTraits& t = machineTraits(m.type);
-        switch (t.kind) {
-            case MachineKind::Generator:
-                powerChanged |= tickGenerator(m, t, m_hungryGenerators.count(pos) > 0);
-                break;
-            case MachineKind::Collector:
-                tickCollector(m, t, m_weatherRaining && skyVisible(pos.x, pos.y, pos.z));
-                break;
-            default:
-                break;
-        }
-    }
-    if (powerChanged) {
-        solvePowerAndMarkDirty();
-    }
-}
-
 // Holding a bucket under open sky while it rains slowly collects water.
 void VoxelGame::updateBucketFill() {
     const ItemId held = heldItem();
     const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
     const bool collecting = m_weatherRaining && held == ItemId::Bucket &&
         m_inventory.has(ItemId::Bucket) &&
-        skyVisible(static_cast<int>(std::floor(feet.x)),
+        skyVisible(*m_world,
+                   static_cast<int>(std::floor(feet.x)),
                    static_cast<int>(std::floor(feet.y + kPlayerHeight)),
                    static_cast<int>(std::floor(feet.z)));
     if (!collecting) {
@@ -254,56 +136,6 @@ void VoxelGame::unregisterBelt(const glm::ivec3& pos) {
     m_belts.erase(it);
 }
 
-void VoxelGame::beltStep() {
-    // 1. Belts deliver their item into a machine directly ahead (if it accepts).
-    for (auto& [pos, b] : m_belts) {
-        if (b.item == ItemId::None) continue;
-        const glm::ivec3 front = pos + b.facing;
-        const auto mit = m_machines.find(front);
-        if (mit != m_machines.end() && machineAccepts(mit->second, b.item)) {
-            mit->second.input.add(b.item, 1);
-            b.item = ItemId::None;
-        }
-    }
-
-    // 2. Hop items belt -> belt. Use a snapshot of pre-step contents so an item
-    //    advances at most one belt, and claim targets so two items never merge.
-    std::unordered_map<glm::ivec3, ItemId, IVec3Hash> before;
-    before.reserve(m_belts.size());
-    for (const auto& [pos, b] : m_belts) before[pos] = b.item;
-
-    std::unordered_set<glm::ivec3, IVec3Hash> claimed;
-    for (auto& [pos, b] : m_belts) {
-        const ItemId carried = before[pos];
-        if (carried == ItemId::None) continue;
-        const glm::ivec3 front = pos + b.facing;
-        const auto tb = m_belts.find(front);
-        if (tb == m_belts.end()) continue;       // ahead is not a belt
-        if (before[front] != ItemId::None) continue; // target was occupied
-        if (claimed.count(front)) continue;       // already filled this step
-        tb->second.item = carried;
-        b.item = ItemId::None;
-        claimed.insert(front);
-    }
-
-    // 3. Empty belts pull one item from a machine's output directly behind them.
-    for (auto& [pos, b] : m_belts) {
-        if (b.item != ItemId::None) continue;
-        const glm::ivec3 back = pos - b.facing;
-        const auto mit = m_machines.find(back);
-        if (mit == m_machines.end()) continue;
-        Inventory& out = mit->second.output;
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
-            const ItemId id = static_cast<ItemId>(i);
-            if (out.count(id) > 0) {
-                out.remove(id, 1);
-                b.item = id;
-                break;
-            }
-        }
-    }
-}
-
 // Rain comes and goes on seeded random phases. Gameplay gates on the boolean;
 // visuals ease through m_rainIntensity (updated per frame in onUpdate).
 void VoxelGame::updateWeather() {
@@ -314,14 +146,6 @@ void VoxelGame::updateWeather() {
     const float hi = m_weatherRaining ? kRainMaxSeconds : kClearMaxSeconds;
     const std::uint32_t h = hash2(311, 977, m_worldSeed + m_sourceRng++);
     m_weatherTimer = lo + (hi - lo) * static_cast<float>(h % 1024u) / 1023.0f;
-}
-
-// Can this cell see the sky? (No solid block between it and the world top.)
-bool VoxelGame::skyVisible(int wx, int wy, int wz) const {
-    for (int y = wy + 1; y <= kSkyTopY; ++y) {
-        if (isSolid(m_world->getBlock(wx, y, wz))) return false;
-    }
-    return true;
 }
 
 void VoxelGame::updateSources() {
@@ -483,52 +307,22 @@ void VoxelGame::onTick() {
     updateSources();
     updateSaplings();
     updateLeafDecay();
-    updateGeneratorsAndBarrels();
+
+    // Generators and collectors first: a burn flip re-solves the network so
+    // the powered machines below see fresh power in this same tick.
+    if (MachineSystem::tickSelfPowered(*m_world, m_machines, m_hungryGenerators,
+                                       m_weatherRaining)) {
+        solvePowerAndMarkDirty();
+    }
     updateBucketFill();
 
-    // Powered machines process their input buffer into outputs over time.
-    for (auto& [pos, m] : m_machines) {
-        const MachineTraits& traits = machineTraits(m.type);
-        // Generators and collectors ran in the pre-pass above (their state
-        // does not gate on power, and the recipe fallthrough would zero
-        // their progress).
-        if (traits.kind == MachineKind::Generator ||
-            traits.kind == MachineKind::Collector) continue;
-        m.crafting = false;
-        if (traits.demand > 0 && !m_power.energized(pos.x, pos.y, pos.z)) continue;
-
-        if (traits.kind == MachineKind::Miner) {
-            tickMiner(*m_world, pos, m);
-            continue;
-        }
-
-        const MachineRecipe* active = nullptr;
-        const auto candidates = recipesForMachine(m.type);
-        for (std::size_t i = 0; i < candidates.size(); ++i) {
-            // A selected recipe locks the machine to it; -1 = first ready one.
-            if (m.selectedRecipe >= 0 && static_cast<int>(i) != m.selectedRecipe) continue;
-            bool ok = true;
-            for (const ItemStack& in : candidates[i]->inputs) {
-                if (!m.input.has(in.id, in.count)) { ok = false; break; }
-            }
-            if (ok) { active = candidates[i]; break; }
-        }
-        if (!active) { m.progress = 0.0f; continue; }
-
-        m.crafting = true;
-        m.craftTime = active->seconds;
-        m.progress += kTickSeconds;
-        if (m.progress >= active->seconds) {
-            for (const ItemStack& in : active->inputs) m.input.remove(in.id, in.count);
-            m.output.add(active->output.id, active->output.count);
-            m.progress = 0.0f;
-        }
-    }
+    // Powered machines process their input buffers into outputs over time.
+    MachineSystem::tickPowered(*m_world, m_machines, m_power);
 
     // Advance conduits on a slower cadence so items visibly travel.
     if (++m_beltTimer >= kBeltStepTicks) {
         m_beltTimer = 0;
-        beltStep();
+        MachineSystem::beltStep(m_belts, m_machines);
     }
 
     m_creatures.update(*m_world); // wander + physics (CreatureSystem.cpp)

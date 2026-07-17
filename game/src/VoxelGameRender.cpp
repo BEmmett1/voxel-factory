@@ -154,7 +154,7 @@ void VoxelGame::buildRainMesh() {
             const float z = cam.z + oz;
             const float y = cam.y + kRainSpan * 0.5f -
                             std::fmod(t * kRainFallSpeed + phase, kRainSpan);
-            if (!skyVisible(static_cast<int>(std::floor(x)),
+            if (!skyVisible(*m_world, static_cast<int>(std::floor(x)),
                             static_cast<int>(std::floor(y)),
                             static_cast<int>(std::floor(z)))) {
                 continue; // under a roof/canopy: the drop already landed

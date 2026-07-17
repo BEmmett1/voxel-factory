@@ -168,11 +168,17 @@ them change the save format (enum ordinals stay put). Green-light individually.
   `render(Camera&, rainDim)`, `tryMeleeAttack(World&, Audio&, origin, dir)` —
   engine services passed in, never `VoxelGame&`. Eight members + a nested
   struct left the god class.
-- **A3 — MachineSystem / BeltSim.** Move the onTick machine loop and `beltStep`
-  into a system taking `(World&, machines, belts, PowerState&)`, following the
-  `PowerSystem::solve` precedent. Prerequisite: unfuse `solvePowerAndMarkDirty`
-  (return a changed-set; the caller does dirtying and hums) and decide hum-loop
-  ownership. Best done *after* C2, which shrinks what has to move.
+- **A3 — MachineSystem / BeltSim.** ✅ **Done (July 2026).** `MachineSystem`
+  (game/include/game/MachineSystem.h + game/src/MachineSystem.cpp): free
+  functions over `(World&, machine/belt maps, PowerState&)` — `tickSelfPowered`
+  (generators + collectors; returns burn-flipped so the *caller* re-solves
+  power before `tickPowered`, preserving same-tick freshness), `tickPowered`
+  (miners + recipe processors), `beltStep`, plus the machine input policy
+  (`machineAccepts` / `minerFilter`, moved out of VoxelGameInternal.h).
+  Decisions: hum-loop lifecycle and `solvePowerAndMarkDirty` stay VoxelGame
+  glue — they fuse power state with audio/meshing/perf, which are exactly the
+  caller-side reactions the return-value pattern exists for. `skyVisible`
+  became a shared `vg::` helper over `World&`.
 - **A4 — Weather module.** Small, cohesive (`m_weather*`, `m_rainIntensity`,
   `m_bucketFill`); the rain mesh stays render-side.
 
