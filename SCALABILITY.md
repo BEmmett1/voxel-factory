@@ -209,7 +209,16 @@ them change the save format (enum ordinals stay put). Green-light individually.
   Deliberately kept caller-side: the hotbar + tool/edit reactions (thin
   post-WorldEdit glue reading inventory/UI) — the audit's "hotbar resists a
   clean home" note stands.
-- **SaveData reshaping** — migrates in lockstep with each ownership extraction;
-  not a standalone step.
+- **SaveData reshaping** — ✅ **Done (July 2026).** SaveData is owner-shaped
+  now: `WorldEdit::Registries` carries the four registry maps (one definition
+  of the derived-state bundle), and `Weather&` / `PlayerController&` bind the
+  modules whose public fields are the persisted ones. The on-disk byte order
+  belongs to SaveSystem.cpp alone — the struct reshape changed no format, no
+  version bump, and a real pre-reshape save loads bit-identically (verified
+  against the live save file). Future ownership moves edit one group, not a
+  17-field flat list.
+
+**With this, every item in the audit — the six sequenced refactors and both
+deferred prerequisites — is complete.**
 - **Engine Renderer abstraction** (game currently issues raw GL) — real but low
   urgency; revisit if a second rendering backend or render-graph need appears.

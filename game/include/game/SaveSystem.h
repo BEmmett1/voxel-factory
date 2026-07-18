@@ -1,40 +1,39 @@
 #pragma once
 
 #include "game/Inventory.h"
-#include "game/Machine.h"
-#include "game/Belt.h"
-#include "game/HashIVec3.h"
+#include "game/PlayerController.h"
+#include "game/Weather.h"
+#include "game/WorldEdit.h"
 
 #include <glm/glm.hpp>
 #include <array>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 
 class World;
 
-// Everything that defines a game in progress, as references into VoxelGame's
-// state. save() reads through them; load() writes into them (the caller must
-// pass them empty/fresh).
+// Everything that defines a game in progress, shaped by OWNER rather than as
+// a flat field list: the modules that hold persisted state bind directly
+// (their public fields are the saved ones), and the derived-state registries
+// ride in as the same bundle WorldEdit keeps in sync with the grid. save()
+// reads through the references; load() writes into them (the caller must
+// pass them empty/fresh). The on-disk byte order is SaveSystem.cpp's alone —
+// reshaping this struct never changes the format.
 struct SaveData {
     World& world;
     Inventory& inventory;
-    std::unordered_map<glm::ivec3, Machine, IVec3Hash>& machines;
-    std::unordered_map<glm::ivec3, Belt, IVec3Hash>& belts;
-    std::unordered_map<glm::ivec3, float, IVec3Hash>& sources;
-    std::unordered_map<glm::ivec3, float, IVec3Hash>& saplings;
-    bool& weatherRaining;
-    float& weatherTimer;
+    WorldEdit::Registries registries; // machines / belts / sources / saplings
+    Weather& weather;                 // raining + timer (intensity rebuilds)
+    PlayerController& player;         // health (appended in v10; older saves
+                                      // keep the caller's full-health default)
     float& bucketFill;
+    // Camera pose (the engine owns the camera; the pose is what persists).
     glm::vec3& camPos;
     float& camYaw;
     float& camPitch;
     std::uint32_t& worldSeed;
     std::uint32_t& sourceRng;
     int& selectedSlot;
-    // Appended in v10. Loading an older save leaves the caller's default
-    // untouched (full health), so existing worlds survive the version bump.
-    float& health;
     // Appended in v12: the player-assigned hotbar slots (None = empty).
     // Pre-v12 saves keep the caller's default (vg::kDefaultHotbar).
     std::array<ItemId, kHotbarSlots>& hotbar;

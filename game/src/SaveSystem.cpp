@@ -97,8 +97,8 @@ bool save(const std::string& path, const SaveData& d) {
     }
 
     // Machines.
-    writePod(out, static_cast<std::uint32_t>(d.machines.size()));
-    for (const auto& [pos, m] : d.machines) {
+    writePod(out, static_cast<std::uint32_t>(d.registries.machines.size()));
+    for (const auto& [pos, m] : d.registries.machines) {
         writePod(out, static_cast<std::int32_t>(pos.x));
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
@@ -110,8 +110,8 @@ bool save(const std::string& path, const SaveData& d) {
     }
 
     // Belts.
-    writePod(out, static_cast<std::uint32_t>(d.belts.size()));
-    for (const auto& [pos, b] : d.belts) {
+    writePod(out, static_cast<std::uint32_t>(d.registries.belts.size()));
+    for (const auto& [pos, b] : d.registries.belts) {
         writePod(out, static_cast<std::int32_t>(pos.x));
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
@@ -122,8 +122,8 @@ bool save(const std::string& path, const SaveData& d) {
     }
 
     // Sources.
-    writePod(out, static_cast<std::uint32_t>(d.sources.size()));
-    for (const auto& [pos, timer] : d.sources) {
+    writePod(out, static_cast<std::uint32_t>(d.registries.sources.size()));
+    for (const auto& [pos, timer] : d.registries.sources) {
         writePod(out, static_cast<std::int32_t>(pos.x));
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
@@ -131,8 +131,8 @@ bool save(const std::string& path, const SaveData& d) {
     }
 
     // Saplings.
-    writePod(out, static_cast<std::uint32_t>(d.saplings.size()));
-    for (const auto& [pos, timer] : d.saplings) {
+    writePod(out, static_cast<std::uint32_t>(d.registries.saplings.size()));
+    for (const auto& [pos, timer] : d.registries.saplings) {
         writePod(out, static_cast<std::int32_t>(pos.x));
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
@@ -140,12 +140,12 @@ bool save(const std::string& path, const SaveData& d) {
     }
 
     // Weather.
-    writePod(out, static_cast<std::uint8_t>(d.weatherRaining ? 1 : 0));
-    writePod(out, d.weatherTimer);
+    writePod(out, static_cast<std::uint8_t>(d.weather.raining ? 1 : 0));
+    writePod(out, d.weather.timer);
     writePod(out, d.bucketFill);
 
     // Player health (appended in v10).
-    writePod(out, d.health);
+    writePod(out, d.player.health);
 
     // Hotbar slot assignments (appended in v12); 0 = ItemId::None = empty.
     for (const ItemId id : d.hotbar) {
@@ -217,7 +217,7 @@ bool load(const std::string& path, SaveData& d) {
         m.selectedRecipe = sel;
         if (!readPod(in, m.progress)) return false;
         if (!readInventory(in, m.input) || !readInventory(in, m.output)) return false;
-        d.machines[{x, y, z}] = std::move(m);
+        d.registries.machines[{x, y, z}] = std::move(m);
     }
 
     // Belts.
@@ -233,7 +233,7 @@ bool load(const std::string& path, SaveData& d) {
         Belt b;
         b.facing = {fx, fy, fz};
         b.item = static_cast<ItemId>(item);
-        d.belts[{x, y, z}] = b;
+        d.registries.belts[{x, y, z}] = b;
     }
 
     // Sources.
@@ -244,7 +244,7 @@ bool load(const std::string& path, SaveData& d) {
         float timer = 0.0f;
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
         if (!readPod(in, timer)) return false;
-        d.sources[{x, y, z}] = timer;
+        d.registries.sources[{x, y, z}] = timer;
     }
 
     // Saplings.
@@ -255,18 +255,18 @@ bool load(const std::string& path, SaveData& d) {
         float timer = 0.0f;
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
         if (!readPod(in, timer)) return false;
-        d.saplings[{x, y, z}] = timer;
+        d.registries.saplings[{x, y, z}] = timer;
     }
 
     // Weather.
     std::uint8_t raining = 0;
     if (!readPod(in, raining)) return false;
-    d.weatherRaining = raining != 0;
-    if (!readPod(in, d.weatherTimer)) return false;
+    d.weather.raining = raining != 0;
+    if (!readPod(in, d.weather.timer)) return false;
     if (!readPod(in, d.bucketFill)) return false;
 
     // Player health: appended in v10; older saves keep the caller's default.
-    if (version >= 10 && !readPod(in, d.health)) return false;
+    if (version >= 10 && !readPod(in, d.player.health)) return false;
 
     // Hotbar slots: appended in v12; older saves keep the caller's default.
     if (version >= 12) {

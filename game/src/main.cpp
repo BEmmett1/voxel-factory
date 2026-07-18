@@ -69,22 +69,25 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, float, IVec3Hash> saplings;
     saplings[glm::ivec3{6, 2, 6}] = 9.0f;
 
-    bool raining = true;
-    float weatherTimer = 42.0f, bucketFill = 0.25f;
+    Weather weather;
+    weather.raining = true;
+    weather.timer = 42.0f;
+    PlayerController player;
+    player.health = 6.5f;
+    float bucketFill = 0.25f;
     glm::vec3 camPos{8.0f, 20.0f, 8.0f};
     float yaw = -90.0f, pitch = -15.0f;
     std::uint32_t seed = 1234u, rngState = 5678u;
     int slot = 4;
-    float health = 6.5f;
     // A mixed hotbar: a tool, a gap, and a placeable among defaults.
     std::array<ItemId, kHotbarSlots> hotbar{};
     hotbar[0] = ItemId::CopperSword;
     hotbar[1] = ItemId::Conduit;
     hotbar[9] = ItemId::ScaffoldItem; // slots 2-8 stay None
 
-    SaveData src{world, inv, machines, belts, sources, saplings,
-                 raining, weatherTimer, bucketFill,
-                 camPos, yaw, pitch, seed, rngState, slot, health, hotbar};
+    SaveData src{world, inv, {machines, belts, sources, saplings},
+                 weather, player, bucketFill,
+                 camPos, yaw, pitch, seed, rngState, slot, hotbar};
     SELFTEST_CHECK(SaveSystem::save(path, src));
 
     World world2;
@@ -92,19 +95,19 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines2;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts2;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources2, saplings2;
-    bool raining2 = false;
-    float weatherTimer2 = 0.0f, bucketFill2 = 0.0f;
+    Weather weather2; // defaults: clear sky, fresh timer
+    PlayerController player2;
+    float bucketFill2 = 0.0f;
     glm::vec3 camPos2{0.0f};
     float yaw2 = 0.0f, pitch2 = 0.0f;
     std::uint32_t seed2 = 0u, rngState2 = 0u;
     int slot2 = 0;
-    float health2 = 0.0f;
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kHotbarSlots> hotbar2;
     hotbar2.fill(ItemId::Wood);
-    SaveData dst{world2, inv2, machines2, belts2, sources2, saplings2,
-                 raining2, weatherTimer2, bucketFill2,
-                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2, hotbar2};
+    SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
+                 weather2, player2, bucketFill2,
+                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2};
     SELFTEST_CHECK(SaveSystem::load(path, dst));
 
     SELFTEST_CHECK(world2.chunks().size() == world.chunks().size());
@@ -132,12 +135,12 @@ int runSelfTest() {
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
 
-    SELFTEST_CHECK(raining2 == true);
-    SELFTEST_CHECK(weatherTimer2 == 42.0f && bucketFill2 == 0.25f);
+    SELFTEST_CHECK(weather2.raining == true);
+    SELFTEST_CHECK(weather2.timer == 42.0f && bucketFill2 == 0.25f);
     SELFTEST_CHECK(camPos2 == camPos && yaw2 == yaw && pitch2 == pitch);
     SELFTEST_CHECK(seed2 == seed && rngState2 == rngState);
     SELFTEST_CHECK(slot2 == 4);
-    SELFTEST_CHECK(health2 == 6.5f);
+    SELFTEST_CHECK(player2.health == 6.5f);
     for (int i = 0; i < kHotbarSlots; ++i) {
         SELFTEST_CHECK(hotbar2[i] == hotbar[i]);
     }
@@ -161,9 +164,9 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines3;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts3;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
-    SaveData cutDst{world3, inv2, machines3, belts3, sources3, saplings3,
-                    raining2, weatherTimer2, bucketFill2,
-                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, health2, hotbar2};
+    SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
+                    weather2, player2, bucketFill2,
+                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2};
     SELFTEST_CHECK(!SaveSystem::load(cut, cutDst));
 
     fs::remove(path, ec);

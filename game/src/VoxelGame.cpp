@@ -124,10 +124,9 @@ void VoxelGame::onStart() {
 bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
-    SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-               m_weather.raining, m_weather.timer, m_bucketFill,
-               camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot, m_player.health, m_hotbar};
+    SaveData d{*m_world, m_inventory, editRegistries(), m_weather, m_player,
+               m_bucketFill, camera().position, camera().yaw, camera().pitch,
+               m_worldSeed, m_sourceRng, slot, m_hotbar};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -137,10 +136,9 @@ bool VoxelGame::loadGame() {
     // a save interrupted mid-write costs at most one session, not the island.
     for (const std::string& path : {m_savePath, m_savePath + ".bak"}) {
         int slot = 0;
-        SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-                   m_weather.raining, m_weather.timer, m_bucketFill,
-                   camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_player.health, m_hotbar};
+        SaveData d{*m_world, m_inventory, editRegistries(), m_weather, m_player,
+                   m_bucketFill, camera().position, camera().yaw, camera().pitch,
+                   m_worldSeed, m_sourceRng, slot, m_hotbar};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
