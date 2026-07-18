@@ -86,7 +86,7 @@ void VoxelGame::onStart() {
     m_hotbar = kDefaultHotbar;
 
     m_world = std::make_unique<World>();
-    m_health = kMaxHealth; // pre-v10 saves have no health field; keep this default
+    m_player.health = kMaxHealth; // pre-v10 saves have no health field; keep this default
     if (!loadGame()) {
         // No (valid) save: fresh island + the starting kit of raw materials.
         // Everything placeable is hand-crafted from these.
@@ -127,7 +127,7 @@ bool VoxelGame::saveGame() {
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                m_weather.raining, m_weather.timer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
+               m_worldSeed, m_sourceRng, slot, m_player.health, m_hotbar};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -140,7 +140,7 @@ bool VoxelGame::loadGame() {
         SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
                    m_weather.raining, m_weather.timer, m_bucketFill,
                    camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
+                   m_worldSeed, m_sourceRng, slot, m_player.health, m_hotbar};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -156,7 +156,7 @@ bool VoxelGame::loadGame() {
         m_saplings.clear();
         m_weather = Weather{};
         m_bucketFill = 0.0f;
-        m_health = kMaxHealth;
+        m_player.health = kMaxHealth;
         m_hotbar = kDefaultHotbar;
         m_sourceRng = 0;
         // Camera pose, seed, and slot need no reset: a .bak success or the

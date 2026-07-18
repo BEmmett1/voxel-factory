@@ -357,10 +357,15 @@ The core loop is complete, closed, and fully automatable. Possible next directio
   Q1 2027).
 
 Player physics (pressure & pull):
-- **Walking only** — AABB player vs. voxels (axis-separated move-and-slide in
-  `onUpdate`), gravity + Space jump, LCtrl sprint, no flight by design. Feel knobs are
-  grouped in `VoxelGameInternal.h` (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) —
-  tuned by hands-on play, not scripted verification.
+- **Walking only** — AABB player vs. voxels, gravity + Space jump, LCtrl sprint,
+  no flight by design. The body lives in **`PlayerController`**
+  (PlayerController.h/.cpp): `move(dt, Input&, Camera&, World&, Settings&,
+  Audio&)` does look + axis-separated move-and-slide + fall damage and returns
+  `{died, fellOff}` for the caller's pack wipe + title; `health` is a public
+  field bound into SaveData. Tools/hotbar/edit reactions stay in
+  VoxelGamePlayer.cpp. Feel knobs are grouped in `VoxelGameInternal.h`
+  (`kWalkSpeed`, `kGravity`, `kJumpSpeed`, ...) — tuned by hands-on play, not
+  scripted verification.
 - **Melee (Copper Sword)** — a hotbar tool (Plate ×2 + Wood ×1, atlas tile 79);
   LMB swings along the aim ray (`tryMeleeAttack` in VoxelGameEntities.cpp: shared
   ray-vs-AABB slab test, blocked by nearer solid blocks, `kSwordCooldown` gate,

@@ -199,8 +199,16 @@ them change the save format (enum ordinals stay put). Green-light individually.
   side placement rules (cell free, saplings need soil) moved into the service;
   player-side rules (stock, player overlap, belt facing policy) stayed out.
   `unregisterMachine`/`unregisterBelt` are gone from VoxelGame.
-- **PlayerController extraction** — now unblocked: the edit path is
-  read-input → WorldEdit call → react-to-facts, no longer the central knot.
+- **PlayerController extraction** — ✅ **Done (July 2026).**
+  `PlayerController` (game/include/game/PlayerController.h + game/src/
+  PlayerController.cpp) owns the body: mouse look, walking physics, fall
+  damage, and the hardcore death rule, with `move(dt, Input&, Camera&,
+  World&, Settings&, Audio&)` returning `{died, fellOff}` — the caller
+  applies the pack wipe and title. `health` is a public field bound into
+  SaveData (the Weather precedent); velocities/grounded left VoxelGame.
+  Deliberately kept caller-side: the hotbar + tool/edit reactions (thin
+  post-WorldEdit glue reading inventory/UI) — the audit's "hotbar resists a
+  clean home" note stands.
 - **SaveData reshaping** — migrates in lockstep with each ownership extraction;
   not a standalone step.
 - **Engine Renderer abstraction** (game currently issues raw GL) — real but low

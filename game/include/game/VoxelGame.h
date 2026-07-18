@@ -15,6 +15,7 @@
 #include "game/Belt.h"
 #include "game/CreatureSystem.h"
 #include "game/HashIVec3.h"
+#include "game/PlayerController.h"
 #include "game/Weather.h"
 #include "game/PowerSystem.h"
 #include "game/WorldEdit.h"
@@ -202,13 +203,9 @@ private:
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};
 
-    float     m_velY = 0.0f;      // vertical velocity (gravity/jump)
-    glm::vec3 m_velXZ{0.0f};      // horizontal velocity (accel/friction; y unused)
-    bool      m_grounded = false; // standing on something this frame?
-
-    // Health in hearts (0..vg::kMaxHealth; initialized in onStart). Reaching 0
-    // triggers the same penalty as falling off the island: pack lost, respawn.
-    float m_health = 0.0f;
-    void  damagePlayer(float amount);
+    // The player's body: velocities + health + move/damage (health is public
+    // on the controller so SaveData binds to it). Reaching 0 hp triggers the
+    // same penalty as falling off the island: pack lost, respawn.
+    PlayerController m_player;
     float m_attackCooldown = 0.0f; // seconds until the sword can swing again
 };

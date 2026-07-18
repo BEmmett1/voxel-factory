@@ -13,6 +13,7 @@ add_executable(voxel-factory
     src/Settings.cpp
     src/Weather.cpp
     src/WorldEdit.cpp
+    src/PlayerController.cpp
     src/CreatureSystem.cpp
     src/MachineSystem.cpp
     src/VoxelGame.cpp

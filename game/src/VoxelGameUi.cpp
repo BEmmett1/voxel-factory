@@ -842,7 +842,7 @@ void VoxelGame::drawHud() {
         for (int i = 0; i < static_cast<int>(kMaxHealth); ++i) {
             const float hx = x0 + i * (segW + segGap);
             m_ui.rect(hx, hy, segW, segH, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
-            const float fill = glm::clamp(m_health - static_cast<float>(i), 0.0f, 1.0f);
+            const float fill = glm::clamp(m_player.health - static_cast<float>(i), 0.0f, 1.0f);
             if (fill > 0.0f) {
                 m_ui.rect(hx, hy, segW * fill, segH, glm::vec4(0.85f, 0.20f, 0.25f, 0.95f));
             }

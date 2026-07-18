@@ -17,11 +17,6 @@ using namespace vg;
 
 namespace {
 
-    // The player's box vs. the world (shared helper, player-sized).
-    bool boxCollides(const World& w, const glm::vec3& feet) {
-        return vg::boxCollides(w, feet, kPlayerHalfW, kPlayerHeight);
-    }
-
     // Small per-cell pitch variation (±10%) so repeated mining/placing at
     // different spots doesn't sound machine-gun identical.
     float pitchJitter(const glm::ivec3& p) {
@@ -29,12 +24,6 @@ namespace {
     }
 
 } // namespace
-
-void VoxelGame::damagePlayer(float amount) {
-    if (amount <= 0.0f) return;
-    m_health = std::max(0.0f, m_health - amount);
-    audio().play("hurt", kHurtVolume);
-}
 
 void VoxelGame::onUpdate(float dt) {
     auto& cam = camera();
@@ -148,89 +137,19 @@ void VoxelGame::onUpdate(float dt) {
         return;
     }
 
-    // Mouse look.
-    cam.addLook(input().mouseRelX() * m_settings.sensitivity,
-                -input().mouseRelY() * m_settings.sensitivity);
-
-    // Walking physics: WASD on the ground plane, gravity, Space to jump.
-    // There is no flight -- verticality is scaffolds, hills, and falling.
-    glm::vec3 flatFront(cam.front().x, 0.0f, cam.front().z);
-    if (glm::dot(flatFront, flatFront) > 1e-6f) flatFront = glm::normalize(flatFront);
-
-    glm::vec3 wish(0.0f);
-    if (input().isKeyDown(key(Action::MoveForward))) wish += flatFront;
-    if (input().isKeyDown(key(Action::MoveBack))) wish -= flatFront;
-    if (input().isKeyDown(key(Action::MoveRight))) wish += cam.right();
-    if (input().isKeyDown(key(Action::MoveLeft))) wish -= cam.right();
-    float targetSpeed = 0.0f;
-    if (glm::dot(wish, wish) > 0.0f) {
-        targetSpeed = kWalkSpeed;
-        if (input().isKeyDown(key(Action::Sprint))) targetSpeed *= kSprintMult;
-        wish = glm::normalize(wish);
-    }
-
-    // Momentum: accelerate toward the wanted velocity; friction to a stop
-    // when there's no input.
-    const glm::vec3 targetVel = wish * targetSpeed;
-    const glm::vec3 delta = targetVel - m_velXZ;
-    const float deltaLen = glm::length(delta);
-    if (deltaLen > 0.0001f) {
-        const float rate = (targetSpeed > 0.0f) ? kAccel : kDecel;
-        m_velXZ += delta * (std::min(rate * dt, deltaLen) / deltaLen);
-    }
-
-    if (m_grounded && input().isKeyDown(key(Action::Jump))) {
-        m_velY = kJumpSpeed;
-    }
-    m_velY = std::max(m_velY - kGravity * dt, -kTerminalVel);
-
-    // Axis-separated move-and-slide against the voxel grid.
-    glm::vec3 feet = cam.position - glm::vec3(0.0f, kEyeHeight, 0.0f);
-    glm::vec3 next = feet;
-    next.x += m_velXZ.x * dt;
-    if (!boxCollides(*m_world, next)) feet.x = next.x;
-    else m_velXZ.x = 0.0f; // ran into a wall
-    next = feet;
-    next.z += m_velXZ.z * dt;
-    if (!boxCollides(*m_world, next)) feet.z = next.z;
-    else m_velXZ.z = 0.0f;
-
-    m_grounded = false;
-    next = feet;
-    next.y += m_velY * dt;
-    if (!boxCollides(*m_world, next)) {
-        feet.y = next.y;
-    } else if (m_velY <= 0.0f) {
-        feet.y = std::floor(next.y) + 1.0f; // land: snap feet onto the block top
-        // Hard landings hurt: damage scales with impact speed beyond the
-        // safe threshold (~a 3-block drop).
-        const float impact = -m_velY;
-        if (impact > kFallSafeSpeed) {
-            damagePlayer((impact - kFallSafeSpeed) * kFallDamagePerVel);
-        }
-        m_velY = 0.0f;
-        m_grounded = true;
-    } else {
-        m_velY = 0.0f; // bumped our head
-    }
-
-    // Death — by damage or by falling off the island — costs the whole pack
-    // and respawns on the plateau. One hardcore penalty everywhere. Hotbar
-    // ASSIGNMENTS deliberately survive (they're references, not items): the
-    // slots grey out at count 0 and re-enable as the pack is rebuilt.
-    const bool fellOff = feet.y < kVoidY;
-    if (fellOff || m_health <= 0.0f) {
+    // The body: look, walk, gravity, fall damage, and the hardcore death
+    // rule. On death the controller respawns the body; the pack-loss penalty
+    // is applied here. Hotbar ASSIGNMENTS deliberately survive (they're
+    // references, not items): the slots grey out at count 0 and re-enable as
+    // the pack is rebuilt.
+    const PlayerController::MoveResult mv =
+        m_player.move(dt, input(), cam, *m_world, m_settings, audio());
+    if (mv.died) {
         m_inventory = Inventory{};
-        feet = spawnFeet();
-        m_velY = 0.0f;
-        m_velXZ = glm::vec3(0.0f);
-        m_health = kMaxHealth;
-        window().setTitle(fellOff
+        window().setTitle(mv.fellOff
             ? "Voxel Factory  —  YOU FELL. YOUR PACK IS LOST."
             : "Voxel Factory  —  YOU DIED. YOUR PACK IS LOST.");
     }
-
-    cam.position = feet + glm::vec3(0.0f, kEyeHeight, 0.0f);
 
     // Hotbar selection: keys 1-9 and 0 map to the ten slots; the mouse wheel
     // cycles through all of them, empty slots included (scroll up = previous).
@@ -258,10 +177,10 @@ void VoxelGame::onUpdate(float dt) {
     // needed); the sip consumes the click so nothing places or opens.
     bool drank = false;
     if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
-        if (held == ItemId::HealingDraught && m_health < kMaxHealth &&
+        if (held == ItemId::HealingDraught && m_player.health < kMaxHealth &&
             m_inventory.has(held)) {
             m_inventory.remove(held, 1);
-            m_health = std::min(kMaxHealth, m_health + kDraughtHeal);
+            m_player.health = std::min(kMaxHealth, m_player.health + kDraughtHeal);
             audio().play("heal", kHurtVolume);
             updateTitle();
             drank = true;
