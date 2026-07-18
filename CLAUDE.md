@@ -308,8 +308,11 @@ Entities (Blockbench import — the combat pillar's first brick):
   launch + log; failed texture = magenta checker (never fatal).
 
 Weather & the water economy:
-- **Rain fronts** — a clear/rain state machine ticks in `updateWeather()` (seeded
-  phase durations; saved). Visuals ease via `m_rainIntensity`: storm-grey sky,
+- **Rain fronts** — a clear/rain state machine, extracted as the **`Weather`**
+  value type (Weather.h/.cpp): `tick(worldSeed)` flips seeded phases at 20 Hz
+  (raining + timer are saved), `frameEase(dt)` smooths `intensity` per frame,
+  `forceToggle()` is the F4 dev key. Visuals ease via `m_weather.intensity`:
+  storm-grey sky,
   `uRainDim` dims lit color in `voxel.frag` (emissive stays bright — energized
   networks read as beacons), and world-space streak lines fall around the camera,
   skipping covered columns (`skyVisible`, `buildRainMesh`). **F4 is a hidden dev

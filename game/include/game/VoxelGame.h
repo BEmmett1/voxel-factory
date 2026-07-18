@@ -15,6 +15,7 @@
 #include "game/Belt.h"
 #include "game/CreatureSystem.h"
 #include "game/HashIVec3.h"
+#include "game/Weather.h"
 #include "game/PowerSystem.h"
 
 #include <glm/glm.hpp>
@@ -92,7 +93,6 @@ private:
     void updateSaplings();                          // grow planted saplings into trees
     void updateLeafDecay();                         // wither leaves cut off from logs
     void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
-    void updateWeather();                           // advance the rain/clear phases
     void buildRainMesh();                           // per-frame falling streaks
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
@@ -132,13 +132,11 @@ private:
     // instances; spawned fresh each launch, deliberately NOT saved.
     CreatureSystem m_creatures;
 
-    engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows m_rainIntensity
+    engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows the intensity
     std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;
 
-    bool  m_weatherRaining = false;
-    float m_weatherTimer = 120.0f; // seconds left in the current weather phase
-    float m_rainIntensity = 0.0f;  // smoothed 0..1; gameplay uses the bool
-    float m_bucketFill = 0.0f;     // held-bucket rain-collection progress
+    Weather m_weather;          // rain/clear phases + eased visual intensity
+    float m_bucketFill = 0.0f;  // held-bucket rain-collection progress
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

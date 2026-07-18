@@ -179,8 +179,14 @@ them change the save format (enum ordinals stay put). Green-light individually.
   glue — they fuse power state with audio/meshing/perf, which are exactly the
   caller-side reactions the return-value pattern exists for. `skyVisible`
   became a shared `vg::` helper over `World&`.
-- **A4 — Weather module.** Small, cohesive (`m_weather*`, `m_rainIntensity`,
-  `m_bucketFill`); the rain mesh stays render-side.
+- **A4 — Weather module.** ✅ **Done (July 2026).** `Weather` value type
+  (Weather.h/.cpp): public `raining`/`timer` (bind straight into SaveData's
+  reference bundle — no save-shape change) + eased `intensity`, with
+  `tick(worldSeed)` / `frameEase(dt)` / `forceToggle()`. The rain mesh stayed
+  render-side; `m_bucketFill` stayed with the player (it's the held-bucket
+  mechanic, not weather). One deliberate delta: phase-duration rolls now use
+  Weather's own counter instead of sharing `m_sourceRng`, decoupling weather
+  RNG from node-placement RNG (pure randomness, no gameplay contract).
 
 ### Deferred (prerequisites missing)
 

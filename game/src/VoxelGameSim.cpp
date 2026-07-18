@@ -23,7 +23,7 @@ using namespace vg;
 void VoxelGame::updateBucketFill() {
     const ItemId held = heldItem();
     const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
-    const bool collecting = m_weatherRaining && held == ItemId::Bucket &&
+    const bool collecting = m_weather.raining && held == ItemId::Bucket &&
         m_inventory.has(ItemId::Bucket) &&
         skyVisible(*m_world,
                    static_cast<int>(std::floor(feet.x)),
@@ -136,21 +136,9 @@ void VoxelGame::unregisterBelt(const glm::ivec3& pos) {
     m_belts.erase(it);
 }
 
-// Rain comes and goes on seeded random phases. Gameplay gates on the boolean;
-// visuals ease through m_rainIntensity (updated per frame in onUpdate).
-void VoxelGame::updateWeather() {
-    m_weatherTimer -= kTickSeconds;
-    if (m_weatherTimer > 0.0f) return;
-    m_weatherRaining = !m_weatherRaining;
-    const float lo = m_weatherRaining ? kRainMinSeconds : kClearMinSeconds;
-    const float hi = m_weatherRaining ? kRainMaxSeconds : kClearMaxSeconds;
-    const std::uint32_t h = hash2(311, 977, m_worldSeed + m_sourceRng++);
-    m_weatherTimer = lo + (hi - lo) * static_cast<float>(h % 1024u) / 1023.0f;
-}
-
 void VoxelGame::updateSources() {
     for (auto& [pos, timer] : m_sources) {
-        timer += kTickSeconds * (m_weatherRaining ? kRainGrowthMult : 1.0f);
+        timer += kTickSeconds * (m_weather.raining ? kRainGrowthMult : 1.0f);
         if (timer < kSourceSpawnSeconds) continue;
         timer = 0.0f;
 
@@ -208,7 +196,7 @@ void VoxelGame::updateSaplings() {
 
     for (auto& [pos, timer] : m_saplings) {
         if (timer < kTreeGrowSeconds) {
-            timer += kTickSeconds * (m_weatherRaining ? kRainGrowthMult : 1.0f);
+            timer += kTickSeconds * (m_weather.raining ? kRainGrowthMult : 1.0f);
             continue;
         }
         if (m_world->getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
@@ -300,7 +288,7 @@ void VoxelGame::updateLeafDecay() {
 }
 
 void VoxelGame::onTick() {
-    updateWeather();
+    m_weather.tick(m_worldSeed);
 
     // Grow resource patches, pop ripe saplings, wither orphaned leaves. Any
     // change marks its chunk dirty; the per-frame sweep picks it up.
@@ -311,7 +299,7 @@ void VoxelGame::onTick() {
     // Generators and collectors first: a burn flip re-solves the network so
     // the powered machines below see fresh power in this same tick.
     if (MachineSystem::tickSelfPowered(*m_world, m_machines, m_hungryGenerators,
-                                       m_weatherRaining)) {
+                                       m_weather.raining)) {
         solvePowerAndMarkDirty();
     }
     updateBucketFill();

@@ -125,7 +125,7 @@ bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
     SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-               m_weatherRaining, m_weatherTimer, m_bucketFill,
+               m_weather.raining, m_weather.timer, m_bucketFill,
                camera().position, camera().yaw, camera().pitch,
                m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
     return SaveSystem::save(m_savePath, d);
@@ -138,7 +138,7 @@ bool VoxelGame::loadGame() {
     for (const std::string& path : {m_savePath, m_savePath + ".bak"}) {
         int slot = 0;
         SaveData d{*m_world, m_inventory, m_machines, m_belts, m_sources, m_saplings,
-                   m_weatherRaining, m_weatherTimer, m_bucketFill,
+                   m_weather.raining, m_weather.timer, m_bucketFill,
                    camera().position, camera().yaw, camera().pitch,
                    m_worldSeed, m_sourceRng, slot, m_health, m_hotbar};
         if (SaveSystem::load(path, d)) {
@@ -154,8 +154,7 @@ bool VoxelGame::loadGame() {
         m_belts.clear();
         m_sources.clear();
         m_saplings.clear();
-        m_weatherRaining = false;
-        m_weatherTimer = 120.0f;
+        m_weather = Weather{};
         m_bucketFill = 0.0f;
         m_health = kMaxHealth;
         m_hotbar = kDefaultHotbar;

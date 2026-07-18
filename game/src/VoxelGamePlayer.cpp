@@ -80,13 +80,10 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
-    const float rainTarget = m_weatherRaining ? 1.0f : 0.0f;
-    const float rainStep = dt / kRainFadeSeconds;
-    m_rainIntensity += glm::clamp(rainTarget - m_rainIntensity, -rainStep, rainStep);
-    audio().setLoopGain(m_rainLoop, m_rainIntensity * kRainVolume);
+    m_weather.frameEase(dt);
+    audio().setLoopGain(m_rainLoop, m_weather.intensity * kRainVolume);
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
-        m_weatherRaining = !m_weatherRaining;
-        m_weatherTimer = m_weatherRaining ? 9999.0f : kClearMinSeconds;
+        m_weather.forceToggle();
     }
 
     // Machine panel: owns all input while open.

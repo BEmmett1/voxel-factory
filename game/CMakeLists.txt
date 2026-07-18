@@ -11,6 +11,7 @@ add_executable(voxel-factory
     src/PowerSystem.cpp
     src/SaveSystem.cpp
     src/Settings.cpp
+    src/Weather.cpp
     src/CreatureSystem.cpp
     src/MachineSystem.cpp
     src/VoxelGame.cpp

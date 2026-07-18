@@ -140,7 +140,7 @@ void VoxelGame::buildAtlas() {
 // columns so weather stays outside. Rebuilt every frame while visible.
 void VoxelGame::buildRainMesh() {
     m_rainScratch.clear();
-    const int count = static_cast<int>(static_cast<float>(kRainStreaks) * m_rainIntensity);
+    const int count = static_cast<int>(static_cast<float>(kRainStreaks) * m_weather.intensity);
     if (count > 0) {
         const glm::vec3 cam = camera().position;
         const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
@@ -246,7 +246,7 @@ void VoxelGame::onRender() {
 
     // Sky: fair-weather blue easing toward storm grey.
     const glm::vec3 sky = glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
-                                   glm::vec3(0.44f, 0.47f, 0.52f), m_rainIntensity);
+                                   glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity);
     glClearColor(sky.r, sky.g, sky.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -254,7 +254,7 @@ void VoxelGame::onRender() {
     m_shader.setMat4("uProj", camera().projection());
     m_shader.setMat4("uView", camera().view());
     m_shader.setVec3("uLightDir", kLightDir);
-    m_shader.setFloat("uRainDim", m_rainIntensity * kRainDimMax);
+    m_shader.setFloat("uRainDim", m_weather.intensity * kRainDimMax);
     m_atlas.bind(0);
 
     // World: textured + lit, one small draw per chunk (world-space vertices).
@@ -284,7 +284,7 @@ void VoxelGame::onRender() {
     }
 
     // Creatures: skinned Blockbench models, depth-tested with the world.
-    m_creatures.render(camera(), m_rainIntensity * kRainDimMax);
+    m_creatures.render(camera(), m_weather.intensity * kRainDimMax);
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A
