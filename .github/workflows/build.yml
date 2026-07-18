@@ -8,7 +8,7 @@ jobs:
   windows-release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -17,7 +17,7 @@ jobs:
       # SDL3 is compiled from source via FetchContent; cache the fetched
       # sources + build products so pushes don't pay that cost every time.
       - name: Cache FetchContent deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out/build/x64-Release/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
@@ -34,7 +34,7 @@ jobs:
       # The bin folder is self-contained (exe + SDL3.dll + shaders/ + assets/),
       # so every green build doubles as a distributable zip.
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: voxel-factory-win64
           path: out/build/x64-Release/bin/
@@ -42,7 +42,7 @@ jobs:
   macos-release:
     runs-on: macos-latest # arm64 (Apple Silicon)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ninja
         run: brew install ninja
@@ -50,7 +50,7 @@ jobs:
       # "univ" in the key: a cached arm64-only SDL3 tree from before the
       # universal switch must not poison the fat link.
       - name: Cache FetchContent deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out/build/mac-Release/_deps
           key: deps-${{ runner.os }}-univ-${{ hashFiles('CMakeLists.txt') }}
@@ -77,7 +77,7 @@ jobs:
         run: tar -czf voxel-factory-mac.tar.gz -C out/build/mac-Release bin
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: voxel-factory-mac
           path: voxel-factory-mac.tar.gz
