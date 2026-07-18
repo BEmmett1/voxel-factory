@@ -1,0 +1,59 @@
+#pragma once
+
+#include "game/Block.h"
+#include "game/HashIVec3.h"
+#include "game/Item.h"
+#include "game/MachineSystem.h"
+
+#include <glm/glm.hpp>
+
+#include <unordered_map>
+
+class World;
+
+// Placing or breaking a block is never JUST a setBlock: machines, belts,
+// sources, and saplings keep registry entries in sync with the grid, and
+// power nodes invalidate the network. WorldEdit owns those side effects in
+// one place — free functions over the world + registries (the PowerSystem
+// precedent). What belongs to the player — inventory, sounds, UI, the
+// leaf-sapling pity roll — stays with the caller, driven by returned facts.
+namespace WorldEdit {
+
+    // The derived state that must stay in sync with the block grid.
+    struct Registries {
+        MachineSystem::MachineMap& machines;
+        MachineSystem::BeltMap&    belts;
+        std::unordered_map<glm::ivec3, float, IVec3Hash>& sources;
+        std::unordered_map<glm::ivec3, float, IVec3Hash>& saplings;
+    };
+
+    struct BreakResult {
+        BlockId   broken = BlockId::Air;
+        ItemStack drop{};          // the block's own yield (blockDrop)
+        Inventory returned;        // machine buffers / belt cargo handed back
+        bool powerChanged = false; // a power node left the grid: re-solve
+        bool brokeLeaves = false;  // caller rolls the sapling chance
+    };
+
+    // Remove the block at `pos`: unregister whatever it was (buffered and
+    // carried items are collected into `returned`, so nothing is lost),
+    // clear growth timers, set Air.
+    BreakResult breakBlock(World& world, const Registries& regs, const glm::ivec3& pos);
+
+    struct PlaceResult {
+        bool placed = false;
+        bool powerChanged = false; // a power node joined the grid: re-solve
+    };
+
+    // Place `id` at `pos` if the world allows it (cell not solid; saplings
+    // only take root on Grass/Dirt), registering whatever it is. Belts face
+    // `beltFacing`. Player-side rules — stock, not-inside-the-player — are
+    // the caller's to check first; a world-side refusal is a silent no-op.
+    PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& pos,
+                           BlockId id, const glm::ivec3& beltFacing);
+
+    // Re-aim the conduit at `pos`, cycling its facing through the six
+    // cardinals (and queueing the arrow remesh). False = no belt there.
+    bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos);
+
+} // namespace WorldEdit

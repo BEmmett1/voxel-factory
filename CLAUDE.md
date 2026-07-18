@@ -97,6 +97,11 @@ stay in their file's anonymous namespace.
   `machineAccepts`, the power solve, and the panel UI dispatch on the kind, never
   on BlockIds. A standard recipe machine = a Processor row; the Generator/Rain
   Barrel knobs live in their rows (generator tiers = more rows).
+- Block place/break side effects funnel through **`WorldEdit`**
+  (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
+  machine/belt/source/sapling registry sync and return facts (drop, handed-back
+  buffer items, powerChanged) — the caller does inventory/sounds/UI and the
+  power re-solve. Never mutate a registered block's cell directly.
 - The machine/belt simulation itself is **`MachineSystem`** (MachineSystem.h/.cpp):
   free functions over `(World&, machine/belt maps, PowerState&)` — the
   PowerSystem interface precedent. `tickSelfPowered` (generators/collectors)

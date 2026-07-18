@@ -111,29 +111,10 @@ void VoxelGame::registerMachine(const glm::ivec3& pos, BlockId type) {
     m_machines[pos] = m;
 }
 
-void VoxelGame::unregisterMachine(const glm::ivec3& pos) {
-    const auto it = m_machines.find(pos);
-    if (it == m_machines.end()) return;
-    // Return any buffered items to the player so nothing is lost.
-    for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
-        const ItemId id = static_cast<ItemId>(i);
-        m_inventory.add(id, it->second.input.count(id));
-        m_inventory.add(id, it->second.output.count(id));
-    }
-    m_machines.erase(it);
-}
-
 void VoxelGame::registerBelt(const glm::ivec3& pos, const glm::ivec3& facing) {
     Belt b;
     b.facing = facing;
     m_belts[pos] = b;
-}
-
-void VoxelGame::unregisterBelt(const glm::ivec3& pos) {
-    const auto it = m_belts.find(pos);
-    if (it == m_belts.end()) return;
-    if (it->second.item != ItemId::None) m_inventory.add(it->second.item, 1);
-    m_belts.erase(it);
 }
 
 void VoxelGame::updateSources() {

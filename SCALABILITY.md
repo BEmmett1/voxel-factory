@@ -190,9 +190,17 @@ them change the save format (enum ordinals stay put). Green-light individually.
 
 ### Deferred (prerequisites missing)
 
-- **PlayerController extraction** — needs a `WorldEdit` service that owns
-  place/break side effects (registration + power re-solve + sounds) first;
-  until then the edit path pins everything together.
+- **WorldEdit service** — ✅ **Done (July 2026).** `WorldEdit`
+  (game/include/game/WorldEdit.h + game/src/WorldEdit.cpp):
+  `breakBlock`/`placeBlock`/`rotateBelt` own setBlock + machine/belt/source/
+  sapling registry sync and report facts back (`drop`, `returned` buffer
+  items, `powerChanged`, `brokeLeaves`); the caller keeps the player side —
+  inventory, sounds, pity roll, title, and the actual power re-solve. World-
+  side placement rules (cell free, saplings need soil) moved into the service;
+  player-side rules (stock, player overlap, belt facing policy) stayed out.
+  `unregisterMachine`/`unregisterBelt` are gone from VoxelGame.
+- **PlayerController extraction** — now unblocked: the edit path is
+  read-input → WorldEdit call → react-to-facts, no longer the central knot.
 - **SaveData reshaping** — migrates in lockstep with each ownership extraction;
   not a standalone step.
 - **Engine Renderer abstraction** (game currently issues raw GL) — real but low

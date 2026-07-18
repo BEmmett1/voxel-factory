@@ -4,6 +4,7 @@
 
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
+#include "game/WorldEdit.h"
 #include "game/Raycast.h"
 #include "game/PowerSystem.h"
 
@@ -286,22 +287,22 @@ void VoxelGame::onUpdate(float dt) {
     if (aim.hit) {
         const glm::ivec3 tb = aim.block;
 
-        // Mine: break the block and collect its drop.
+        // Mine: break the block (WorldEdit keeps the registries + power in
+        // sync) and collect its drop plus any handed-back buffered items.
         if (!swordHit && input().wasMousePressed(SDL_BUTTON_LEFT)) {
-            const BlockId broken = m_world->getBlock(tb.x, tb.y, tb.z);
-            if (isMachine(broken)) unregisterMachine(tb);     // returns buffered items
-            if (broken == BlockId::Belt) unregisterBelt(tb);  // returns carried item
-            if (isSource(broken)) m_sources.erase(tb);        // its item drops below
-            if (broken == BlockId::Sapling) m_saplings.erase(tb);
-            const ItemStack drop = blockDrop(broken);
-            m_inventory.add(drop.id, drop.count);
-            if (broken == BlockId::Leaves) {
+            const WorldEdit::BreakResult r =
+                WorldEdit::breakBlock(*m_world, editRegistries(), tb);
+            m_inventory.add(r.drop.id, r.drop.count);
+            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                m_inventory.add(id, r.returned.count(id));
+            }
+            if (r.brokeLeaves) {
                 rollLeafSapling(tb);
             }
-            m_world->setBlock(tb.x, tb.y, tb.z, BlockId::Air);
             audio().playAt("mine", glm::vec3(tb) + glm::vec3(0.5f), kMineVolume,
                            pitchJitter(tb));
-            if (PowerSystem::isPowerNode(broken)) solvePowerAndMarkDirty();
+            if (r.powerChanged) solvePowerAndMarkDirty();
             updateTitle();
         }
         // RMB: on a machine, open its panel (Shift+RMB to place against it
@@ -312,59 +313,42 @@ void VoxelGame::onUpdate(float dt) {
                 openMachineUi(tb);
             } else {
                 const glm::ivec3 p = aim.block + aim.normal;
-                const bool insidePlayer = cellOverlapsPlayer(p);
-                // Saplings only take root in soil.
-                const BlockId under = m_world->getBlock(p.x, p.y - 1, p.z);
-                const bool soilOk = itemInfo(held).placesBlock != BlockId::Sapling ||
-                                    under == BlockId::Grass || under == BlockId::Dirt;
                 if (itemInfo(held).placeable && !m_inventory.has(held)) {
                     // Assigned but out of stock: make the restock need audible.
                     audio().play("deny", kCraftVolume);
                 } else if (itemInfo(held).placeable && m_inventory.has(held) &&
-                    !insidePlayer && soilOk &&
-                    !isSolid(m_world->getBlock(p.x, p.y, p.z))) {
-                    const BlockId placed = itemInfo(held).placesBlock;
-                    m_world->setBlock(p.x, p.y, p.z, placed);
-                    audio().playAt("place", glm::vec3(p) + glm::vec3(0.5f),
-                                   kPlaceVolume, pitchJitter(p));
-                    m_inventory.remove(held, 1);
-                    if (isMachine(placed)) registerMachine(p, placed);
-                    if (isSource(placed)) m_sources[p] = 0.0f; // starts growing a patch
-                    if (placed == BlockId::Sapling) m_saplings[p] = 0.0f; // starts the grow timer
-                    if (placed == BlockId::Belt) {
-                        // The conduit carries items the way the player is
-                        // facing -- straight up/down when looking steeply.
-                        const glm::vec3 f = camera().front();
-                        glm::ivec3 facing;
-                        if (std::abs(f.y) > 0.7f) {
-                            facing = {0, f.y > 0 ? 1 : -1, 0};
-                        } else if (std::abs(f.x) > std::abs(f.z)) {
-                            facing = {f.x > 0 ? 1 : -1, 0, 0};
-                        } else {
-                            facing = {0, 0, f.z > 0 ? 1 : -1};
-                        }
-                        registerBelt(p, facing);
+                           !cellOverlapsPlayer(p)) {
+                    // A conduit carries items the way the player is facing --
+                    // straight up/down when looking steeply. (Player policy,
+                    // so decided here; WorldEdit just stores it.)
+                    const glm::vec3 f = camera().front();
+                    glm::ivec3 facing;
+                    if (std::abs(f.y) > 0.7f) {
+                        facing = {0, f.y > 0 ? 1 : -1, 0};
+                    } else if (std::abs(f.x) > std::abs(f.z)) {
+                        facing = {f.x > 0 ? 1 : -1, 0, 0};
+                    } else {
+                        facing = {0, 0, f.z > 0 ? 1 : -1};
                     }
-                    if (PowerSystem::isPowerNode(placed)) solvePowerAndMarkDirty();
-                    updateTitle();
+
+                    // WorldEdit refuses world-side (cell taken, saplings need
+                    // soil) as a silent no-op, matching the old guards.
+                    const WorldEdit::PlaceResult r = WorldEdit::placeBlock(
+                        *m_world, editRegistries(), p, itemInfo(held).placesBlock, facing);
+                    if (r.placed) {
+                        audio().playAt("place", glm::vec3(p) + glm::vec3(0.5f),
+                                       kPlaceVolume, pitchJitter(p));
+                        m_inventory.remove(held, 1);
+                        if (r.powerChanged) solvePowerAndMarkDirty();
+                        updateTitle();
+                    }
                 }
             }
         }
 
         // Wrench (default R): re-aims the targeted conduit, cycling six ways.
         if (input().wasKeyPressed(key(Action::WrenchRotate)) && m_inventory.has(ItemId::Wrench)) {
-            const auto bit = m_belts.find(tb);
-            if (bit != m_belts.end()) {
-                static const glm::ivec3 kCycle[6] = {
-                    {1, 0, 0}, {0, 0, 1}, {-1, 0, 0}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}};
-                int cur = 0;
-                for (int i = 0; i < 6; ++i) {
-                    if (bit->second.facing == kCycle[i]) { cur = i; break; }
-                }
-                bit->second.facing = kCycle[(cur + 1) % 6];
-                // No block changed, but the arrow UVs did: queue a remesh.
-                m_world->markDirtyAt(tb.x, tb.y, tb.z);
-            }
+            WorldEdit::rotateBelt(*m_world, m_belts, tb);
         }
     }
 }

@@ -17,6 +17,7 @@
 #include "game/HashIVec3.h"
 #include "game/Weather.h"
 #include "game/PowerSystem.h"
+#include "game/WorldEdit.h"
 
 #include <glm/glm.hpp>
 #include <array>
@@ -85,10 +86,13 @@ private:
     bool saveGame();             // write the full game state to m_savePath
     bool loadGame();             // restore it; false = no/invalid save
 
-    void registerMachine(const glm::ivec3& pos, BlockId type);
-    void unregisterMachine(const glm::ivec3& pos); // returns buffered items
+    void registerMachine(const glm::ivec3& pos, BlockId type); // world-gen seeding
     void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
-    void unregisterBelt(const glm::ivec3& pos);    // returns carried item
+    // The registry bundle WorldEdit keeps in sync with the block grid
+    // (player edits go through WorldEdit::breakBlock / placeBlock).
+    WorldEdit::Registries editRegistries() {
+        return {m_machines, m_belts, m_sources, m_saplings};
+    }
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
     void updateLeafDecay();                         // wither leaves cut off from logs
