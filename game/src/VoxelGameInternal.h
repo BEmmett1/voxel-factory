@@ -129,6 +129,26 @@ namespace vg {
     inline constexpr float kCreatureTurnRate     = 360.0f; // deg/s yaw ease
     inline constexpr int   kMaxEntityBones       = 32;     // must match uBones[] in entity.vert
 
+    // ---- Boss & arena (the BossArena dimension). Tune freely. ----
+    inline constexpr const char* kBossModel = "assets/models/boss.bbmodel";
+    inline constexpr int   kArenaRadius        = 12;    // voidstone disc radius (blocks)
+    inline constexpr int   kArenaY             = 20;    // arena ground height
+    inline constexpr float kBossHealth         = 20.0f; // ~10 sword hits
+    inline constexpr float kBossWalkSpeed      = 3.4f;  // blocks/s; sprint outruns it
+    inline constexpr float kBossAggroRadius    = 22.0f; // notices the player from here
+    inline constexpr float kBossStrikeRange    = 2.1f;  // center distance for a hit
+    inline constexpr float kBossDamage         = 1.5f;  // hearts per hit
+    inline constexpr float kBossStrikeCooldown = 1.5f;  // seconds between hits
+    inline constexpr float kBossScale          = 2.0f;  // render + reach scale
+    inline constexpr float kBossHalfW          = 0.85f; // collision half width
+    inline constexpr float kBossHeight         = 2.3f;
+    inline constexpr float kVictorySeconds     = 3.0f;  // linger before the ride home
+
+    // The arena lives at its own origin (a different World; overlap with home
+    // coordinates is fine). Player spawns south, warden lurks north.
+    inline glm::vec3 arenaSpawnFeet() { return {0.5f, static_cast<float>(kArenaY) + 1.0f, 8.5f}; }
+    inline glm::vec3 bossSpawnFeet()  { return {0.5f, static_cast<float>(kArenaY) + 1.0f, -5.5f}; }
+
     // ---- Audio: mix levels + hum behavior (master volume is a Setting) ----
     inline constexpr float kMineVolume     = 0.9f;  // block broken (positional)
     inline constexpr float kPlaceVolume    = 0.8f;  // block placed (positional)

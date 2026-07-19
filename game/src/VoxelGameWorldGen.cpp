@@ -208,3 +208,28 @@ void VoxelGame::buildWorld() {
         updateSources();
     }
 }
+
+// The Void Warden's island (the BossArena dimension): a bare voidstone disc
+// over the void — no resources, no cover to farm, nothing to build with.
+// Deterministic and regenerated fresh on every visit; four pillars give the
+// fight its only geometry. Centered on the arena's own origin.
+void VoxelGame::buildArena(World& w) {
+    for (int z = -kArenaRadius; z <= kArenaRadius; ++z) {
+        for (int x = -kArenaRadius; x <= kArenaRadius; ++x) {
+            const int d2 = x * x + z * z;
+            if (d2 > kArenaRadius * kArenaRadius) continue;
+            // Tapered underside: thicker toward the middle.
+            const int depth = d2 < (kArenaRadius * kArenaRadius) / 3 ? 3 : 2;
+            for (int dy = 0; dy < depth; ++dy) {
+                w.setBlock(x, kArenaY - dy, z, BlockId::VoidStone);
+            }
+        }
+    }
+
+    // Four watch pillars on the diagonals.
+    for (const auto& [px, pz] : {std::pair{-7, -7}, {7, -7}, {-7, 7}, {7, 7}}) {
+        for (int dy = 1; dy <= 4; ++dy) {
+            w.setBlock(px, kArenaY + dy, pz, BlockId::VoidStone);
+        }
+    }
+}

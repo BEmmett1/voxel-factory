@@ -53,6 +53,9 @@ enum class BlockId : std::uint8_t {
     // Collects rain water into its output buffer (there are no springs --
     // rain is the island's only water)
     RainBarrel,
+    // The boss arena's ground (BossArena dimension). Drops nothing -- the
+    // arena is transient and not a quarry.
+    VoidStone,
     Count
 };
 

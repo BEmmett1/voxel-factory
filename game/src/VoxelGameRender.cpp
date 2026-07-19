@@ -140,7 +140,10 @@ void VoxelGame::buildAtlas() {
 // columns so weather stays outside. Rebuilt every frame while visible.
 void VoxelGame::buildRainMesh() {
     m_rainScratch.clear();
-    const int count = static_cast<int>(static_cast<float>(kRainStreaks) * m_weather.intensity);
+    // Rain is Overworld weather; the arena sits under a dead void sky.
+    const float intensity =
+        m_dimension == DimensionId::Overworld ? m_weather.intensity : 0.0f;
+    const int count = static_cast<int>(static_cast<float>(kRainStreaks) * intensity);
     if (count > 0) {
         const glm::vec3 cam = camera().position;
         const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
@@ -172,10 +175,17 @@ void VoxelGame::buildRainMesh() {
 void VoxelGame::remeshDirtyChunks() {
     const std::uint64_t t0 = SDL_GetPerformanceCounter();
     int chunks = 0;
+    // The power glow and belt arrows are Overworld state; arena chunks mesh
+    // against empty sets (coordinates overlap numerically across dimensions).
+    static const PowerState kNoPower;
+    static const ChunkMesher::BeltMap kNoBelts;
+    const bool home = m_dimension == DimensionId::Overworld;
+    const PowerState& power = home ? m_power : kNoPower;
+    const ChunkMesher::BeltMap& belts = home ? m_belts : kNoBelts;
     for (const auto& [coord, chunk] : m_world->chunks()) {
         if (!chunk->dirty()) continue;
         m_meshScratch.clear();
-        ChunkMesher::appendChunk(m_meshScratch, *m_world, *chunk, coord, m_power, m_belts);
+        ChunkMesher::appendChunk(m_meshScratch, *m_world, *chunk, coord, power, belts);
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
@@ -244,9 +254,14 @@ void VoxelGame::onRender() {
     remeshDirtyChunks();
     buildRainMesh();
 
-    // Sky: fair-weather blue easing toward storm grey.
-    const glm::vec3 sky = glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
-                                   glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity);
+    // Sky: fair-weather blue easing toward storm grey — or the arena's flat
+    // void purple-black. Rain dimming applies at home only.
+    const bool home = m_dimension == DimensionId::Overworld;
+    const glm::vec3 sky = home
+        ? glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
+                   glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity)
+        : glm::vec3(0.09f, 0.05f, 0.14f);
+    const float rainDim = home ? m_weather.intensity * kRainDimMax : 0.0f;
     glClearColor(sky.r, sky.g, sky.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -254,7 +269,7 @@ void VoxelGame::onRender() {
     m_shader.setMat4("uProj", camera().projection());
     m_shader.setMat4("uView", camera().view());
     m_shader.setVec3("uLightDir", kLightDir);
-    m_shader.setFloat("uRainDim", m_weather.intensity * kRainDimMax);
+    m_shader.setFloat("uRainDim", rainDim);
     m_atlas.bind(0);
 
     // World: textured + lit, one small draw per chunk (world-space vertices).
@@ -284,7 +299,7 @@ void VoxelGame::onRender() {
     }
 
     // Creatures: skinned Blockbench models, depth-tested with the world.
-    m_creatures.render(camera(), m_weather.intensity * kRainDimMax);
+    m_creatures.render(camera(), rainDim, m_dimension);
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A

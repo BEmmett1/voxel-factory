@@ -834,6 +834,19 @@ void VoxelGame::drawHud() {
                             : glm::vec4(0.55f, 0.55f, 0.6f, 1.0f));
     }
 
+    // Boss HP bar: top-center while a boss lives in the active dimension.
+    if (m_creatures.bossAlive(m_dimension)) {
+        const float bw = 420.0f, bh = 14.0f;
+        const float bx = (static_cast<float>(w) - bw) * 0.5f;
+        const float by = 26.0f;
+        const char* name = m_creatures.bossName(m_dimension);
+        m_ui.text(bx + (bw - m_ui.textWidth(15.0f, name)) * 0.5f, by - 20, 15.0f,
+                  name, glm::vec4(0.85f, 0.6f, 1.0f, 1.0f));
+        m_ui.rect(bx - 2, by - 2, bw + 4, bh + 4, glm::vec4(0.0f, 0.0f, 0.0f, 0.75f));
+        m_ui.rect(bx, by, bw * m_creatures.bossHpFrac(m_dimension), bh,
+                  glm::vec4(0.62f, 0.25f, 0.9f, 0.95f));
+    }
+
     // Health: heart segments above the hotbar's left end (partial segments
     // show fractional damage, e.g. from a hard landing).
     {
@@ -1026,7 +1039,10 @@ void VoxelGame::closePauseMenu() {
     m_pauseOpen = false;
     setPaused(false);
     window().setRelativeMouse(true);
-    for (const auto& [pos, h] : m_humLoops) audio().setLoopPaused(h, false);
+    // Hums resume only at home: in the arena they stay paused (dimension rule).
+    for (const auto& [pos, h] : m_humLoops) {
+        audio().setLoopPaused(h, m_dimension != DimensionId::Overworld);
+    }
     audio().play("close", kUiVolume);
 }
 

@@ -14,6 +14,7 @@
 #include "game/Machine.h"
 #include "game/Belt.h"
 #include "game/CreatureSystem.h"
+#include "game/Dimension.h"
 #include "game/HashIVec3.h"
 #include "game/PlayerController.h"
 #include "game/Weather.h"
@@ -49,6 +50,9 @@ protected:
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildWorld();           // generate terrain + the demo structures
+    void buildArena(World& w);   // the BossArena's voidstone island
+    void enterArena();           // consume-key travel: regen arena + boss, go
+    void returnHome();           // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
@@ -114,8 +118,26 @@ private:
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;
 
-    std::unique_ptr<World> m_world;
-    PowerState m_power; // energized cells; refreshed on every edit
+    // Dimensions: one World per DimensionId; m_world points at the ACTIVE
+    // one (player physics, raycast, rendering). The factory simulation and
+    // every registry are Overworld-semantic and always operate on
+    // overworld(), regardless of where the player stands.
+    std::array<std::unique_ptr<World>, static_cast<std::size_t>(DimensionId::Count)> m_worlds;
+    World* m_world = nullptr;                       // = m_worlds[m_dimension]
+    DimensionId m_dimension = DimensionId::Overworld;
+    World& overworld() { return *m_worlds[static_cast<std::size_t>(DimensionId::Overworld)]; }
+    void switchDimension(DimensionId dim);          // swap world + meshes + ambience
+
+    // Where the player left the Overworld; every return trip (victory, death,
+    // save-and-load) lands here. Saved as the camera pose while in the arena.
+    struct CameraPose {
+        glm::vec3 position{0.0f};
+        float yaw = 0.0f;
+        float pitch = 0.0f;
+    };
+    CameraPose m_homePose;
+
+    PowerState m_power; // energized OVERWORLD cells; refreshed on every edit
 
     Inventory m_inventory;
     // Player-assigned hotbar slots (None = empty). Assignments are references
@@ -142,6 +164,9 @@ private:
 
     Weather m_weather;          // rain/clear phases + eased visual intensity
     float m_bucketFill = 0.0f;  // held-bucket rain-collection progress
+
+    bool  m_bossDefeated = false; // ever beaten the Void Warden (saved, v13)
+    float m_victoryTimer = -1.0f; // >0: victory linger, counting down to the ride home
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
     std::string m_savePath;        // save.vxf in the SDL pref dir

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "game/Dimension.h"
+#include "game/Item.h"
+
 #include "engine/BbModel.h"
 #include "engine/Mesh.h"
 #include "engine/Shader.h"
@@ -7,6 +10,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -17,39 +21,91 @@ namespace engine {
     class Camera;
 }
 
-// The entity layer's first brick: the test creature. Owns the Blockbench
-// model, its GPU resources, and the live instances; operates on World& and
-// engine services passed in explicitly (the PowerSystem interface precedent —
-// never VoxelGame&). Deliberately NOT persisted: a fresh creature spawns each
-// launch, and save records arrive with the full entity layer.
+// What a creature is. Behavior code lives in per-kind dispatch inside the
+// system (the MachineKind precedent).
+enum class CreatureKind : std::uint8_t {
+    Wanderer, // ambient: idles and strolls around its home point
+    Boss,     // aggros the player, chases, strikes on contact; unique drop
+};
+
+// One registry row per species: model, body, and combat numbers. Rows live in
+// CreatureSystem.cpp (kSpecies) next to the vg:: knobs they draw from.
+enum class SpeciesId : std::uint8_t {
+    TestCreature = 0,
+    VoidWarden,
+    Count
+};
+
+struct CreatureSpecies {
+    SpeciesId    id;
+    const char*  model;          // .bbmodel path relative to the base dir
+    CreatureKind kind = CreatureKind::Wanderer;
+    const char*  name = "";      // shown on the boss HP bar
+    float scale = 1.0f;
+    float halfW = 0.35f;         // collision box
+    float height = 0.9f;
+    float hp = 6.0f;
+    float walkSpeed = 1.6f;
+    // Boss-only numbers (zero/None for ambient kinds):
+    float  aggroRadius = 0.0f;
+    float  strikeRange = 0.0f;   // center-to-center hit distance
+    float  damage = 0.0f;        // hearts per strike
+    float  strikeCooldown = 0.0f;
+    ItemId drop = ItemId::None;  // awarded on the killing blow
+};
+
+// The entity layer: every live creature across every dimension, plus the
+// per-species GPU assets. Operates on World& and engine services passed in
+// (never VoxelGame&). Creatures are transient — never saved; the arena's are
+// cleared on every entry, the home wanderer respawns each launch.
 class CreatureSystem {
 public:
-    // Load model + texture + entity shader from `dir` (the SDL base path).
-    // Missing/broken assets leave the system inert: logged, never fatal.
+    // Load every species' model + texture and the shared entity shader.
+    // Missing/broken assets leave that species inert (logged, never fatal).
     void loadAssets(const std::string& dir);
 
-    // Spawn the one test wanderer at the hint's x/z, snapped down onto solid
-    // ground near the plateau. No ground = no creature (logged).
-    void spawnTestCreature(const World& world, const glm::vec3& feetHint);
+    // Spawn at the hint's column, snapped down onto solid ground near the
+    // hint (scans a few blocks up, then down). No ground = no creature.
+    void spawn(SpeciesId species, DimensionId dim, const World& world,
+               const glm::vec3& feetHint);
 
-    // Fixed 20 Hz step: wander decisions, gravity, move-and-slide.
-    void update(const World& world);
+    void clearDimension(DimensionId dim); // despawn (arena reset / regen)
 
-    // Per-frame clocks: the tick-interpolation alpha, animation time, and the
-    // hurt-flash fade. The caller skips this while paused, freezing them all.
+    // What update() observed this tick, for the caller to react to.
+    struct Events {
+        float damageToPlayer = 0.0f; // boss strikes landed (hearts)
+    };
+
+    // Fixed 20 Hz step for creatures IN the active dimension (others freeze,
+    // like the whole game does under the pause rule). playerFeet drives boss
+    // aggro/chase/strikes.
+    Events update(const World& world, DimensionId active, const glm::vec3& playerFeet);
+
+    // Per-frame clocks (tick-lerp alpha, animation time, hurt-flash fade).
     void frameAdvance(float dt);
 
-    // Interpolated skinned draw. rainDim matches the world pass's uRainDim.
-    void render(const engine::Camera& camera, float rainDim);
+    // Interpolated skinned draw of the active dimension's creatures.
+    void render(const engine::Camera& camera, float rainDim, DimensionId active);
 
-    // Swing the sword along the aim ray: strike the nearest creature within
-    // reach, unless a solid block is in the way first. Returns true on a hit
-    // (the caller then skips the mining path for this click).
-    bool tryMeleeAttack(const World& world, engine::Audio& audio,
-                        const glm::vec3& origin, const glm::vec3& dir);
+    // Swing the sword along the aim ray at the active dimension's creatures.
+    struct MeleeResult {
+        bool   hit = false;          // connected (caller skips mining)
+        bool   bossDied = false;     // the killing blow landed on a Boss
+        ItemId drop = ItemId::None;  // that boss's species drop
+    };
+    MeleeResult tryMeleeAttack(const World& world, engine::Audio& audio,
+                               const glm::vec3& origin, const glm::vec3& dir,
+                               DimensionId active);
+
+    // Boss HP bar feed: the first living Boss in `dim`, if any.
+    bool  bossAlive(DimensionId dim) const;
+    float bossHpFrac(DimensionId dim) const;  // 0..1 (0 if none)
+    const char* bossName(DimensionId dim) const;
 
 private:
     struct Creature {
+        SpeciesId   species = SpeciesId::TestCreature;
+        DimensionId dim = DimensionId::Overworld;
         glm::vec3 pos{0.0f}, prevPos{0.0f}; // feet; prevPos = last tick (render lerp)
         glm::vec3 vel{0.0f};
         float yaw = 0.0f;                   // degrees; 0 faces -Z like the model
@@ -59,16 +115,24 @@ private:
         int   anim = -1;                    // index into the model's animations
         float animTime = 0.0f;              // frozen while the engine is paused
         std::uint32_t wanderRolls = 0;      // hash counter for wander decisions
-        float     hp = 0.0f;                // set from kCreatureHealth on spawn
+        float     hp = 0.0f;                // set from the species row on spawn
         glm::vec3 knock{0.0f};              // decaying shove from being hit
         float     hurtFlash = 0.0f;         // 0..1 red tint, fades per frame
+        float     strikeTimer = 0.0f;       // Boss: seconds until the next hit
     };
 
-    engine::BbModel        m_model;
-    bool                   m_ready = false; // model + mesh + shader loaded
-    engine::Mesh           m_mesh;
-    engine::Texture        m_texture;
+    struct SpeciesAssets {
+        engine::BbModel model;
+        engine::Mesh    mesh;
+        engine::Texture texture;
+        bool ready = false;
+    };
+
+    const Creature* firstBoss(DimensionId dim) const;
+
+    std::array<SpeciesAssets, static_cast<std::size_t>(SpeciesId::Count)> m_assets;
     engine::Shader         m_shader;
+    bool                   m_shaderReady = false;
     std::vector<Creature>  m_creatures;
     std::vector<glm::mat4> m_boneScratch;   // reused per draw
     float m_sinceTick = 0.0f;               // seconds since last update() (render lerp)

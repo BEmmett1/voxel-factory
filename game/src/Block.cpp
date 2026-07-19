@@ -86,6 +86,8 @@ namespace {
         {.id = B::RainBarrel, .name = "Rain Barrel", .color = {0.40f, 0.28f, 0.15f},
          .machine = true, .drop = {I::RainBarrelItem, 1},
          .tiles = {52, 58, 58}}, // open water top, stave sides
+        {.id = B::VoidStone, .name = "Voidstone", .color = {0.24f, 0.16f, 0.36f},
+         .tiles = {60, 60, 60}}, // arena ground; deliberately no drop
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

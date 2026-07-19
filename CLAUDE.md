@@ -356,6 +356,42 @@ The core loop is complete, closed, and fully automatable. Possible next directio
   entity layer, machine-crafted gear, crafted teleport keys; see ROADMAP.md Q4 2026 /
   Q1 2027).
 
+Dimensions & the first boss (the combat pillar's opening move):
+- **True dimension system** — `DimensionId { Overworld, BossArena }`
+  (Dimension.h); VoxelGame owns one `World` per dimension with `m_world`
+  pointing at the ACTIVE one (player/render/raycast compile unchanged) and
+  `overworld()` for the factory. **The simulation is Overworld-only by
+  design**: machines/belts/power/growth/weather and all registries are
+  Overworld-semantic; the arena has no automation and NO block edits (mine/
+  place/wrench/machine-panel deny there — coordinates overlap numerically
+  across dimensions, so an arena lookup could alias a home machine).
+  `switchDimension()` swaps the world, drops + re-dirties the mesh cache (one
+  travel hitch), and pauses hums; rain/sky/glow gate per frame. Arena sky is
+  a flat void purple.
+- **Travel** — the **Teleport Key** (hand-craft: Philosopher's Catalyst +
+  Crystal ×4 + Essence ×2) is a hotbar tool: RMB consumes it, remembers
+  `m_homePose`, regenerates the arena (`buildArena`: a voidstone disc + four
+  pillars at its own origin) and spawns the boss. Every road home — victory
+  linger (`kVictorySeconds`), death (the hardcore rule; dimension follows the
+  respawn), or save-and-load — lands at home. Saves always bind the
+  Overworld + home pose: quitting mid-fight abandons it (fights transient,
+  creatures still unsaved).
+- **CreatureSystem species registry** — `kSpecies` rows (`SpeciesId`:
+  TestCreature, VoidWarden) in the kBlocks/kItems discipline: model path,
+  kind (`CreatureKind::Wanderer|Boss`), body, hp, and the boss numbers
+  (aggro/strike/damage/cooldown/drop). Creatures carry a `DimensionId` tag;
+  update/render/melee filter on the active dimension (the home wanderer
+  freezes while away). Boss AI: aggro → chase → contact strikes returned as
+  `Events::damageToPlayer` (the first enemy damage; applied via
+  `PlayerController::damage`). `tryMeleeAttack` returns a `MeleeResult` — a
+  boss kill hands back its drop (**Void Catalyst**), sets `m_bossDefeated`
+  (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
+  in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same
+  lenient loading as the creature). Knobs in `// ---- Boss & arena ----`.
+- **F6 is a hidden dev key** (F4's sibling): grants a Teleport Key + Copper
+  Sword and assigns them to the hotbar — the boss loop without the
+  philosopher grind.
+
 Player physics (pressure & pull):
 - **Walking only** — AABB player vs. voxels, gravity + Space jump, LCtrl sprint,
   no flight by design. The body lives in **`PlayerController`**

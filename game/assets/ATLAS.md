@@ -52,7 +52,7 @@ you want to *discard* hand edits and start over.
 | 54 | herb source | 55 | crystal source |
 | 56 | copper source | 57 | sand source |
 | 58 | water source | 59 | essence source |
-| 60-63 | spare | | |
+| 60 | voidstone (boss arena) | 61-63 | spare |
 
 ## Rows 4-5 — item icons (tiles 64-95; transparency welcome)
 
@@ -65,15 +65,17 @@ you want to *discard* hand edits and start over.
 | 72 | copper plate | 73 | glass |
 | 74 | vial | 75 | machine frame |
 | 76 | wood | 77 | bucket |
-| 78 | wrench | 79 | spare |
+| 78 | wrench | 79 | copper sword |
 | 80 | ground herb | 81 | crystal dust |
 | 82 | herbal tincture | 83 | mineral solution |
 | 84 | healing draught | 85 | mana vial |
 | 86 | elixir of vigor | 87 | refined elixir |
 | 88 | philosopher's catalyst | 89 | philosopher's stone |
-| 90-95 | spare | | |
+| 90 | teleport key | 91 | void catalyst |
+| 92-95 | spare | | |
 
 ## Rows 6-7 — spare (tiles 96-127)
 
 Free for new blocks/items. Claim a tile here, then point the code at it
-(`kBlockTiles` for blocks, `atlasTile` for material items).
+(the `tiles` field on the kBlocks row for blocks, `atlasTile` on the kItems
+row for material items).

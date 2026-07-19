@@ -70,13 +70,19 @@ the pillar slips to post-launch.
 
 ## Q1 2027 — bosses + Steam + hardening
 
-- Boss dungeons: separately generated arena islands reached by a crafted
-  teleport key (expensive, philosopher-adjacent — the factory produces both
-  your gear and your ticket, and the player picks when fights happen).
-  Victory or death returns you home; death costs the pack as usual
-- 2–3 bosses of rising tier gating unique drops (unique catalysts, better
-  fuels — feeds the generator-tier line); top-tier armor may earn
-  keep-your-pack-on-death the way the relic earns flight
+- [x] Boss dungeons foundation (July 2026, landed early): a TRUE dimension
+      system (`DimensionId`, one `World` per dimension, Overworld-only sim),
+      the crafted Teleport Key (philosopher-adjacent, consumed on use),
+      a regenerated voidstone arena, and **boss #1 — the VOID WARDEN**
+      (species registry in CreatureSystem, aggro/chase/contact-strike AI,
+      the game's first enemy damage, HP bar, Void Catalyst drop, victory
+      ride home). Victory or death returns you home; death costs the pack
+      as usual. Fights are transient (quit = abandon); `bossDefeated` rides
+      the save (v13 append)
+- Bosses #2–3 of rising tier gating unique drops (unique catalysts, better
+  fuels — feeds the generator-tier line): now data + models on the species
+  registry + arena variants. Top-tier armor may earn keep-your-pack-on-death
+  the way the relic earns flight; Void Catalyst recipes need a consumer
 - The final boss drops the **Flight Stone** (late-game earned flight — the
   vision piece): flight is earned by mastering both halves of the game, the
   factory that arms you and the fight itself

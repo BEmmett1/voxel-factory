@@ -55,6 +55,12 @@ void VoxelGame::onUpdate(float dt) {
     if (!paused()) {
         m_creatures.frameAdvance(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
+
+        // Victory linger: soak in the win, then ride home automatically.
+        if (m_victoryTimer > 0.0f) {
+            m_victoryTimer -= dt;
+            if (m_victoryTimer <= 0.0f) returnHome();
+        }
     }
 
     // Pause menu: simulated time is frozen (the engine skips onTick while
@@ -69,9 +75,32 @@ void VoxelGame::onUpdate(float dt) {
         return;
     }
 
+    // F6 is a dev key (the F4 precedent): the boss-testing kit — a Teleport
+    // Key + Copper Sword, assigned onto the hotbar so they are usable at once
+    // (the default hotbar is full; the last two slots are sacrificed).
+    if (input().wasKeyPressed(SDL_SCANCODE_F6)) {
+        auto give = [&](ItemId id, int fallbackSlot) {
+            m_inventory.add(id, 1);
+            for (ItemId s : m_hotbar) {
+                if (s == id) return; // already assigned
+            }
+            for (ItemId& s : m_hotbar) {
+                if (s == ItemId::None) { s = id; return; }
+            }
+            m_hotbar[fallbackSlot] = id;
+        };
+        give(ItemId::TeleportKey, kHotbarSlots - 2);
+        give(ItemId::CopperSword, kHotbarSlots - 1);
+        updateTitle();
+        audio().play("craft", kCraftVolume);
+    }
+
     // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
+    // The rain loop is Overworld ambience — silent in the arena.
     m_weather.frameEase(dt);
-    audio().setLoopGain(m_rainLoop, m_weather.intensity * kRainVolume);
+    audio().setLoopGain(m_rainLoop,
+                        m_dimension == DimensionId::Overworld
+                            ? m_weather.intensity * kRainVolume : 0.0f);
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
         m_weather.forceToggle();
     }
@@ -146,6 +175,13 @@ void VoxelGame::onUpdate(float dt) {
         m_player.move(dt, input(), cam, *m_world, m_settings, audio());
     if (mv.died) {
         m_inventory = Inventory{};
+        // Death in the arena ends the fight: the respawn plateau is an
+        // Overworld place, so the dimension follows the body home.
+        if (m_dimension != DimensionId::Overworld) {
+            switchDimension(DimensionId::Overworld);
+            m_creatures.clearDimension(DimensionId::BossArena);
+            m_victoryTimer = -1.0f;
+        }
         window().setTitle(mv.fellOff
             ? "Voxel Factory  —  YOU FELL. YOUR PACK IS LOST."
             : "Voxel Factory  —  YOU DIED. YOUR PACK IS LOST.");
@@ -173,8 +209,8 @@ void VoxelGame::onUpdate(float dt) {
 
     const ItemId held = heldItem();
 
-    // Drink: RMB with the Healing Draught held restores health (no aim
-    // needed); the sip consumes the click so nothing places or opens.
+    // Tools that consume the right click outright: a sip of the Healing
+    // Draught, or the Teleport Key discharging into a trip to the arena.
     bool drank = false;
     if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
         if (held == ItemId::HealingDraught && m_player.health < kMaxHealth &&
@@ -183,6 +219,12 @@ void VoxelGame::onUpdate(float dt) {
             m_player.health = std::min(kMaxHealth, m_player.health + kDraughtHeal);
             audio().play("heal", kHurtVolume);
             updateTitle();
+            drank = true;
+        } else if (held == ItemId::TeleportKey && m_inventory.has(held) &&
+                   m_dimension == DimensionId::Overworld) {
+            // The expensive ticket, consumed on use; return trips are free.
+            m_inventory.remove(held, 1);
+            enterArena();
             drank = true;
         }
     }
@@ -195,7 +237,18 @@ void VoxelGame::onUpdate(float dt) {
         held == ItemId::CopperSword && m_inventory.has(held)) {
         m_attackCooldown = kSwordCooldown;
         audio().play("swing", kUiVolume);
-        swordHit = m_creatures.tryMeleeAttack(*m_world, audio(), cam.position, cam.front());
+        const CreatureSystem::MeleeResult mr = m_creatures.tryMeleeAttack(
+            *m_world, audio(), cam.position, cam.front(), m_dimension);
+        swordHit = mr.hit;
+        if (mr.bossDied) {
+            // VICTORY: the unique drop lands in the pack, the progression
+            // flag sticks (saved), and the linger timer starts the ride home.
+            m_inventory.add(mr.drop, 1);
+            m_bossDefeated = true;
+            m_victoryTimer = kVictorySeconds;
+            window().setTitle("Voxel Factory  —  THE VOID WARDEN FALLS. VICTORY!");
+            audio().play("craft", kCraftVolume);
+        }
     }
 
     // Aim and edit.
@@ -203,7 +256,16 @@ void VoxelGame::onUpdate(float dt) {
     m_hasTarget = aim.hit;
     m_targetBlock = aim.block;
 
-    if (aim.hit) {
+    // Editing (and the machine panel) is Overworld-only: the arena is
+    // transient, and the registries are Overworld-semantic — a machine
+    // "found" at arena coordinates would be a home machine at overlapping
+    // numbers. Attempted edits deny audibly; the sword still works.
+    if (aim.hit && m_dimension != DimensionId::Overworld) {
+        if ((!swordHit && input().wasMousePressed(SDL_BUTTON_LEFT)) ||
+            (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT))) {
+            audio().play("deny", kCraftVolume);
+        }
+    } else if (aim.hit) {
         const glm::ivec3 tb = aim.block;
 
         // Mine: break the block (WorldEdit keeps the registries + power in

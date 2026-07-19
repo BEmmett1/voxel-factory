@@ -20,12 +20,14 @@
 using namespace vg;
 
 // Holding a bucket under open sky while it rains slowly collects water.
+// Rain (and so the bucket) is an Overworld thing; the arena has no weather.
 void VoxelGame::updateBucketFill() {
     const ItemId held = heldItem();
     const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
-    const bool collecting = m_weather.raining && held == ItemId::Bucket &&
+    const bool collecting = m_dimension == DimensionId::Overworld &&
+        m_weather.raining && held == ItemId::Bucket &&
         m_inventory.has(ItemId::Bucket) &&
-        skyVisible(*m_world,
+        skyVisible(overworld(),
                    static_cast<int>(std::floor(feet.x)),
                    static_cast<int>(std::floor(feet.y + kPlayerHeight)),
                    static_cast<int>(std::floor(feet.z)));
@@ -44,12 +46,12 @@ void VoxelGame::updateBucketFill() {
 // change it -- and queue a remesh for every chunk whose energized glow flips.
 void VoxelGame::solvePowerAndMarkDirty() {
     const std::uint64_t t0 = SDL_GetPerformanceCounter();
-    PowerState next = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
+    PowerState next = PowerSystem::solve(overworld(), m_machines, &m_hungryGenerators);
     for (const glm::ivec3& c : next.cells()) {
-        if (!m_power.energized(c.x, c.y, c.z)) m_world->markDirtyAt(c.x, c.y, c.z);
+        if (!m_power.energized(c.x, c.y, c.z)) overworld().markDirtyAt(c.x, c.y, c.z);
     }
     for (const glm::ivec3& c : m_power.cells()) {
-        if (!next.energized(c.x, c.y, c.z)) m_world->markDirtyAt(c.x, c.y, c.z);
+        if (!next.energized(c.x, c.y, c.z)) overworld().markDirtyAt(c.x, c.y, c.z);
     }
     m_power = std::move(next);
     m_perf.lastSolveMs = msBetween(t0, SDL_GetPerformanceCounter());
@@ -101,6 +103,9 @@ void VoxelGame::updateHums() {
             "hum_loop", /*spatial=*/true, kHumVolume, kHumMaxDistance, humPitch(pos));
         if (h == 0) continue;
         audio().setLoopPosition(h, glm::vec3(pos) + glm::vec3(0.5f));
+        // Hums are Overworld ambience: born paused while the player is away
+        // (the arena overlaps home coordinates numerically).
+        if (m_dimension != DimensionId::Overworld) audio().setLoopPaused(h, true);
         m_humLoops[pos] = h;
     }
 }
@@ -123,7 +128,7 @@ void VoxelGame::updateSources() {
         if (timer < kSourceSpawnSeconds) continue;
         timer = 0.0f;
 
-        const BlockId node = sourceSpawnsNode(m_world->getBlock(pos.x, pos.y, pos.z));
+        const BlockId node = sourceSpawnsNode(overworld().getBlock(pos.x, pos.y, pos.z));
         if (node == BlockId::Air) continue; // source block was removed under us
 
         // Patch is capped: count this source's live nodes nearby.
@@ -131,7 +136,7 @@ void VoxelGame::updateSources() {
         for (int dz = -kPatchRadius; dz <= kPatchRadius; ++dz) {
             for (int dx = -kPatchRadius; dx <= kPatchRadius; ++dx) {
                 for (int dy = -3; dy <= 3; ++dy) {
-                    if (m_world->getBlock(pos.x + dx, pos.y + dy, pos.z + dz) == node) {
+                    if (overworld().getBlock(pos.x + dx, pos.y + dy, pos.z + dz) == node) {
                         ++liveNodes;
                     }
                 }
@@ -150,9 +155,9 @@ void VoxelGame::updateSources() {
             const int x = pos.x + dx;
             const int z = pos.z + dz;
             for (int y = pos.y + 2; y >= pos.y - 3; --y) {
-                if (m_world->getBlock(x, y, z) == BlockId::Grass &&
-                    m_world->getBlock(x, y + 1, z) == BlockId::Air) {
-                    m_world->setBlock(x, y + 1, z, node);
+                if (overworld().getBlock(x, y, z) == BlockId::Grass &&
+                    overworld().getBlock(x, y + 1, z) == BlockId::Air) {
+                    overworld().setBlock(x, y + 1, z, node);
                     placedNode = true;
                     break;
                 }
@@ -180,7 +185,7 @@ void VoxelGame::updateSaplings() {
             timer += kTickSeconds * (m_weather.raining ? kRainGrowthMult : 1.0f);
             continue;
         }
-        if (m_world->getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
+        if (overworld().getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
             done.push_back(pos); // the block went away; drop the stale timer
             continue;
         }
@@ -190,18 +195,18 @@ void VoxelGame::updateSaplings() {
         bool clear = true;
         for (const TreeCell& c : treeCells()) {
             const glm::ivec3 cell = pos + c.offset;
-            if (cell != pos && m_world->getBlock(cell.x, cell.y, cell.z) != BlockId::Air) {
+            if (cell != pos && overworld().getBlock(cell.x, cell.y, cell.z) != BlockId::Air) {
                 clear = false;
                 break;
             }
-            if (cellOverlapsPlayer(cell)) {
+            if (m_dimension == DimensionId::Overworld && cellOverlapsPlayer(cell)) {
                 clear = false;
                 break;
             }
         }
         if (!clear) continue; // blocked: stay ripe and retry next tick
 
-        placeTree(*m_world, pos);
+        placeTree(overworld(), pos);
         done.push_back(pos);
     }
 
@@ -231,7 +236,7 @@ void VoxelGame::updateLeafDecay() {
     // felled canopy crumbles away rather than popping. Collect first: the
     // chunk map must not grow mid-iteration.
     std::vector<glm::ivec3> dying;
-    for (const auto& [coord, chunk] : m_world->chunks()) {
+    for (const auto& [coord, chunk] : overworld().chunks()) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int y = 0; y < CHUNK_SIZE; ++y) {
                 for (int x = 0; x < CHUNK_SIZE; ++x) {
@@ -242,7 +247,7 @@ void VoxelGame::updateLeafDecay() {
                     for (int dy = -kLeafReach; dy <= kLeafReach && !nearLog; ++dy) {
                         for (int dz = -kLeafReach; dz <= kLeafReach && !nearLog; ++dz) {
                             for (int dx = -kLeafReach; dx <= kLeafReach && !nearLog; ++dx) {
-                                if (m_world->getBlock(p.x + dx, p.y + dy, p.z + dz) ==
+                                if (overworld().getBlock(p.x + dx, p.y + dy, p.z + dz) ==
                                     BlockId::Log) {
                                     nearLog = true;
                                 }
@@ -263,7 +268,7 @@ void VoxelGame::updateLeafDecay() {
     }
 
     for (const glm::ivec3& p : dying) {
-        m_world->setBlock(p.x, p.y, p.z, BlockId::Air);
+        overworld().setBlock(p.x, p.y, p.z, BlockId::Air);
         rollLeafSapling(p); // a felled canopy still seeds the next forest
     }
 }
@@ -279,14 +284,14 @@ void VoxelGame::onTick() {
 
     // Generators and collectors first: a burn flip re-solves the network so
     // the powered machines below see fresh power in this same tick.
-    if (MachineSystem::tickSelfPowered(*m_world, m_machines, m_hungryGenerators,
+    if (MachineSystem::tickSelfPowered(overworld(), m_machines, m_hungryGenerators,
                                        m_weather.raining)) {
         solvePowerAndMarkDirty();
     }
     updateBucketFill();
 
     // Powered machines process their input buffers into outputs over time.
-    MachineSystem::tickPowered(*m_world, m_machines, m_power);
+    MachineSystem::tickPowered(overworld(), m_machines, m_power);
 
     // Advance conduits on a slower cadence so items visibly travel.
     if (++m_beltTimer >= kBeltStepTicks) {
@@ -294,5 +299,12 @@ void VoxelGame::onTick() {
         MachineSystem::beltStep(m_belts, m_machines);
     }
 
-    m_creatures.update(*m_world); // wander + physics (CreatureSystem.cpp)
+    // Creatures step in the ACTIVE dimension (the arena's warden hunts; the
+    // home wanderer freezes while the player is away). Boss strikes come
+    // back as events — the first enemy damage in the game.
+    const glm::vec3 playerFeet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+    const CreatureSystem::Events ev = m_creatures.update(*m_world, m_dimension, playerFeet);
+    if (ev.damageToPlayer > 0.0f) {
+        m_player.damage(ev.damageToPlayer, audio());
+    }
 }

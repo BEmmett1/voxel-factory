@@ -72,6 +72,10 @@ enum class ItemId : std::uint8_t {
     // Combat (new entries must be APPENDED here: the save format serializes
     // inventories by enum index and accepts older, shorter item sets)
     CopperSword,
+    // Boss tier: the key is the crafted, consumed ticket to the arena
+    // dimension; the catalyst is the first boss's unique drop.
+    TeleportKey,
+    VoidCatalyst,
     Count
 };
 

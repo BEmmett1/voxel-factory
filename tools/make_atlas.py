@@ -629,6 +629,39 @@ def items():
         t.px(8 + dx, 8 + dy, (255, 210, 220))
 
 
+def boss_tier():
+    VOID = (60, 40, 92)                              # arena stone base
+
+    t = paint(60)                                    # voidstone (arena block)
+    t.fill(shade(VOID, 0.55), noise=0.14)
+    x, y = 11, 0                                     # violet fissure
+    for step in range(14):
+        t.px(x, y, shade(VOID, 1.5))
+        y += 1
+        x += (1 if n2(step, 3, 143) > 0.6 else 0) - (1 if n2(step, 4, 144) > 0.6 else 0)
+        x = max(1, min(T - 2, x))
+    t.speckle(shade(VOID, 1.8), 3, seed=22)          # starry flecks
+    t.px(4, 11, (235, 225, 255))
+    t.speckle(shade(VOID, 0.3), 5, seed=23)          # deep pits
+
+    t = paint(90)                                    # teleport key
+    t.ring(6, 5, 3, GOLD)                            # bow
+    t.px(6, 5, shade(ESSENCE, 1.3))                  # set stone
+    for d in range(6):                               # diagonal shaft
+        t.px(8 + d, 7 + d, shade(GOLD, 1.1))
+        t.px(9 + d, 7 + d, shade(GOLD, 0.8))
+    t.px(13, 13, GOLD)                               # teeth
+    t.px(13, 11, GOLD)
+    t.px(14, 12, shade(GOLD, 1.2))
+    t.px(4, 3, (255, 250, 220))                      # glint
+
+    t = paint(91)                                    # void catalyst (boss drop)
+    gem(t, shade((150, 90, 220), 0.9))
+    t.ring(8, 8, 6, shade((90, 60, 140), 1.1))       # containment halo
+    t.px(11, 4, (240, 230, 255))
+    t.px(5, 12, (200, 180, 255))
+
+
 # --- PNG writer -------------------------------------------------------------
 
 def write_png(path, w, h, rgba):
@@ -649,6 +682,7 @@ def main():
     machines()
     nodes_and_sources()
     items()
+    boss_tier()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

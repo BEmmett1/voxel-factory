@@ -37,6 +37,9 @@ struct SaveData {
     // Appended in v12: the player-assigned hotbar slots (None = empty).
     // Pre-v12 saves keep the caller's default (vg::kDefaultHotbar).
     std::array<ItemId, kHotbarSlots>& hotbar;
+    // Appended in v13: has the Void Warden ever been defeated (progression
+    // flag; the boss itself is transient). Older saves keep the default.
+    bool& bossDefeated;
 };
 
 namespace SaveSystem {

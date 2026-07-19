@@ -77,6 +77,9 @@ namespace {
         {.id = I::RainBarrelItem, .name = "Rain Barrel", .placeable = true, .placesBlock = B::RainBarrel},
         // Combat.
         {.id = I::CopperSword, .name = "Copper Sword", .atlasTile = 79},
+        // Boss tier.
+        {.id = I::TeleportKey, .name = "Teleport Key", .atlasTile = 90},
+        {.id = I::VoidCatalyst, .name = "Void Catalyst", .atlasTile = 91},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

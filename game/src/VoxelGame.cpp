@@ -85,7 +85,8 @@ void VoxelGame::onStart() {
     // loadGame() so a pre-v12 save keeps it, like the health default below.
     m_hotbar = kDefaultHotbar;
 
-    m_world = std::make_unique<World>();
+    for (auto& w : m_worlds) w = std::make_unique<World>();
+    m_world = m_worlds[static_cast<std::size_t>(DimensionId::Overworld)].get();
     m_player.health = kMaxHealth; // pre-v10 saves have no health field; keep this default
     if (!loadGame()) {
         // No (valid) save: fresh island + the starting kit of raw materials.
@@ -113,7 +114,8 @@ void VoxelGame::onStart() {
     updateHums(); // a loaded save's energized machines hum from frame one
     // Fresh each launch; not part of the save. A few blocks from the player
     // spawn, snapped to ground inside the system.
-    m_creatures.spawnTestCreature(*m_world, spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f));
+    m_creatures.spawn(SpeciesId::TestCreature, DimensionId::Overworld, overworld(),
+                      spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f));
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
@@ -124,9 +126,19 @@ void VoxelGame::onStart() {
 bool VoxelGame::saveGame() {
     if (m_savePath.empty() || !m_world) return false;
     int slot = m_selectedSlot;
-    SaveData d{*m_world, m_inventory, editRegistries(), m_weather, m_player,
-               m_bucketFill, camera().position, camera().yaw, camera().pitch,
-               m_worldSeed, m_sourceRng, slot, m_hotbar};
+    // The arena is transient: only the Overworld is ever saved, and a save
+    // taken mid-fight records the remembered home pose so loading always
+    // wakes the player at home (quitting abandons the fight).
+    glm::vec3 pos = camera().position;
+    float yaw = camera().yaw, pitch = camera().pitch;
+    if (m_dimension != DimensionId::Overworld) {
+        pos = m_homePose.position;
+        yaw = m_homePose.yaw;
+        pitch = m_homePose.pitch;
+    }
+    SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
+               m_bucketFill, pos, yaw, pitch,
+               m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -136,9 +148,9 @@ bool VoxelGame::loadGame() {
     // a save interrupted mid-write costs at most one session, not the island.
     for (const std::string& path : {m_savePath, m_savePath + ".bak"}) {
         int slot = 0;
-        SaveData d{*m_world, m_inventory, editRegistries(), m_weather, m_player,
+        SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                    m_bucketFill, camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_hotbar};
+                   m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -146,7 +158,8 @@ bool VoxelGame::loadGame() {
         }
         // A partial read may have dirtied state; start clean before the next
         // candidate (or the fresh island the caller builds).
-        m_world = std::make_unique<World>();
+        m_worlds[static_cast<std::size_t>(DimensionId::Overworld)] = std::make_unique<World>();
+        m_world = m_worlds[static_cast<std::size_t>(DimensionId::Overworld)].get();
         m_inventory = Inventory{};
         m_machines.clear();
         m_belts.clear();
@@ -156,11 +169,68 @@ bool VoxelGame::loadGame() {
         m_bucketFill = 0.0f;
         m_player.health = kMaxHealth;
         m_hotbar = kDefaultHotbar;
+        m_bossDefeated = false;
         m_sourceRng = 0;
         // Camera pose, seed, and slot need no reset: a .bak success or the
         // caller's fresh island overwrites them all.
     }
     return false;
+}
+
+// Travel to the boss arena: the key was just consumed. The arena world is
+// regenerated from scratch (transient fights — no state survives between
+// visits) and the warden spawns fresh in its lair.
+void VoxelGame::enterArena() {
+    m_homePose = {camera().position, camera().yaw, camera().pitch};
+
+    auto& arena = m_worlds[static_cast<std::size_t>(DimensionId::BossArena)];
+    arena = std::make_unique<World>();
+    buildArena(*arena);
+    m_creatures.clearDimension(DimensionId::BossArena);
+    m_creatures.spawn(SpeciesId::VoidWarden, DimensionId::BossArena, *arena,
+                      bossSpawnFeet());
+
+    switchDimension(DimensionId::BossArena);
+    camera().position = arenaSpawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
+    camera().yaw = -90.0f;  // facing -Z: straight at the warden's lair
+    camera().pitch = -5.0f;
+    m_victoryTimer = -1.0f;
+    audio().play("craft", kCraftVolume); // the shimmer of the key discharging
+    updateTitle();
+}
+
+// Every road home — victory, death, or a save-and-quit-and-load — lands at
+// the pose the player left from (death overrides with the plateau respawn).
+void VoxelGame::returnHome() {
+    switchDimension(DimensionId::Overworld);
+    camera().position = m_homePose.position;
+    camera().yaw = m_homePose.yaw;
+    camera().pitch = m_homePose.pitch;
+    m_creatures.clearDimension(DimensionId::BossArena);
+    m_victoryTimer = -1.0f;
+    audio().play("craft", kCraftVolume);
+    updateTitle();
+}
+
+// Swap the active world. The mesh cache belongs to the active dimension:
+// drop it and re-dirty every chunk of the target so the per-frame sweep
+// rebuilds the scene (a one-time hitch on travel, ~a frame). Overworld
+// ambience — machine hums — pauses while away; the rain loop's gain is
+// gated per frame where it is driven.
+void VoxelGame::switchDimension(DimensionId dim) {
+    if (dim == m_dimension) return;
+    m_dimension = dim;
+    m_world = m_worlds[static_cast<std::size_t>(dim)].get();
+
+    m_chunkMeshes.clear();
+    for (const auto& [coord, chunk] : m_world->chunks()) {
+        chunk->markDirty();
+    }
+
+    const bool home = (dim == DimensionId::Overworld);
+    for (const auto& [pos, h] : m_humLoops) {
+        audio().setLoopPaused(h, !home);
+    }
 }
 
 void VoxelGame::onExit() {
