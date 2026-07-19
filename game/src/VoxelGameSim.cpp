@@ -306,5 +306,6 @@ void VoxelGame::onTick() {
     const CreatureSystem::Events ev = m_creatures.update(*m_world, m_dimension, playerFeet);
     if (ev.damageToPlayer > 0.0f) {
         m_player.damage(ev.damageToPlayer, audio());
+        m_player.shove(ev.playerKnock);
     }
 }

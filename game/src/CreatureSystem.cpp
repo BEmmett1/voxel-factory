@@ -240,9 +240,16 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
             const float distXZ = glm::length(glm::vec2(toPlayer.x, toPlayer.z));
             const float dist = glm::length(toPlayer);
             if (dist <= sp.strikeRange && c.strikeTimer <= 0.0f) {
-                // Contact strike: the first enemy damage in the game.
+                // Contact strike: damage plus a shove away from the warden,
+                // so the fight has a hit-and-close rhythm instead of a hug.
                 c.strikeTimer = sp.strikeCooldown;
                 ev.damageToPlayer += sp.damage;
+                glm::vec3 away = toPlayer;
+                away.y = 0.0f;
+                away = (glm::dot(away, away) > 1e-6f) ? glm::normalize(away)
+                                                      : glm::vec3(0.0f, 0.0f, 1.0f);
+                ev.playerKnock += away * kBossKnockback +
+                                  glm::vec3(0.0f, kBossKnockUp, 0.0f);
             }
             if (dist <= sp.aggroRadius) {
                 c.walking = distXZ > sp.strikeRange * 0.6f; // don't jitter inside the hit box

@@ -382,8 +382,10 @@ Dimensions & the first boss (the combat pillar's opening move):
   (aggro/strike/damage/cooldown/drop). Creatures carry a `DimensionId` tag;
   update/render/melee filter on the active dimension (the home wanderer
   freezes while away). Boss AI: aggro → chase → contact strikes returned as
-  `Events::damageToPlayer` (the first enemy damage; applied via
-  `PlayerController::damage`). `tryMeleeAttack` returns a `MeleeResult` — a
+  `Events::damageToPlayer` + `Events::playerKnock` (the first enemy damage;
+  applied via `PlayerController::damage` + `shove` — each hit throws the
+  player back and airborne, so the fight has a hit-and-close rhythm and the
+  arena rim is a real threat; `kBossKnockback`/`kBossKnockUp`). `tryMeleeAttack` returns a `MeleeResult` — a
   boss kill hands back its drop (**Void Catalyst**), sets `m_bossDefeated`
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
   in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same

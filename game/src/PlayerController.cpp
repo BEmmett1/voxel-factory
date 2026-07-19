@@ -23,6 +23,12 @@ namespace {
 
 } // namespace
 
+void PlayerController::shove(const glm::vec3& impulse) {
+    m_velXZ.x += impulse.x;
+    m_velXZ.z += impulse.z;
+    m_velY += impulse.y;
+}
+
 void PlayerController::damage(float amount, engine::Audio& audio) {
     if (amount <= 0.0f) return;
     health = std::max(0.0f, health - amount);

@@ -73,7 +73,8 @@ public:
 
     // What update() observed this tick, for the caller to react to.
     struct Events {
-        float damageToPlayer = 0.0f; // boss strikes landed (hearts)
+        float damageToPlayer = 0.0f;   // boss strikes landed (hearts)
+        glm::vec3 playerKnock{0.0f};   // shove impulse from those strikes
     };
 
     // Fixed 20 Hz step for creatures IN the active dimension (others freeze,

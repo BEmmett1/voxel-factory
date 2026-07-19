@@ -34,6 +34,11 @@ public:
     // Hurt the player (fall damage internally; future combat externally).
     void damage(float amount, engine::Audio& audio);
 
+    // Shove the body (boss strikes): horizontal impulse joins the walk
+    // velocity and fades under the normal accel/friction; the vertical part
+    // pops the player airborne.
+    void shove(const glm::vec3& impulse);
+
 private:
     glm::vec3 m_velXZ{0.0f};      // horizontal velocity (accel/friction; y unused)
     float     m_velY = 0.0f;      // vertical velocity (gravity/jump)

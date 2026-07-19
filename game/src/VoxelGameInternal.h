@@ -139,6 +139,8 @@ namespace vg {
     inline constexpr float kBossStrikeRange    = 2.1f;  // center distance for a hit
     inline constexpr float kBossDamage         = 1.5f;  // hearts per hit
     inline constexpr float kBossStrikeCooldown = 1.5f;  // seconds between hits
+    inline constexpr float kBossKnockback      = 9.0f;  // player shove per hit, blocks/s
+    inline constexpr float kBossKnockUp        = 5.0f;  // vertical pop per hit
     inline constexpr float kBossScale          = 2.0f;  // render + reach scale
     inline constexpr float kBossHalfW          = 0.85f; // collision half width
     inline constexpr float kBossHeight         = 2.3f;
