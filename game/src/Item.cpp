@@ -80,6 +80,8 @@ namespace {
         // Boss tier.
         {.id = I::TeleportKey, .name = "Teleport Key", .atlasTile = 90},
         {.id = I::VoidCatalyst, .name = "Void Catalyst", .atlasTile = 91},
+        {.id = I::StormKey, .name = "Storm Key", .atlasTile = 92},
+        {.id = I::StormCore, .name = "Storm Core", .atlasTile = 93},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

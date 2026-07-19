@@ -12,6 +12,7 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 using namespace vg;
 
@@ -89,7 +90,8 @@ void VoxelGame::onUpdate(float dt) {
             }
             m_hotbar[fallbackSlot] = id;
         };
-        give(ItemId::TeleportKey, kHotbarSlots - 2);
+        give(ItemId::TeleportKey, kHotbarSlots - 3);
+        give(ItemId::StormKey, kHotbarSlots - 2);
         give(ItemId::CopperSword, kHotbarSlots - 1);
         updateTitle();
         audio().play("craft", kCraftVolume);
@@ -98,9 +100,10 @@ void VoxelGame::onUpdate(float dt) {
     // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
     // The rain loop is Overworld ambience — silent in the arena.
     m_weather.frameEase(dt);
-    audio().setLoopGain(m_rainLoop,
-                        m_dimension == DimensionId::Overworld
-                            ? m_weather.intensity * kRainVolume : 0.0f);
+    // Home rain follows the weather; the Tempest's arena storm never breaks.
+    const float rainAmbience = m_dimension == DimensionId::Overworld
+        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
+    audio().setLoopGain(m_rainLoop, rainAmbience * kRainVolume);
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
         m_weather.forceToggle();
     }
@@ -222,9 +225,14 @@ void VoxelGame::onUpdate(float dt) {
             drank = true;
         } else if (held == ItemId::TeleportKey && m_inventory.has(held) &&
                    m_dimension == DimensionId::Overworld) {
-            // The expensive ticket, consumed on use; return trips are free.
+            // The expensive tickets, consumed on use; return trips are free.
             m_inventory.remove(held, 1);
-            enterArena();
+            enterArena(SpeciesId::VoidWarden);
+            drank = true;
+        } else if (held == ItemId::StormKey && m_inventory.has(held) &&
+                   m_dimension == DimensionId::Overworld) {
+            m_inventory.remove(held, 1);
+            enterArena(SpeciesId::Tempest);
             drank = true;
         }
     }
@@ -241,12 +249,15 @@ void VoxelGame::onUpdate(float dt) {
             *m_world, audio(), cam.position, cam.front(), m_dimension);
         swordHit = mr.hit;
         if (mr.bossDied) {
-            // VICTORY: the unique drop lands in the pack, the progression
-            // flag sticks (saved), and the linger timer starts the ride home.
+            // VICTORY: the unique drop lands in the pack, the species'
+            // progression flag sticks (saved), and the linger timer starts
+            // the ride home.
             m_inventory.add(mr.drop, 1);
-            m_bossDefeated = true;
+            if (mr.bossSpecies == SpeciesId::VoidWarden) m_bossDefeated = true;
+            if (mr.bossSpecies == SpeciesId::Tempest) m_tempestDefeated = true;
             m_victoryTimer = kVictorySeconds;
-            window().setTitle("Voxel Factory  —  THE VOID WARDEN FALLS. VICTORY!");
+            window().setTitle(std::string("Voxel Factory  —  ") + mr.bossName +
+                              " FALLS. VICTORY!");
             audio().play("craft", kCraftVolume);
         }
     }

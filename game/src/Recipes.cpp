@@ -37,9 +37,11 @@ namespace {
         {{{I::PhilosophersCatalyst, 1}, {I::CopperOre, 8}},   {I::CopperSourceItem, 1}},
         {{{I::PhilosophersCatalyst, 1}, {I::Sand, 8}},        {I::SandSourceItem, 1}},
         {{{I::PhilosophersCatalyst, 1}, {I::Essence, 8}},     {I::EssenceSourceItem, 1}},
-        // The ticket to the boss arena: philosopher-adjacent and consumed on
-        // use -- the factory produces both your gear and your fights.
+        // Tickets to the boss arenas: philosopher-adjacent and consumed on
+        // use -- the factory produces both your gear and your fights. The
+        // Storm Key is gated on beating the Void Warden (its catalyst).
         {{{I::PhilosophersCatalyst, 1}, {I::Crystal, 4}, {I::Essence, 2}}, {I::TeleportKey, 1}},
+        {{{I::VoidCatalyst, 1}, {I::Crystal, 4}, {I::SpringWater, 4}},     {I::StormKey, 1}},
     };
 }
 

@@ -11,12 +11,12 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 13;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 14;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
-    // v12 appended the ten hotbar slot ids, and v13 appended the
-    // boss-defeated flag. Any REORDERING or non-tail change must drop this
+    // v12 appended the ten hotbar slot ids, and v13/v14 appended the
+    // per-boss defeated flags. Any REORDERING or non-tail change must drop this
     // compatibility and require an exact version match again.
     constexpr std::uint32_t kOldestLoadable = 9;
 
@@ -153,8 +153,9 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::uint8_t>(id));
     }
 
-    // Boss progression (appended in v13).
+    // Boss progression (appended in v13; each new boss appends its own, v14).
     writePod(out, static_cast<std::uint8_t>(d.bossDefeated ? 1 : 0));
+    writePod(out, static_cast<std::uint8_t>(d.tempestDefeated ? 1 : 0));
 
     out.close();
     if (!out.good()) return false;
@@ -281,11 +282,17 @@ bool load(const std::string& path, SaveData& d) {
         }
     }
 
-    // Boss progression: appended in v13; older saves keep the default (false).
+    // Boss progression: appended per boss (v13, v14); older saves keep the
+    // defaults (false).
     if (version >= 13) {
         std::uint8_t defeated = 0;
         if (!readPod(in, defeated)) return false;
         d.bossDefeated = defeated != 0;
+    }
+    if (version >= 14) {
+        std::uint8_t defeated = 0;
+        if (!readPod(in, defeated)) return false;
+        d.tempestDefeated = defeated != 0;
     }
 
     return true;

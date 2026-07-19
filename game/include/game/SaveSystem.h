@@ -40,6 +40,8 @@ struct SaveData {
     // Appended in v13: has the Void Warden ever been defeated (progression
     // flag; the boss itself is transient). Older saves keep the default.
     bool& bossDefeated;
+    // Appended in v14: the Tempest's flag (each new boss appends its own).
+    bool& tempestDefeated;
 };
 
 namespace SaveSystem {

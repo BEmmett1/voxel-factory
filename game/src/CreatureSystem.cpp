@@ -39,6 +39,13 @@ namespace {
          .aggroRadius = kBossAggroRadius, .strikeRange = kBossStrikeRange,
          .damage = kBossDamage, .strikeCooldown = kBossStrikeCooldown,
          .drop = ItemId::VoidCatalyst},
+        {.id = SpeciesId::Tempest, .model = kTempestModel,
+         .kind = CreatureKind::Boss, .name = "THE TEMPEST",
+         .scale = kTempestScale, .halfW = kTempestHalfW, .height = kTempestHeight,
+         .hp = kTempestHealth, .walkSpeed = kTempestWalkSpeed,
+         .aggroRadius = kTempestAggroRadius, .strikeRange = kTempestStrikeRange,
+         .damage = kTempestDamage, .strikeCooldown = kTempestStrikeCooldown,
+         .drop = ItemId::StormCore},
     };
 
     static_assert(std::size(kSpecies) == static_cast<std::size_t>(SpeciesId::Count),
@@ -202,6 +209,8 @@ CreatureSystem::MeleeResult CreatureSystem::tryMeleeAttack(
         if (sp.kind == CreatureKind::Boss) {
             r.bossDied = true;
             r.drop = sp.drop;
+            r.bossSpecies = c.species;
+            r.bossName = sp.name;
         }
         m_creatures.erase(m_creatures.begin() + best);
         return r;

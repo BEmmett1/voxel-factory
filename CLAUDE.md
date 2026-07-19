@@ -390,9 +390,19 @@ Dimensions & the first boss (the combat pillar's opening move):
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
   in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same
   lenient loading as the creature). Knobs in `// ---- Boss & arena ----`.
-- **F6 is a hidden dev key** (F4's sibling): grants a Teleport Key + Copper
-  Sword and assigns them to the hotbar — the boss loop without the
-  philosopher grind.
+- **Boss #2 — THE TEMPEST** (rising tier): the **Storm Key** (Void Catalyst
+  ×1 + Crystal ×4 + Rain Water ×4 — the warden's drop is the gate) opens the
+  same BossArena dimension with a variant generation: a tighter ring with a
+  broken rim lip, under a permanent storm (`m_arenaStorm` drives slate sky,
+  full-rate rain streaks/audio, and rain dimming inside the arena only).
+  The tempest is faster than a walking player (sprint or die), hits for 2
+  hearts, and drops the **Storm Core** (the better-fuels hook for generator
+  tiers). Each boss appends its own save flag (`tempestDefeated`, v14).
+  Victory titles come from the species name. Boss #3 = one more species row,
+  arena variant, and key recipe.
+- **F6 is a hidden dev key** (F4's sibling): grants a Teleport Key, Storm
+  Key, and Copper Sword and assigns them to the hotbar — the boss loops
+  without the philosopher grind.
 
 Player physics (pressure & pull):
 - **Walking only** — AABB player vs. voxels, gravity + Space jump, LCtrl sprint,

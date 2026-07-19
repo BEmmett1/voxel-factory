@@ -50,9 +50,9 @@ protected:
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildWorld();           // generate terrain + the demo structures
-    void buildArena(World& w);   // the BossArena's voidstone island
-    void enterArena();           // consume-key travel: regen arena + boss, go
-    void returnHome();           // back to m_homePose in the Overworld
+    void buildArena(World& w, SpeciesId boss); // the boss's arena variant
+    void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
+    void returnHome();               // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
@@ -165,7 +165,9 @@ private:
     Weather m_weather;          // rain/clear phases + eased visual intensity
     float m_bucketFill = 0.0f;  // held-bucket rain-collection progress
 
-    bool  m_bossDefeated = false; // ever beaten the Void Warden (saved, v13)
+    bool  m_bossDefeated = false;    // ever beaten the Void Warden (saved, v13)
+    bool  m_tempestDefeated = false; // ever beaten the Tempest (saved, v14)
+    bool  m_arenaStorm = false;      // this arena visit rages (Tempest fights)
     float m_victoryTimer = -1.0f; // >0: victory linger, counting down to the ride home
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls

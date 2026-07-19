@@ -138,7 +138,8 @@ bool VoxelGame::saveGame() {
     }
     SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                m_bucketFill, pos, yaw, pitch,
-               m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
+               m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
+               m_tempestDefeated};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -150,7 +151,8 @@ bool VoxelGame::loadGame() {
         int slot = 0;
         SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                    m_bucketFill, camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
+                   m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
+                   m_tempestDefeated};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -170,6 +172,7 @@ bool VoxelGame::loadGame() {
         m_player.health = kMaxHealth;
         m_hotbar = kDefaultHotbar;
         m_bossDefeated = false;
+        m_tempestDefeated = false;
         m_sourceRng = 0;
         // Camera pose, seed, and slot need no reset: a .bak success or the
         // caller's fresh island overwrites them all.
@@ -177,18 +180,19 @@ bool VoxelGame::loadGame() {
     return false;
 }
 
-// Travel to the boss arena: the key was just consumed. The arena world is
+// Travel to a boss arena: the key was just consumed. The arena world is
 // regenerated from scratch (transient fights — no state survives between
-// visits) and the warden spawns fresh in its lair.
-void VoxelGame::enterArena() {
+// visits) and the chosen boss spawns fresh in its lair. The one BossArena
+// dimension hosts whichever fight the key opened.
+void VoxelGame::enterArena(SpeciesId boss) {
     m_homePose = {camera().position, camera().yaw, camera().pitch};
+    m_arenaStorm = (boss == SpeciesId::Tempest); // its storm never breaks
 
     auto& arena = m_worlds[static_cast<std::size_t>(DimensionId::BossArena)];
     arena = std::make_unique<World>();
-    buildArena(*arena);
+    buildArena(*arena, boss);
     m_creatures.clearDimension(DimensionId::BossArena);
-    m_creatures.spawn(SpeciesId::VoidWarden, DimensionId::BossArena, *arena,
-                      bossSpawnFeet());
+    m_creatures.spawn(boss, DimensionId::BossArena, *arena, bossSpawnFeet());
 
     switchDimension(DimensionId::BossArena);
     camera().position = arenaSpawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
@@ -207,6 +211,7 @@ void VoxelGame::returnHome() {
     camera().yaw = m_homePose.yaw;
     camera().pitch = m_homePose.pitch;
     m_creatures.clearDimension(DimensionId::BossArena);
+    m_arenaStorm = false;
     m_victoryTimer = -1.0f;
     audio().play("craft", kCraftVolume);
     updateTitle();

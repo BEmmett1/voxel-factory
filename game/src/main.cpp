@@ -80,6 +80,7 @@ int runSelfTest() {
     std::uint32_t seed = 1234u, rngState = 5678u;
     int slot = 4;
     bool bossDefeated = true; // save a beaten warden; must round-trip
+    bool tempestDefeated = false; // the tempest still stands (mixed flags)
     // A mixed hotbar: a tool, a gap, and a placeable among defaults.
     std::array<ItemId, kHotbarSlots> hotbar{};
     hotbar[0] = ItemId::CopperSword;
@@ -88,7 +89,8 @@ int runSelfTest() {
 
     SaveData src{world, inv, {machines, belts, sources, saplings},
                  weather, player, bucketFill,
-                 camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated};
+                 camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated,
+                 tempestDefeated};
     SELFTEST_CHECK(SaveSystem::save(path, src));
 
     World world2;
@@ -104,12 +106,14 @@ int runSelfTest() {
     std::uint32_t seed2 = 0u, rngState2 = 0u;
     int slot2 = 0;
     bool bossDefeated2 = false;
+    bool tempestDefeated2 = true; // pre-set to prove the load overwrites it
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kHotbarSlots> hotbar2;
     hotbar2.fill(ItemId::Wood);
     SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
                  weather2, player2, bucketFill2,
-                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2};
+                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
+                 tempestDefeated2};
     SELFTEST_CHECK(SaveSystem::load(path, dst));
 
     SELFTEST_CHECK(world2.chunks().size() == world.chunks().size());
@@ -146,7 +150,8 @@ int runSelfTest() {
     for (int i = 0; i < kHotbarSlots; ++i) {
         SELFTEST_CHECK(hotbar2[i] == hotbar[i]);
     }
-    SELFTEST_CHECK(bossDefeated2 == true); // the v13 trailing flag round-trips
+    SELFTEST_CHECK(bossDefeated2 == true);   // the v13 trailing flag round-trips
+    SELFTEST_CHECK(tempestDefeated2 == false); // v14 flag round-trips (mixed)
 
     // A second save rotates the first file to .bak; no .tmp is left behind.
     SELFTEST_CHECK(SaveSystem::save(path, src));
@@ -169,7 +174,8 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
     SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
                     weather2, player2, bucketFill2,
-                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2};
+                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
+                    tempestDefeated2};
     SELFTEST_CHECK(!SaveSystem::load(cut, cutDst));
 
     fs::remove(path, ec);

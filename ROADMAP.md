@@ -79,10 +79,15 @@ the pillar slips to post-launch.
       ride home). Victory or death returns you home; death costs the pack
       as usual. Fights are transient (quit = abandon); `bossDefeated` rides
       the save (v13 append)
-- Bosses #2–3 of rising tier gating unique drops (unique catalysts, better
-  fuels — feeds the generator-tier line): now data + models on the species
-  registry + arena variants. Top-tier armor may earn keep-your-pack-on-death
-  the way the relic earns flight; Void Catalyst recipes need a consumer
+- [x] Boss #2 (July 2026): **THE TEMPEST** — Storm Key crafted FROM the Void
+      Catalyst (boss #1 gates boss #2), a storm-lashed ring arena variant,
+      a faster-than-walking hunter hitting 2 hearts, and the **Storm Core**
+      drop (the better-fuels hook). Save v14 appends its flag
+- Boss #3 (final: the Flight Stone) — one more species row, arena variant,
+  and key recipe on the established pattern. Top-tier armor may earn
+  keep-your-pack-on-death the way the relic earns flight; Void Catalyst has
+  its consumer (the Storm Key); the Storm Core still needs one (generator
+  tiers)
 - The final boss drops the **Flight Stone** (late-game earned flight — the
   vision piece): flight is earned by mastering both halves of the game, the
   factory that arms you and the fight itself
