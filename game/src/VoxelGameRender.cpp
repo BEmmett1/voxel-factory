@@ -305,6 +305,16 @@ void VoxelGame::onRender() {
     m_creatures.render(camera(), rainDim, m_dimension);
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
+    // Main menu shell (launch): the empty world above is just a sky backdrop —
+    // draw the menu, no crosshair or HUD behind it.
+    if (m_shellOpen) {
+        if (m_settingsOpen) drawSettingsUi();
+        else if (m_slotPickerOpen) drawSlotPicker();
+        else drawMainMenu();
+        if (m_debugOpen) drawDebugOverlay();
+        return;
+    }
+
     // Crosshair: screen-space '+', drawn on top with identity transforms. A
     // slightly larger dark pass forms an outline behind the light fill so it
     // stays readable over both bright sky and dark blocks.

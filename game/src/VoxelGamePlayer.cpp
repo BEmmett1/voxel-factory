@@ -54,6 +54,7 @@ void VoxelGame::onUpdate(float dt) {
     // Entity animation clocks tick at render rate (menus keep animating, just
     // like onTick keeps simulating); a true pause freezes them.
     if (!paused()) {
+        m_playtime += dt; // active-play seconds for the slot cards (excludes menus)
         m_creatures.frameAdvance(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
 
@@ -62,6 +63,15 @@ void VoxelGame::onUpdate(float dt) {
             m_victoryTimer -= dt;
             if (m_victoryTimer <= 0.0f) returnHome();
         }
+    }
+
+    // Main menu shell (launch): owns all input over an unbuilt world until a
+    // slot is chosen. Settings and the slot picker ride on top of it.
+    if (m_shellOpen) {
+        if (m_settingsOpen) updateSettingsUi();
+        else if (m_slotPickerOpen) updateSlotPicker();
+        else updateMainMenu();
+        return;
     }
 
     // Pause menu: simulated time is frozen (the engine skips onTick while

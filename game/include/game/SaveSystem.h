@@ -42,11 +42,31 @@ struct SaveData {
     bool& bossDefeated;
     // Appended in v14: the Tempest's flag (each new boss appends its own).
     bool& tempestDefeated;
+    // Appended in v15: total seconds of active play (drives the slot-picker
+    // cards). Older saves keep the caller's default (0).
+    double& playtime;
+};
+
+// A small sidecar (`<save>.meta`) written next to each slot's save file so the
+// main menu's slot picker can list every slot — timestamp, playtime, progress —
+// WITHOUT loading (and version-gating) the full save. Versioned independently
+// of the save format; a missing/foreign meta just yields an "unknown" card.
+struct SlotMeta {
+    std::uint32_t saveVersion = 0;    // the save format this slot was written by
+    std::uint64_t unixTime = 0;       // wall-clock time of the last save
+    std::uint32_t playtimeSeconds = 0;
+    std::uint8_t  bossProgress = 0;   // bit0 = Void Warden, bit1 = Tempest
 };
 
 namespace SaveSystem {
     // Binary format, versioned; load() returns false (leaving the caller to
-    // regenerate) on missing file, wrong version, or any corruption.
+    // regenerate) on missing file, wrong version, or any corruption. A
+    // successful save() also (best-effort) refreshes the `<path>.meta` sidecar.
     bool save(const std::string& path, const SaveData& d);
     bool load(const std::string& path, SaveData& d);
+
+    // The sidecar path for a save path ("<path>.meta").
+    std::string metaPath(const std::string& savePath);
+    // Read a slot's sidecar. Returns false (out left default) if absent/foreign.
+    bool readMeta(const std::string& savePath, SlotMeta& out);
 }

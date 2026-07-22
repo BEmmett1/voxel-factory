@@ -66,6 +66,8 @@ namespace vg {
     inline constexpr const char* kAppName  = "voxel-factory";
     inline constexpr const char* kSaveFile = "save.vxf";
     inline constexpr const char* kSettingsFile = "settings.cfg";
+    // The main menu offers this many independent save slots (save_0..N-1.vxf).
+    inline constexpr int kSaveSlots = 3;
 
     // Fresh games and pre-v12 saves seed the hotbar with the ten placeables
     // the old auto-built hotbar put on keys 1-0, preserving muscle memory
