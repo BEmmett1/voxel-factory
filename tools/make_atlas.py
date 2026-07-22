@@ -661,6 +661,28 @@ def boss_tier():
     t.px(11, 4, (240, 230, 255))
     t.px(5, 12, (200, 180, 255))
 
+    STORM = (110, 190, 240)
+
+    t = paint(92)                                    # storm key
+    t.ring(6, 5, 3, STORM)                           # bow
+    t.px(6, 5, (255, 255, 255))                      # charged stone
+    for d in range(6):                               # diagonal shaft
+        t.px(8 + d, 7 + d, shade(STORM, 1.1))
+        t.px(9 + d, 7 + d, shade(STORM, 0.8))
+    t.px(13, 13, STORM)                              # teeth
+    t.px(13, 11, STORM)
+    t.px(14, 12, shade(STORM, 1.3))
+    for x, y in ((3, 9), (12, 3)):                   # crackle sparks
+        t.px(x, y, (220, 245, 255))
+
+    t = paint(93)                                    # storm core (boss #2 drop)
+    t.disc(8, 8, 5, shade(STORM, 0.55))              # cloud shell
+    t.disc(8, 8, 3, shade(STORM, 1.1))
+    t.px(8, 8, (255, 255, 255))                      # hot heart
+    for k in range(4):                               # jagged bolt down-right
+        t.px(9 + (k % 2), 10 + k, (240, 250, 255))
+    t.px(4, 5, (200, 235, 255))
+
 
 # --- PNG writer -------------------------------------------------------------
 

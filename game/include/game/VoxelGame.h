@@ -50,9 +50,9 @@ protected:
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildWorld();           // generate terrain + the demo structures
-    void buildArena(World& w);   // the BossArena's voidstone island
-    void enterArena();           // consume-key travel: regen arena + boss, go
-    void returnHome();           // back to m_homePose in the Overworld
+    void buildArena(World& w, SpeciesId boss); // the boss's arena variant
+    void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
+    void returnHome();               // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
@@ -66,6 +66,20 @@ private:
     void closePauseMenu();       // resume
     void updatePauseMenu();      // keyboard + mouse interaction
     void drawPauseMenu();
+    // The main menu shell shown on launch (NEW GAME / CONTINUE / SETTINGS /
+    // QUIT), plus the save-slot picker it opens. The world is unbuilt behind
+    // it (bare sky); choosing a slot builds or loads and begins play.
+    void openMainMenu();
+    void updateMainMenu();
+    void drawMainMenu();
+    void openSlotPicker(bool newGame); // newGame: create; else continue (load)
+    void closeSlotPicker();            // back to the main menu
+    void updateSlotPicker();
+    void drawSlotPicker();
+    void startNewGame(int slot);       // fresh island into a slot, begin play
+    bool continueGame(int slot);       // load a slot, begin play; false on failure
+    void startPlaying();               // shared post-load tail; leave the menu
+    bool anySaveExists() const;        // is CONTINUE meaningful?
     void openSettingsUi();       // from the pause menu's SETTINGS row
     void closeSettingsUi();      // writes settings.cfg; back to the pause menu
     void updateSettingsUi();     // both panels + key capture
@@ -90,6 +104,8 @@ private:
 
     bool saveGame();             // write the full game state to m_savePath
     bool loadGame();             // restore it; false = no/invalid save
+    // The save file for a slot ("save_<n>.vxf" under the pref dir).
+    std::string saveSlotPath(int slot) const;
 
     void registerMachine(const glm::ivec3& pos, BlockId type); // world-gen seeding
     void registerBelt(const glm::ivec3& pos, const glm::ivec3& facing);
@@ -165,11 +181,16 @@ private:
     Weather m_weather;          // rain/clear phases + eased visual intensity
     float m_bucketFill = 0.0f;  // held-bucket rain-collection progress
 
-    bool  m_bossDefeated = false; // ever beaten the Void Warden (saved, v13)
+    bool  m_bossDefeated = false;    // ever beaten the Void Warden (saved, v13)
+    bool  m_tempestDefeated = false; // ever beaten the Tempest (saved, v14)
+    bool  m_arenaStorm = false;      // this arena visit rages (Tempest fights)
     float m_victoryTimer = -1.0f; // >0: victory linger, counting down to the ride home
     std::uint32_t m_worldSeed = 0; // per-launch seed for island + source layout
     std::uint32_t m_sourceRng = 0; // decorrelates node-spawn placement rolls
-    std::string m_savePath;        // save.vxf in the SDL pref dir
+    std::string m_prefDir;         // the SDL pref dir root (saves + logs live here)
+    std::string m_savePath;        // the active slot's save_<n>.vxf
+    int    m_saveSlot = 0;         // which save slot is loaded (NOT the hotbar slot)
+    double m_playtime = 0.0;       // total active-play seconds (drives slot cards)
 
     bool m_menuOpen = false;             // crafting menu visible?
     bool m_invOpen = false;              // inventory overlay (Tab) visible?
@@ -178,6 +199,16 @@ private:
     int  m_menuSelection = 0;
     bool m_pauseOpen = false;            // pause menu (Esc); sim time frozen
     int  m_pauseSel = 0;
+
+    // Main-menu shell (launch): the world is unbuilt behind it until a slot is
+    // chosen. m_shellOpen gates the boot menu; the slot picker rides on top.
+    bool m_shellOpen = false;
+    int  m_shellSel = 0;
+    bool m_slotPickerOpen = false;
+    bool m_slotPickerNew = false;        // true = create/overwrite; false = load
+    int  m_slotSel = 0;
+    int  m_slotConfirm = -1;             // slot index awaiting a confirm; -1 = none
+    bool m_slotConfirmDelete = false;    // armed confirm is a delete, else overwrite
 
     // Settings panel (opened from the pause menu; m_pauseOpen stays true so
     // the sim stays frozen). m_bindCapture = the Action index awaiting a key.

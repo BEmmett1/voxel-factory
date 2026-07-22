@@ -10,6 +10,8 @@
 #include "game/SaveSystem.h"
 #include "game/PowerSystem.h"
 
+#include "engine/Paths.h"
+
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -22,27 +24,35 @@ using namespace vg;
 VoxelGame::VoxelGame()
     : engine::Application("Voxel Factory", 1280, 720) {}
 
-// One-time migration: saves used to live under a developer-named org folder
-// ("benny"). If the new location has no save yet and the old one does, copy
-// it (and its .bak) over — copy, not move, so older builds keep working.
-// The same logic makes any future kOrgName rename free.
-static void migrateLegacySave(const std::string& newSavePath) {
+// One-time migrations run at startup, both copy-not-move so older builds keep
+// working. (1) Saves used to live under a developer-named org folder ("benny");
+// this makes any future kOrgName rename free too. (2) Pre-slot builds kept a
+// single save.vxf; adopt it as slot 0 so a returning player's world appears
+// under Continue.
+static void migrateLegacySave(const std::string& prefDir) {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path newSave{newSavePath};
-    if (fs::exists(newSave, ec)) return;
-    // <pref root>/<org>/<app>/save.vxf -> three parents up is the pref root.
-    const fs::path oldDir =
-        newSave.parent_path().parent_path().parent_path() / "benny" / "voxel-factory";
-    for (const char* name : {"save.vxf", "save.vxf.bak"}) {
-        const fs::path from = oldDir / name;
-        if (fs::exists(from, ec)) {
-            fs::copy_file(from, newSave.parent_path() / name,
-                          fs::copy_options::skip_existing, ec);
-            if (ec) SDL_Log("Save migration failed for %s: %s",
-                            from.string().c_str(), ec.message().c_str());
-        }
+    fs::path appDir{prefDir};
+    if (appDir.filename().empty()) appDir = appDir.parent_path(); // drop trailing sep
+    // appDir == <pref root>/<org>/<app>.
+
+    auto copyIfMissing = [&](const fs::path& from, const fs::path& to) {
+        if (fs::exists(to, ec) || !fs::exists(from, ec)) return;
+        fs::copy_file(from, to, fs::copy_options::skip_existing, ec);
+        if (ec) SDL_Log("Save migration failed for %s: %s",
+                        from.string().c_str(), ec.message().c_str());
+    };
+
+    // (1) Old org folder -> this pref dir's single save.vxf (+ .bak).
+    if (!fs::exists(appDir / "save.vxf", ec)) {
+        const fs::path oldDir =
+            appDir.parent_path().parent_path() / "benny" / "voxel-factory";
+        copyIfMissing(oldDir / "save.vxf", appDir / "save.vxf");
+        copyIfMissing(oldDir / "save.vxf.bak", appDir / "save.vxf.bak");
     }
+    // (2) Single save.vxf -> slot 0 (save_0.vxf + .bak).
+    copyIfMissing(appDir / "save.vxf", appDir / "save_0.vxf");
+    copyIfMissing(appDir / "save.vxf.bak", appDir / "save_0.vxf.bak");
 }
 
 void VoxelGame::onStart() {
@@ -62,14 +72,15 @@ void VoxelGame::onStart() {
 
     buildAtlas();
 
-    // The save and settings live in the OS-preferred data directory. Resolved
+    // The saves and settings live in the OS-preferred data directory. Resolved
     // before audio setup so the loaded master volume applies from frame one.
-    if (char* pref = SDL_GetPrefPath(kOrgName, kAppName)) {
-        m_savePath = std::string(pref) + kSaveFile;
-        m_settingsPath = std::string(pref) + kSettingsFile;
-        SDL_free(pref);
-        migrateLegacySave(m_savePath);
+    m_prefDir = engine::prefDir(kOrgName, kAppName);
+    if (!m_prefDir.empty()) {
+        m_settingsPath = m_prefDir + kSettingsFile;
+        migrateLegacySave(m_prefDir);
     }
+    m_saveSlot = 0;
+    m_savePath = saveSlotPath(m_saveSlot);
     SettingsIO::load(m_settingsPath, m_settings); // missing/invalid = defaults
     applySettings(); // fullscreen/vsync/volume (window + audio exist by now)
 
@@ -88,39 +99,76 @@ void VoxelGame::onStart() {
     for (auto& w : m_worlds) w = std::make_unique<World>();
     m_world = m_worlds[static_cast<std::size_t>(DimensionId::Overworld)].get();
     m_player.health = kMaxHealth; // pre-v10 saves have no health field; keep this default
-    if (!loadGame()) {
-        // No (valid) save: fresh island + the starting kit of raw materials.
-        // Everything placeable is hand-crafted from these.
-        buildWorld();
 
-        camera().position = spawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
-        camera().yaw = -90.0f;   // looking toward -Z (the demo row)
-        camera().pitch = -15.0f;
-
-        // Lean kit: exactly enough for the bootstrap pair (Generator +
-        // Grinder from ingots) with the starting tree covering wood and fuel.
-        // Everything after runs on mined raws and machine-made plates.
-        m_inventory.add(ItemId::CopperOre, 12);
-        m_inventory.add(ItemId::Stone, 8);
-        m_inventory.add(ItemId::Sand, 4);
-        m_inventory.add(ItemId::Crystal, 2);
-        m_inventory.add(ItemId::Herb, 4);
-        m_inventory.add(ItemId::Essence, 1);
-    }
-
-    // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of
-    // the first onRender) builds every mesh; power just needs one seed solve.
-    m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
-    updateHums(); // a loaded save's energized machines hum from frame one
-    // Fresh each launch; not part of the save. A few blocks from the player
-    // spawn, snapped to ground inside the system.
-    m_creatures.spawn(SpeciesId::TestCreature, DimensionId::Overworld, overworld(),
-                      spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f));
     buildHighlightMesh();
     buildCrosshairMesh();
     m_ui.init();
 
+    // Boot into the main menu over an empty world (bare sky as the backdrop).
+    // NEW GAME / CONTINUE build or load a slot and begin play (startPlaying);
+    // nothing is simulated until then.
+    openMainMenu();
     updateTitle();
+}
+
+// Fresh island + the starting kit into a chosen slot, then begin play.
+// Everything placeable is hand-crafted from these raws.
+void VoxelGame::startNewGame(int slot) {
+    m_saveSlot = slot;
+    m_savePath = saveSlotPath(slot);
+
+    buildWorld();
+
+    camera().position = spawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
+    camera().yaw = -90.0f;   // looking toward -Z (the demo row)
+    camera().pitch = -15.0f;
+
+    // Lean kit: exactly enough for the bootstrap pair (Generator + Grinder from
+    // ingots) with the starting tree covering wood and fuel. Everything after
+    // runs on mined raws and machine-made plates.
+    m_inventory.add(ItemId::CopperOre, 12);
+    m_inventory.add(ItemId::Stone, 8);
+    m_inventory.add(ItemId::Sand, 4);
+    m_inventory.add(ItemId::Crystal, 2);
+    m_inventory.add(ItemId::Herb, 4);
+    m_inventory.add(ItemId::Essence, 1);
+
+    startPlaying();
+}
+
+// Load a slot and begin play. Returns false (menu stays up) if the save is
+// missing or unreadable — loadGame() leaves state clean on failure.
+bool VoxelGame::continueGame(int slot) {
+    m_saveSlot = slot;
+    m_savePath = saveSlotPath(slot);
+    if (!loadGame()) return false;
+    startPlaying();
+    return true;
+}
+
+// The tail shared by New and Continue: seed power/audio, spawn the transient
+// creature, and drop out of the menu into live play.
+void VoxelGame::startPlaying() {
+    // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of the
+    // first onRender) builds every mesh; power just needs one seed solve.
+    m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
+    updateHums(); // a loaded save's energized machines hum from frame one
+    // Fresh each launch; not part of the save. A few blocks from spawn, snapped
+    // to ground inside the system.
+    m_creatures.spawn(SpeciesId::TestCreature, DimensionId::Overworld, overworld(),
+                      spawnFeet() + glm::vec3(4.0f, 0.0f, -3.0f));
+
+    m_shellOpen = false;
+    m_slotPickerOpen = false;
+    m_slotConfirm = -1;
+    setPaused(false);
+    window().setRelativeMouse(true); // recapture the cursor for FPS look
+    updateTitle();
+    audio().play("close", kUiVolume);
+}
+
+std::string VoxelGame::saveSlotPath(int slot) const {
+    return m_prefDir + "save_" + std::to_string(slot) + ".vxf";
 }
 
 bool VoxelGame::saveGame() {
@@ -138,7 +186,8 @@ bool VoxelGame::saveGame() {
     }
     SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                m_bucketFill, pos, yaw, pitch,
-               m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
+               m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
+               m_tempestDefeated, m_playtime};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -150,7 +199,8 @@ bool VoxelGame::loadGame() {
         int slot = 0;
         SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                    m_bucketFill, camera().position, camera().yaw, camera().pitch,
-                   m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated};
+                   m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
+                   m_tempestDefeated, m_playtime};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -170,6 +220,8 @@ bool VoxelGame::loadGame() {
         m_player.health = kMaxHealth;
         m_hotbar = kDefaultHotbar;
         m_bossDefeated = false;
+        m_tempestDefeated = false;
+        m_playtime = 0.0;
         m_sourceRng = 0;
         // Camera pose, seed, and slot need no reset: a .bak success or the
         // caller's fresh island overwrites them all.
@@ -177,18 +229,19 @@ bool VoxelGame::loadGame() {
     return false;
 }
 
-// Travel to the boss arena: the key was just consumed. The arena world is
+// Travel to a boss arena: the key was just consumed. The arena world is
 // regenerated from scratch (transient fights — no state survives between
-// visits) and the warden spawns fresh in its lair.
-void VoxelGame::enterArena() {
+// visits) and the chosen boss spawns fresh in its lair. The one BossArena
+// dimension hosts whichever fight the key opened.
+void VoxelGame::enterArena(SpeciesId boss) {
     m_homePose = {camera().position, camera().yaw, camera().pitch};
+    m_arenaStorm = (boss == SpeciesId::Tempest); // its storm never breaks
 
     auto& arena = m_worlds[static_cast<std::size_t>(DimensionId::BossArena)];
     arena = std::make_unique<World>();
-    buildArena(*arena);
+    buildArena(*arena, boss);
     m_creatures.clearDimension(DimensionId::BossArena);
-    m_creatures.spawn(SpeciesId::VoidWarden, DimensionId::BossArena, *arena,
-                      bossSpawnFeet());
+    m_creatures.spawn(boss, DimensionId::BossArena, *arena, bossSpawnFeet());
 
     switchDimension(DimensionId::BossArena);
     camera().position = arenaSpawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
@@ -207,6 +260,7 @@ void VoxelGame::returnHome() {
     camera().yaw = m_homePose.yaw;
     camera().pitch = m_homePose.pitch;
     m_creatures.clearDimension(DimensionId::BossArena);
+    m_arenaStorm = false;
     m_victoryTimer = -1.0f;
     audio().play("craft", kCraftVolume);
     updateTitle();
@@ -236,7 +290,9 @@ void VoxelGame::switchDimension(DimensionId dim) {
 void VoxelGame::onExit() {
     // Settings first: covers quitting with the settings panel still open.
     if (!m_settingsPath.empty()) SettingsIO::save(m_settingsPath, m_settings);
-    saveGame(); // runs on every quit path (Esc, window close)
+    // Only persist an actual game. Quitting from the main menu (no slot chosen)
+    // must never overwrite a slot with the empty backdrop world.
+    if (!m_shellOpen) saveGame(); // runs on every in-game quit path (Esc, window close)
 }
 
 void VoxelGame::onEscape() {
@@ -272,6 +328,16 @@ void VoxelGame::onEscape() {
         } else {
             closeSettingsUi();
         }
+    } else if (m_slotPickerOpen) {
+        // A confirm disarms first; otherwise back out to the main menu.
+        if (m_slotConfirm >= 0) {
+            m_slotConfirm = -1;
+            audio().play("close", kUiVolume);
+        } else {
+            closeSlotPicker();
+        }
+    } else if (m_shellOpen) {
+        // Top-level main menu: Esc is inert (QUIT exits deliberately).
     } else if (m_pauseOpen) {
         closePauseMenu();
     } else {

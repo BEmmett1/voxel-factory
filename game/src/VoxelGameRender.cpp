@@ -140,9 +140,10 @@ void VoxelGame::buildAtlas() {
 // columns so weather stays outside. Rebuilt every frame while visible.
 void VoxelGame::buildRainMesh() {
     m_rainScratch.clear();
-    // Rain is Overworld weather; the arena sits under a dead void sky.
-    const float intensity =
-        m_dimension == DimensionId::Overworld ? m_weather.intensity : 0.0f;
+    // Rain follows the Overworld weather — except the Tempest's arena, whose
+    // storm rages at full intensity for the whole fight.
+    const float intensity = m_dimension == DimensionId::Overworld
+        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
     const int count = static_cast<int>(static_cast<float>(kRainStreaks) * intensity);
     if (count > 0) {
         const glm::vec3 cam = camera().position;
@@ -260,8 +261,10 @@ void VoxelGame::onRender() {
     const glm::vec3 sky = home
         ? glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
                    glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity)
-        : glm::vec3(0.09f, 0.05f, 0.14f);
-    const float rainDim = home ? m_weather.intensity * kRainDimMax : 0.0f;
+        : (m_arenaStorm ? glm::vec3(0.16f, 0.17f, 0.26f)   // storm-lashed slate
+                        : glm::vec3(0.09f, 0.05f, 0.14f)); // dead void purple
+    const float rainDim = home ? m_weather.intensity * kRainDimMax
+                               : (m_arenaStorm ? kRainDimMax : 0.0f);
     glClearColor(sky.r, sky.g, sky.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -301,6 +304,16 @@ void VoxelGame::onRender() {
     // Creatures: skinned Blockbench models, depth-tested with the world.
     m_creatures.render(camera(), rainDim, m_dimension);
     m_shader.use(); // the crosshair pass below assumes the voxel shader
+
+    // Main menu shell (launch): the empty world above is just a sky backdrop —
+    // draw the menu, no crosshair or HUD behind it.
+    if (m_shellOpen) {
+        if (m_settingsOpen) drawSettingsUi();
+        else if (m_slotPickerOpen) drawSlotPicker();
+        else drawMainMenu();
+        if (m_debugOpen) drawDebugOverlay();
+        return;
+    }
 
     // Crosshair: screen-space '+', drawn on top with identity transforms. A
     // slightly larger dark pass forms an outline behind the light fill so it

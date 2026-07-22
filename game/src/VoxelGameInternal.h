@@ -66,6 +66,8 @@ namespace vg {
     inline constexpr const char* kAppName  = "voxel-factory";
     inline constexpr const char* kSaveFile = "save.vxf";
     inline constexpr const char* kSettingsFile = "settings.cfg";
+    // The main menu offers this many independent save slots (save_0..N-1.vxf).
+    inline constexpr int kSaveSlots = 3;
 
     // Fresh games and pre-v12 saves seed the hotbar with the ten placeables
     // the old auto-built hotbar put on keys 1-0, preserving muscle memory
@@ -146,8 +148,22 @@ namespace vg {
     inline constexpr float kBossHeight         = 2.3f;
     inline constexpr float kVictorySeconds     = 3.0f;  // linger before the ride home
 
+    // THE TEMPEST (boss #2): faster than a walking player (sprint or die),
+    // harder hits, more health. Its storm arena is a tighter ring.
+    inline constexpr const char* kTempestModel = "assets/models/tempest.bbmodel";
+    inline constexpr float kTempestHealth         = 24.0f; // ~12 sword hits
+    inline constexpr float kTempestWalkSpeed      = 4.6f;  // > kWalkSpeed; < sprint
+    inline constexpr float kTempestAggroRadius    = 26.0f;
+    inline constexpr float kTempestStrikeRange    = 2.0f;
+    inline constexpr float kTempestDamage         = 2.0f;  // hearts per hit
+    inline constexpr float kTempestStrikeCooldown = 1.2f;
+    inline constexpr float kTempestScale          = 1.6f;
+    inline constexpr float kTempestHalfW          = 0.6f;
+    inline constexpr float kTempestHeight         = 2.4f;
+    inline constexpr int   kTempestArenaRadius    = 10;    // tighter than the warden's
+
     // The arena lives at its own origin (a different World; overlap with home
-    // coordinates is fine). Player spawns south, warden lurks north.
+    // coordinates is fine). Player spawns south, the boss lurks north.
     inline glm::vec3 arenaSpawnFeet() { return {0.5f, static_cast<float>(kArenaY) + 1.0f, 8.5f}; }
     inline glm::vec3 bossSpawnFeet()  { return {0.5f, static_cast<float>(kArenaY) + 1.0f, -5.5f}; }
 

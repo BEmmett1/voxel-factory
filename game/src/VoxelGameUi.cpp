@@ -7,11 +7,14 @@
 #include "VoxelGameInternal.h"
 #include "game/Atlas.h"
 #include "game/MachineSystem.h"
+#include "game/SaveSystem.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1023,6 +1026,58 @@ namespace {
         return L;
     }
 
+    // Main-menu shell rows (same count/geometry as the pause menu, so
+    // pauseLayout() serves both).
+    constexpr const char* kShellRows[] = {"NEW GAME", "CONTINUE", "SETTINGS", "QUIT"};
+    constexpr int kShellRowCount = static_cast<int>(sizeof(kShellRows) / sizeof(kShellRows[0]));
+    static_assert(kShellRowCount == kPauseRowCount, "shell reuses the pause layout");
+
+    // Save-slot picker: kSaveSlots cards plus a trailing BACK row, all one card
+    // tall so the shared menuNav() maps them uniformly.
+    struct SlotLayout {
+        static constexpr float CardH = 46.0f;
+        float px = 0, py = 0, panelW = 480.0f, panelH = 0;
+        float rowsY = 0;   // top of the first card
+        float footerY = 0;
+    };
+
+    SlotLayout slotLayout(int w, int h) {
+        SlotLayout L;
+        const float headerH = 46.0f, footerH = 30.0f;
+        const int rows = kSaveSlots + 1; // cards + BACK
+        L.panelH = headerH + rows * SlotLayout::CardH + footerH + 10.0f;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.rowsY = L.py + headerH;
+        L.footerY = L.py + L.panelH - footerH + 6.0f;
+        return L;
+    }
+
+    // "1H 02M" for a long session, else "12M 34S" — compact for a slot card.
+    std::string formatPlaytime(std::uint32_t sec) {
+        char buf[24];
+        if (sec >= 3600) {
+            std::snprintf(buf, sizeof(buf), "%uH %02uM", sec / 3600, (sec / 60) % 60);
+        } else {
+            std::snprintf(buf, sizeof(buf), "%uM %02uS", sec / 60, sec % 60);
+        }
+        return buf;
+    }
+
+    // Local calendar time of a save, "YYYY-MM-DD HH:MM".
+    std::string formatDate(std::uint64_t unixTime) {
+        std::time_t t = static_cast<std::time_t>(unixTime);
+        std::tm tm{};
+#ifdef _WIN32
+        localtime_s(&tm, &t);
+#else
+        localtime_r(&t, &tm);
+#endif
+        char buf[24];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm);
+        return buf;
+    }
+
 } // namespace
 
 void VoxelGame::openPauseMenu() {
@@ -1091,6 +1146,205 @@ void VoxelGame::drawPauseMenu() {
 
     m_ui.text(L.px + 16, L.footerY, 12.0f, "W/S + ENTER   ESC RESUME", kTextFooter);
 
+    m_ui.end();
+}
+
+// ---- Main-menu shell (launch) ------------------------------------------------
+
+void VoxelGame::openMainMenu() {
+    m_shellOpen = true;
+    m_shellSel = 0;
+    m_slotPickerOpen = false;
+    m_slotConfirm = -1;
+    setPaused(true);                  // nothing simulates behind the menu
+    window().setRelativeMouse(false); // release the cursor for hover/click
+}
+
+bool VoxelGame::anySaveExists() const {
+    std::error_code ec;
+    for (int i = 0; i < kSaveSlots; ++i) {
+        if (std::filesystem::exists(saveSlotPath(i), ec)) return true;
+    }
+    return false;
+}
+
+void VoxelGame::updateMainMenu() {
+    const PauseLayout L = pauseLayout(window().width(), window().height());
+    const MenuNav nav = menuNav(input(), m_shellSel, kShellRowCount,
+                                L.px, L.panelW, L.rowsY, PauseLayout::RowH);
+    if (nav.changed) audio().play("click", kUiVolume);
+    if (!nav.activated()) return;
+    switch (m_shellSel) {
+        case 0: openSlotPicker(/*newGame=*/true); break;
+        case 1:
+            if (anySaveExists()) openSlotPicker(/*newGame=*/false);
+            else audio().play("deny", kCraftVolume); // nothing to continue
+            break;
+        case 2: openSettingsUi(); break;
+        default:
+            audio().play("click", kUiVolume);
+            quit(); // no world built yet -> onExit's save is a no-op
+            break;
+    }
+}
+
+void VoxelGame::drawMainMenu() {
+    const int w = window().width();
+    const int h = window().height();
+    const PauseLayout L = pauseLayout(w, h);
+
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "VOXEL FACTORY", 0.72f);
+    m_ui.text(L.px + L.panelW - 16 - m_ui.textWidth(12.0f, "V" VOXEL_FACTORY_VERSION),
+              L.py + 16, 12.0f, "V" VOXEL_FACTORY_VERSION, glm::vec4(0.6f, 0.6f, 0.65f, 1.0f));
+
+    const bool canContinue = anySaveExists();
+    for (int i = 0; i < kShellRowCount; ++i) {
+        const bool sel = (i == m_shellSel);
+        const bool disabled = (i == 1 && !canContinue); // CONTINUE inert with no saves
+        const float ry = L.rowsY + i * PauseLayout::RowH;
+        if (sel) m_ui.rect(L.px + 6, ry, L.panelW - 12, PauseLayout::RowH - 4, kRowSelBg);
+        m_ui.text(L.px + 20, ry + 6, 14.0f, kShellRows[i],
+                  disabled ? kTextDim : rowColor(sel));
+    }
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f, "W/S + ENTER", kTextFooter);
+    m_ui.end();
+}
+
+// ---- Save-slot picker --------------------------------------------------------
+
+void VoxelGame::openSlotPicker(bool newGame) {
+    m_slotPickerOpen = true;
+    m_slotPickerNew = newGame;
+    m_slotSel = 0;
+    m_slotConfirm = -1;
+    audio().play("open", kUiVolume);
+}
+
+void VoxelGame::closeSlotPicker() {
+    m_slotPickerOpen = false;
+    m_slotConfirm = -1;
+    audio().play("close", kUiVolume);
+}
+
+void VoxelGame::updateSlotPicker() {
+    const SlotLayout L = slotLayout(window().width(), window().height());
+    const int rows = kSaveSlots + 1; // cards + BACK
+    const MenuNav nav = menuNav(input(), m_slotSel, rows,
+                                L.px, L.panelW, L.rowsY, SlotLayout::CardH);
+    if (nav.changed) {
+        audio().play("click", kUiVolume);
+        m_slotConfirm = -1; // moving off a card disarms its confirm
+    }
+
+    // RMB deletes a used slot (arm on the first click, confirm on the second).
+    if (input().wasMousePressed(SDL_BUTTON_RIGHT) &&
+        nav.hoverRow >= 0 && nav.hoverRow < kSaveSlots) {
+        const int slot = nav.hoverRow;
+        std::error_code ec;
+        if (std::filesystem::exists(saveSlotPath(slot), ec)) {
+            m_slotSel = slot;
+            if (m_slotConfirm == slot && m_slotConfirmDelete) {
+                const std::string p = saveSlotPath(slot);
+                std::filesystem::remove(p, ec);
+                std::filesystem::remove(p + ".bak", ec);
+                std::filesystem::remove(SaveSystem::metaPath(p), ec);
+                m_slotConfirm = -1;
+                audio().play("click", kUiVolume);
+            } else {
+                m_slotConfirm = slot;
+                m_slotConfirmDelete = true;
+                audio().play("click", kUiVolume);
+            }
+        }
+        return;
+    }
+
+    if (!nav.activated()) return;
+
+    if (m_slotSel == kSaveSlots) { closeSlotPicker(); return; } // BACK row
+
+    const int slot = m_slotSel;
+    std::error_code ec;
+    const bool used = std::filesystem::exists(saveSlotPath(slot), ec);
+
+    if (m_slotPickerNew) {
+        if (!used) {
+            startNewGame(slot);
+        } else if (m_slotConfirm == slot && !m_slotConfirmDelete) {
+            m_slotConfirm = -1;
+            startNewGame(slot); // confirmed overwrite (the file is rewritten on save)
+        } else {
+            m_slotConfirm = slot; // arm the overwrite confirm
+            m_slotConfirmDelete = false;
+            audio().play("click", kUiVolume);
+        }
+    } else { // CONTINUE: load a used slot
+        if (used) {
+            if (!continueGame(slot)) audio().play("deny", kCraftVolume);
+        } else {
+            audio().play("deny", kCraftVolume); // empty slot
+        }
+    }
+}
+
+void VoxelGame::drawSlotPicker() {
+    const int w = window().width();
+    const int h = window().height();
+    const SlotLayout L = slotLayout(w, h);
+
+    const char* title = m_slotPickerNew ? "NEW GAME - SELECT SLOT"
+                                        : "CONTINUE - SELECT SLOT";
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, title, 0.72f);
+
+    const glm::vec4 warn(0.96f, 0.55f, 0.2f, 1.0f);
+
+    for (int i = 0; i < kSaveSlots; ++i) {
+        const float ry = L.rowsY + i * SlotLayout::CardH;
+        const bool sel = (i == m_slotSel);
+        if (sel) m_ui.rect(L.px + 6, ry, L.panelW - 12, SlotLayout::CardH - 4, kRowSelBg);
+
+        char label[16];
+        std::snprintf(label, sizeof(label), "SLOT %d", i + 1);
+        m_ui.text(L.px + 20, ry + 6, 15.0f, label, rowColor(sel));
+
+        std::error_code ec;
+        const std::string p = saveSlotPath(i);
+        const bool used = std::filesystem::exists(p, ec);
+        if (m_slotConfirm == i) {
+            m_ui.text(L.px + 20, ry + 26, 12.0f,
+                      m_slotConfirmDelete ? "DELETE? RIGHT-CLICK AGAIN"
+                                          : "OVERWRITE? ENTER AGAIN",
+                      warn);
+        } else if (used) {
+            SlotMeta meta;
+            std::string detail;
+            if (SaveSystem::readMeta(p, meta)) {
+                detail = formatPlaytime(meta.playtimeSeconds) + "   " +
+                         formatDate(meta.unixTime);
+                if (meta.bossProgress) {
+                    const int bosses = (meta.bossProgress & 1 ? 1 : 0) +
+                                       (meta.bossProgress & 2 ? 1 : 0);
+                    char bc[16];
+                    std::snprintf(bc, sizeof(bc), "   BOSS %d/2", bosses);
+                    detail += bc;
+                }
+            } else {
+                detail = "SAVED"; // a migrated legacy save has no metadata yet
+            }
+            m_ui.text(L.px + 20, ry + 26, 12.0f, detail, sel ? kTextOnSel : kTextDim);
+        } else {
+            m_ui.text(L.px + 20, ry + 26, 12.0f, "EMPTY", kTextDim);
+        }
+    }
+
+    // BACK row (one card tall so navigation stays uniform).
+    const float by = L.rowsY + kSaveSlots * SlotLayout::CardH;
+    drawSimpleRow(m_ui, L.px, L.panelW, by, SlotLayout::CardH, "BACK",
+                  m_slotSel == kSaveSlots);
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f,
+              "W/S SELECT   ENTER CHOOSE   RMB DELETE   ESC BACK", kTextFooter);
     m_ui.end();
 }
 

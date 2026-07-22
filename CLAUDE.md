@@ -390,9 +390,19 @@ Dimensions & the first boss (the combat pillar's opening move):
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
   in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same
   lenient loading as the creature). Knobs in `// ---- Boss & arena ----`.
-- **F6 is a hidden dev key** (F4's sibling): grants a Teleport Key + Copper
-  Sword and assigns them to the hotbar — the boss loop without the
-  philosopher grind.
+- **Boss #2 — THE TEMPEST** (rising tier): the **Storm Key** (Void Catalyst
+  ×1 + Crystal ×4 + Rain Water ×4 — the warden's drop is the gate) opens the
+  same BossArena dimension with a variant generation: a tighter ring with a
+  broken rim lip, under a permanent storm (`m_arenaStorm` drives slate sky,
+  full-rate rain streaks/audio, and rain dimming inside the arena only).
+  The tempest is faster than a walking player (sprint or die), hits for 2
+  hearts, and drops the **Storm Core** (the better-fuels hook for generator
+  tiers). Each boss appends its own save flag (`tempestDefeated`, v14).
+  Victory titles come from the species name. Boss #3 = one more species row,
+  arena variant, and key recipe.
+- **F6 is a hidden dev key** (F4's sibling): grants a Teleport Key, Storm
+  Key, and Copper Sword and assigns them to the hotbar — the boss loops
+  without the philosopher grind.
 
 Player physics (pressure & pull):
 - **Walking only** — AABB player vs. voxels, gravity + Space jump, LCtrl sprint,
@@ -441,5 +451,37 @@ Persistence:
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
   change — old saves are then discarded rather than misread. Exception: a bump that only
   APPENDS trailing fields may keep older versions loadable (`kOldestLoadable`; the
-  caller's defaults survive), as v9→v10 did for health and v11→v12 for the hotbar —
-  any enum/layout change must drop that compatibility.
+  caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar, and
+  v14→v15 for playtime — any enum/layout change must drop that compatibility.
+
+Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
+- **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /
+  QUIT shell (`m_shellOpen`; `openMainMenu`/`updateMainMenu`/`drawMainMenu` in
+  VoxelGameUi.cpp) over an *unbuilt* world (bare sky backdrop; nothing simulates —
+  `setPaused(true)`). `onStart` no longer auto-loads; choosing a slot runs
+  `startNewGame(slot)` (fresh island + kit) or `continueGame(slot)` (load), both
+  ending in the shared `startPlaying()` tail (seed power/hums, spawn the creature,
+  unpause, recapture the mouse). CONTINUE greys out when no slot has a save. Built
+  on the pause-menu pattern (`beginPanel`/`menuNav`/`drawSimpleRow`); dispatched at
+  the same three overlay points (onUpdate/onRender/onEscape). Settings is decoupled
+  from `m_pauseOpen` so it opens from the menu too. `onExit` skips saving while
+  `m_shellOpen` (never overwrite a slot with the empty backdrop).
+- **Three save slots** — `save_<n>.vxf` per slot (`saveSlotPath`, `m_saveSlot` —
+  distinct from the hotbar's `m_selectedSlot`); `kSaveSlots` in VoxelGameInternal.h.
+  The **slot picker** (`openSlotPicker`/`updateSlotPicker`/`drawSlotPicker`, reached
+  from NEW GAME to create/overwrite or CONTINUE to load) draws per-slot cards from a
+  `SlotMeta` **sidecar** (`<save>.meta`; `SaveSystem::readMeta`/`metaPath`) so it
+  lists playtime + timestamp + boss progress WITHOUT loading (or version-gating) the
+  full save. Overwrite (ENTER-again) and RMB delete are two-step confirms
+  (`m_slotConfirm`). Legacy single `save.vxf` is copy-migrated to `save_0.vxf` on
+  first launch (`migrateLegacySave`, now two hops: old org → `save.vxf` → slot 0).
+  Playtime (`m_playtime`, accrued in onUpdate only while `!paused()`) rides the save
+  (v15 append) and the sidecar.
+- **Logging + crash dumps** (`engine/Log.*`, `engine/CrashHandler.*`,
+  `engine/Paths.*`) — `Log::init` installs an `SDL_SetLogOutputFunction` hook that
+  tees every existing `SDL_Log` to a rotating `logs/game.log` (3 generations) — no
+  call-site changes. `CrashHandler::install` writes a Windows minidump
+  (`crashes/crash-<ts>.dmp` via `MiniDumpWriteDump`/DbgHelp — `dbghelp` linked in
+  engine/CMakeLists.txt under `WIN32`) or, on POSIX, an async-signal-safe
+  `backtrace()` text dump then re-raises. Both installed at the top of `main()`
+  using `engine::prefDir(kOrgName, kAppName)` (the same pref dir as the saves).

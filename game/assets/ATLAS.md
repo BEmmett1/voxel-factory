@@ -72,7 +72,8 @@ you want to *discard* hand edits and start over.
 | 86 | elixir of vigor | 87 | refined elixir |
 | 88 | philosopher's catalyst | 89 | philosopher's stone |
 | 90 | teleport key | 91 | void catalyst |
-| 92-95 | spare | | |
+| 92 | storm key | 93 | storm core |
+| 94-95 | spare | | |
 
 ## Rows 6-7 — spare (tiles 96-127)
 

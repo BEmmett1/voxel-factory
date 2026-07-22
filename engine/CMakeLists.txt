@@ -10,6 +10,9 @@ add_library(engine STATIC
     src/UiRenderer.cpp
     src/Audio.cpp
     src/BbModel.cpp
+    src/Paths.cpp
+    src/Log.cpp
+    src/CrashHandler.cpp
     src/Application.cpp
 )
 
@@ -27,6 +30,11 @@ target_link_libraries(engine PUBLIC SDL3::SDL3 glad glm::glm)
 if(APPLE)
     target_link_libraries(engine PUBLIC
         "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox")
+endif()
+
+# CrashHandler writes minidumps via DbgHelp on Windows.
+if(WIN32)
+    target_link_libraries(engine PUBLIC dbghelp)
 endif()
 
 # /W4 for first-party code only: everything third-party (SDL3/glm/glad and the

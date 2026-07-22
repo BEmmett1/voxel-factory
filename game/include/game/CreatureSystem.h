@@ -33,6 +33,7 @@ enum class CreatureKind : std::uint8_t {
 enum class SpeciesId : std::uint8_t {
     TestCreature = 0,
     VoidWarden,
+    Tempest,
     Count
 };
 
@@ -93,6 +94,8 @@ public:
         bool   hit = false;          // connected (caller skips mining)
         bool   bossDied = false;     // the killing blow landed on a Boss
         ItemId drop = ItemId::None;  // that boss's species drop
+        SpeciesId bossSpecies = SpeciesId::TestCreature; // which boss fell
+        const char* bossName = "";   // for the victory message
     };
     MeleeResult tryMeleeAttack(const World& world, engine::Audio& audio,
                                const glm::vec3& origin, const glm::vec3& dir,

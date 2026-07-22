@@ -8,6 +8,11 @@
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
 #include "game/World.h"
+#include "VoxelGameInternal.h" // vg::kOrgName / kAppName
+
+#include "engine/CrashHandler.h"
+#include "engine/Log.h"
+#include "engine/Paths.h"
 
 #include <array>
 #include <cstdio>
@@ -80,6 +85,8 @@ int runSelfTest() {
     std::uint32_t seed = 1234u, rngState = 5678u;
     int slot = 4;
     bool bossDefeated = true; // save a beaten warden; must round-trip
+    bool tempestDefeated = false; // the tempest still stands (mixed flags)
+    double playtime = 3672.0; // 1h 01m 12s; must round-trip (v15)
     // A mixed hotbar: a tool, a gap, and a placeable among defaults.
     std::array<ItemId, kHotbarSlots> hotbar{};
     hotbar[0] = ItemId::CopperSword;
@@ -88,7 +95,8 @@ int runSelfTest() {
 
     SaveData src{world, inv, {machines, belts, sources, saplings},
                  weather, player, bucketFill,
-                 camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated};
+                 camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated,
+                 tempestDefeated, playtime};
     SELFTEST_CHECK(SaveSystem::save(path, src));
 
     World world2;
@@ -104,12 +112,15 @@ int runSelfTest() {
     std::uint32_t seed2 = 0u, rngState2 = 0u;
     int slot2 = 0;
     bool bossDefeated2 = false;
+    bool tempestDefeated2 = true; // pre-set to prove the load overwrites it
+    double playtime2 = 99.0;      // pre-set to prove the load overwrites it
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kHotbarSlots> hotbar2;
     hotbar2.fill(ItemId::Wood);
     SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
                  weather2, player2, bucketFill2,
-                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2};
+                 camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
+                 tempestDefeated2, playtime2};
     SELFTEST_CHECK(SaveSystem::load(path, dst));
 
     SELFTEST_CHECK(world2.chunks().size() == world.chunks().size());
@@ -146,7 +157,35 @@ int runSelfTest() {
     for (int i = 0; i < kHotbarSlots; ++i) {
         SELFTEST_CHECK(hotbar2[i] == hotbar[i]);
     }
-    SELFTEST_CHECK(bossDefeated2 == true); // the v13 trailing flag round-trips
+    SELFTEST_CHECK(bossDefeated2 == true);   // the v13 trailing flag round-trips
+    SELFTEST_CHECK(tempestDefeated2 == false); // v14 flag round-trips (mixed)
+    SELFTEST_CHECK(playtime2 == playtime);   // the v15 playtime double round-trips
+
+    // The metadata sidecar the picker reads without loading the full save.
+    SlotMeta meta;
+    SELFTEST_CHECK(SaveSystem::readMeta(path, meta));
+    SELFTEST_CHECK(meta.playtimeSeconds == 3672u);
+    SELFTEST_CHECK(meta.bossProgress == 1u); // warden set, tempest clear -> bit0
+    SELFTEST_CHECK(fs::exists(SaveSystem::metaPath(path)));
+
+    // Distinct slot paths stay independent (the multi-slot guarantee).
+    const std::string slotA = path + ".slotA";
+    const std::string slotB = path + ".slotB";
+    fs::remove(slotA, ec);
+    fs::remove(slotB, ec);
+    playtime = 10.0;
+    SELFTEST_CHECK(SaveSystem::save(slotA, src));
+    playtime = 20.0;
+    SELFTEST_CHECK(SaveSystem::save(slotB, src));
+    SlotMeta metaA, metaB;
+    SELFTEST_CHECK(SaveSystem::readMeta(slotA, metaA) && metaA.playtimeSeconds == 10u);
+    SELFTEST_CHECK(SaveSystem::readMeta(slotB, metaB) && metaB.playtimeSeconds == 20u);
+    SELFTEST_CHECK(!SaveSystem::readMeta(path + ".nope", metaA)); // absent slot
+    for (const std::string& p : {slotA, slotB}) {
+        fs::remove(p, ec);
+        fs::remove(p + ".bak", ec);
+        fs::remove(SaveSystem::metaPath(p), ec);
+    }
 
     // A second save rotates the first file to .bak; no .tmp is left behind.
     SELFTEST_CHECK(SaveSystem::save(path, src));
@@ -169,11 +208,13 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
     SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
                     weather2, player2, bucketFill2,
-                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2};
+                    camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
+                    tempestDefeated2, playtime2};
     SELFTEST_CHECK(!SaveSystem::load(cut, cutDst));
 
     fs::remove(path, ec);
     fs::remove(path + ".bak", ec);
+    fs::remove(SaveSystem::metaPath(path), ec);
     fs::remove(cut, ec);
 
     // Settings: cfg round-trip, rotation, and parse tolerance (headless).
@@ -239,15 +280,27 @@ int main(int argc, char** argv) {
         return runSelfTest();
     }
 
+    // File logging + crash dumps live under the pref dir, next to the save, so
+    // a player's bug report carries a log and (on a fault) a dump. Resolved the
+    // same way VoxelGame does; SDL_GetPrefPath needs no prior SDL_Init.
+    const std::string pref = engine::prefDir(vg::kOrgName, vg::kAppName);
+    if (!pref.empty()) {
+        engine::Log::init(pref);
+        engine::CrashHandler::install(pref);
+    }
+
+    int exitCode = 0;
     try {
         VoxelGame game;
         game.run();
     } catch (const std::exception& e) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Fatal: %s", e.what());
         std::fprintf(stderr, "Fatal: %s\n", e.what());
         // Launched from Explorer there is no console — surface the error.
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Voxel Factory - Fatal Error",
                                  e.what(), nullptr);
-        return 1;
+        exitCode = 1;
     }
-    return 0;
+    engine::Log::shutdown();
+    return exitCode;
 }

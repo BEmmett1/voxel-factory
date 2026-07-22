@@ -66,7 +66,12 @@ the pillar slips to post-launch.
   - The dormant potions get their job: Healing Draught heals (done July 2026 —
     rides the hotbar, RMB drinks), Mana Vial fuels a ranged alchemy attack,
     Elixir of Vigor buffs
-- Multiple save slots + "New game / Continue" flow (needs the main menu)
+- [x] Main menu + multiple save slots (July 2026): the game boots into a
+  NEW GAME / CONTINUE / SETTINGS / QUIT shell over an unbuilt world; three
+  save slots (`save_<n>.vxf`) with a picker showing per-slot playtime +
+  timestamp cards (a `.meta` sidecar read without loading the full save),
+  overwrite/delete confirms, and legacy `save.vxf` auto-adopted as slot 0.
+  Save v15 appends playtime; Settings is reachable from the menu too
 
 ## Q1 2027 — bosses + Steam + hardening
 
@@ -79,17 +84,25 @@ the pillar slips to post-launch.
       ride home). Victory or death returns you home; death costs the pack
       as usual. Fights are transient (quit = abandon); `bossDefeated` rides
       the save (v13 append)
-- Bosses #2–3 of rising tier gating unique drops (unique catalysts, better
-  fuels — feeds the generator-tier line): now data + models on the species
-  registry + arena variants. Top-tier armor may earn keep-your-pack-on-death
-  the way the relic earns flight; Void Catalyst recipes need a consumer
+- [x] Boss #2 (July 2026): **THE TEMPEST** — Storm Key crafted FROM the Void
+      Catalyst (boss #1 gates boss #2), a storm-lashed ring arena variant,
+      a faster-than-walking hunter hitting 2 hearts, and the **Storm Core**
+      drop (the better-fuels hook). Save v14 appends its flag
+- Boss #3 (final: the Flight Stone) — one more species row, arena variant,
+  and key recipe on the established pattern. Top-tier armor may earn
+  keep-your-pack-on-death the way the relic earns flight; Void Catalyst has
+  its consumer (the Storm Key); the Storm Core still needs one (generator
+  tiers)
 - The final boss drops the **Flight Stone** (late-game earned flight — the
   vision piece): flight is earned by mastering both halves of the game, the
   factory that arms you and the fight itself
 - Steamworks integration (app id, overlay, achievements, cloud saves)
 - Packaging: installer or Steam depot layout; code signing decision
-- Logging to a file + crash handling (minidumps) so player reports are
-  actionable
+- [x] Logging to a file + crash handling (July 2026): `engine::Log` tees every
+  SDL_Log to a rotating `logs/game.log` (3 generations) via an output hook — no
+  call-site changes; `engine::CrashHandler` writes a Windows minidump
+  (`crashes/*.dmp`, MiniDumpWriteDump) or a POSIX signal-handler backtrace, next
+  to the saves. Both installed at the top of `main()`
 - Performance pass on bigger worlds; soak tests (leave the factory running
   overnight)
 
@@ -105,11 +118,11 @@ the pillar slips to post-launch.
 
 Kept here so they don't get lost — none are architectural dead-ends:
 
-- No main menu (settings, fullscreen, and keybind rebinding landed July 2026)
 - Esc, mouse buttons, hotbar digits, and menu-navigation keys are fixed by
   design; only the 11 gameplay actions rebind
-- Single save slot; no in-game feedback when a save/load fails
-- No logging infrastructure, no crash dumps, no telemetry
+- Three save slots with a main-menu picker (July 2026); still no in-game
+  feedback when a save/load fails, and no telemetry
+- Logging to a rotating file + crash dumps landed July 2026; no telemetry
 - World hard-capped at 6×6 chunks, held fully in memory and saved wholesale
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)

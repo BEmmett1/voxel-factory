@@ -5,20 +5,26 @@
 #include "game/Block.h"
 #include "game/Item.h"
 
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 13;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 15;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
-    // v12 appended the ten hotbar slot ids, and v13 appended the
-    // boss-defeated flag. Any REORDERING or non-tail change must drop this
-    // compatibility and require an exact version match again.
+    // v12 appended the ten hotbar slot ids, v13/v14 appended the per-boss
+    // defeated flags, and v15 appended the playtime double. Any REORDERING or
+    // non-tail change must drop this compatibility and require an exact version
+    // match again.
     constexpr std::uint32_t kOldestLoadable = 9;
+
+    // The metadata sidecar (independent little format; see SlotMeta).
+    constexpr std::uint32_t kMetaMagic = 0x4154454du;  // "META"
+    constexpr std::uint32_t kMetaVersion = 1;
 
     template <typename T>
     void writePod(std::ofstream& out, const T& v) {
@@ -153,8 +159,12 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::uint8_t>(id));
     }
 
-    // Boss progression (appended in v13).
+    // Boss progression (appended in v13; each new boss appends its own, v14).
     writePod(out, static_cast<std::uint8_t>(d.bossDefeated ? 1 : 0));
+    writePod(out, static_cast<std::uint8_t>(d.tempestDefeated ? 1 : 0));
+
+    // Total active playtime in seconds (appended in v15).
+    writePod(out, d.playtime);
 
     out.close();
     if (!out.good()) return false;
@@ -165,7 +175,28 @@ bool save(const std::string& path, const SaveData& d) {
         if (ec) return false;
     }
     std::filesystem::rename(tmpPath, path, ec);
-    return !ec;
+    if (ec) return false;
+
+    // Refresh the sidecar so the slot picker can list this slot cheaply. This
+    // is best-effort: a failed meta write never fails the save (the picker
+    // falls back to the file's timestamp).
+    SlotMeta meta;
+    meta.saveVersion = kVersion;
+    meta.unixTime = static_cast<std::uint64_t>(std::time(nullptr));
+    meta.playtimeSeconds = static_cast<std::uint32_t>(
+        d.playtime > 0.0 ? d.playtime : 0.0);
+    meta.bossProgress = static_cast<std::uint8_t>((d.bossDefeated ? 1 : 0) |
+                                                  (d.tempestDefeated ? 2 : 0));
+    if (std::ofstream mout(SaveSystem::metaPath(path), std::ios::binary | std::ios::trunc);
+        mout) {
+        writePod(mout, kMetaMagic);
+        writePod(mout, kMetaVersion);
+        writePod(mout, meta.saveVersion);
+        writePod(mout, meta.unixTime);
+        writePod(mout, meta.playtimeSeconds);
+        writePod(mout, meta.bossProgress);
+    }
+    return true;
 }
 
 bool load(const std::string& path, SaveData& d) {
@@ -281,13 +312,41 @@ bool load(const std::string& path, SaveData& d) {
         }
     }
 
-    // Boss progression: appended in v13; older saves keep the default (false).
+    // Boss progression: appended per boss (v13, v14); older saves keep the
+    // defaults (false).
     if (version >= 13) {
         std::uint8_t defeated = 0;
         if (!readPod(in, defeated)) return false;
         d.bossDefeated = defeated != 0;
     }
+    if (version >= 14) {
+        std::uint8_t defeated = 0;
+        if (!readPod(in, defeated)) return false;
+        d.tempestDefeated = defeated != 0;
+    }
 
+    // Playtime: appended in v15; older saves keep the caller's default (0).
+    if (version >= 15 && !readPod(in, d.playtime)) return false;
+
+    return true;
+}
+
+std::string metaPath(const std::string& savePath) {
+    return savePath + ".meta";
+}
+
+bool readMeta(const std::string& savePath, SlotMeta& out) {
+    std::ifstream in(metaPath(savePath), std::ios::binary);
+    if (!in) return false;
+    std::uint32_t magic = 0, metaVersion = 0;
+    if (!readPod(in, magic) || magic != kMetaMagic) return false;
+    if (!readPod(in, metaVersion) || metaVersion != kMetaVersion) return false;
+    SlotMeta m;
+    if (!readPod(in, m.saveVersion) || !readPod(in, m.unixTime) ||
+        !readPod(in, m.playtimeSeconds) || !readPod(in, m.bossProgress)) {
+        return false;
+    }
+    out = m;
     return true;
 }
 
