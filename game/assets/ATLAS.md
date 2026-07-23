@@ -76,8 +76,13 @@ you want to *discard* hand edits and start over.
 | 92 | storm key | 93 | storm core |
 | 94 | resonance | 95 | fusion catalyst |
 
-## Rows 6-7 — spare (tiles 96-127)
+## Rows 6-7 — tools + spare (tiles 96-127)
 
-Free for new blocks/items. Claim a tile here, then point the code at it
-(the `tiles` field on the kBlocks row for blocks, `atlasTile` on the kItems
-row for material items).
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 96 | copper pickaxe | 97 | copper axe |
+| 98 | copper shovel | 99-127 | spare |
+
+The rest are free for new blocks/items. Claim a tile here, then point the code
+at it (the `tiles` field on the kBlocks row for blocks, `atlasTile` on the
+kItems row for material items).

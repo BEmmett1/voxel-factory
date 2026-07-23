@@ -123,15 +123,10 @@ void VoxelGame::startNewGame(int slot) {
     camera().yaw = -90.0f;   // looking toward -Z (the demo row)
     camera().pitch = -15.0f;
 
-    // Lean kit: exactly enough for the bootstrap pair (Generator + Grinder from
-    // ingots) with the starting tree covering wood and fuel. Everything after
-    // runs on mined raws and machine-made plates.
-    m_inventory.add(ItemId::CopperOre, 12);
-    m_inventory.add(ItemId::Stone, 8);
-    m_inventory.add(ItemId::Sand, 4);
-    m_inventory.add(ItemId::Crystal, 2);
-    m_inventory.add(ItemId::Herb, 4);
-    m_inventory.add(ItemId::Essence, 1);
+    // Empty kit: the hard start. You bootstrap from the world by hand — punch
+    // leaves for Sticks, sift dirt/grass for Pebbles, craft Wood tools, mine
+    // Stone, climb the Stone -> Copper tool ladder. Nothing is handed to you.
+    // (F6 stays the dev shortcut for testing the later game.)
 
     startPlaying();
 }
@@ -187,7 +182,7 @@ bool VoxelGame::saveGame() {
     SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                m_bucketFill, pos, yaw, pitch,
                m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
-               m_tempestDefeated, m_playtime};
+               m_tempestDefeated, m_playtime, m_drops};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -200,7 +195,7 @@ bool VoxelGame::loadGame() {
         SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                    m_bucketFill, camera().position, camera().yaw, camera().pitch,
                    m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
-                   m_tempestDefeated, m_playtime};
+                   m_tempestDefeated, m_playtime, m_drops};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -215,6 +210,7 @@ bool VoxelGame::loadGame() {
         m_belts.clear();
         m_sources.clear();
         m_saplings.clear();
+        m_drops.clear();
         m_weather = Weather{};
         m_bucketFill = 0.0f;
         m_player.health = kMaxHealth;

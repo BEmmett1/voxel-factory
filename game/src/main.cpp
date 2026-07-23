@@ -22,6 +22,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -93,10 +94,21 @@ int runSelfTest() {
     hotbar[1] = ItemId::Conduit;
     hotbar[9] = ItemId::ScaffoldItem; // slots 2-8 stay None
 
+    // A settled ground item (v16) must round-trip.
+    std::vector<DroppedItem> drops;
+    {
+        DroppedItem dr;
+        dr.pos = {2.5f, 15.0f, 3.5f};
+        dr.id = ItemId::Crystal;
+        dr.count = 4;
+        dr.settled = true;
+        drops.push_back(dr);
+    }
+
     SaveData src{world, inv, {machines, belts, sources, saplings},
                  weather, player, bucketFill,
                  camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated,
-                 tempestDefeated, playtime};
+                 tempestDefeated, playtime, drops};
     SELFTEST_CHECK(SaveSystem::save(path, src));
 
     World world2;
@@ -117,10 +129,11 @@ int runSelfTest() {
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kHotbarSlots> hotbar2;
     hotbar2.fill(ItemId::Wood);
+    std::vector<DroppedItem> drops2; // pre-empty; the load fills it
     SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
                  weather2, player2, bucketFill2,
                  camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
-                 tempestDefeated2, playtime2};
+                 tempestDefeated2, playtime2, drops2};
     SELFTEST_CHECK(SaveSystem::load(path, dst));
 
     SELFTEST_CHECK(world2.chunks().size() == world.chunks().size());
@@ -160,6 +173,9 @@ int runSelfTest() {
     SELFTEST_CHECK(bossDefeated2 == true);   // the v13 trailing flag round-trips
     SELFTEST_CHECK(tempestDefeated2 == false); // v14 flag round-trips (mixed)
     SELFTEST_CHECK(playtime2 == playtime);   // the v15 playtime double round-trips
+    SELFTEST_CHECK(drops2.size() == 1);      // the v16 ground item round-trips
+    SELFTEST_CHECK(drops2[0].id == ItemId::Crystal && drops2[0].count == 4);
+    SELFTEST_CHECK(drops2[0].pos == glm::vec3(2.5f, 15.0f, 3.5f));
 
     // The metadata sidecar the picker reads without loading the full save.
     SlotMeta meta;
@@ -206,10 +222,11 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines3;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts3;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
+    std::vector<DroppedItem> drops3;
     SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
                     weather2, player2, bucketFill2,
                     camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
-                    tempestDefeated2, playtime2};
+                    tempestDefeated2, playtime2, drops3};
     SELFTEST_CHECK(!SaveSystem::load(cut, cutDst));
 
     fs::remove(path, ec);

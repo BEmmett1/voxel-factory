@@ -84,8 +84,39 @@ enum class ItemId : std::uint8_t {
     Resonance,
     ResonantSourceItem,
     FusionCatalyst,
+    // Mining tools: gate tough blocks behind the matching tool + tier. A gated
+    // block yields nothing unless the held tool is the right class AND at least
+    // its tier. The Copper tier tops a Wood -> Stone -> Copper ladder. APPENDED
+    // at the enum tail so older saves stay loadable (readInventory accepts
+    // shorter item sets).
+    CopperPickaxe,
+    CopperAxe,
+    CopperShovel,
+    // Early-game grind: gathered by hand (sticks from leaves, pebbles from
+    // sifting dirt/grass) and the two lower tool tiers they build.
+    Stick,
+    Pebble,
+    WoodPickaxe,
+    WoodAxe,
+    StonePickaxe,
+    StoneAxe,
+    StoneShovel,
+    // The Composter machine (renewable dirt from plant matter).
+    ComposterItem,
     Count
 };
+
+// The mining-tool classes. A block names the class that breaks it efficiently
+// (BlockInfo::tool); an item names the class it IS (ItemInfo::tool). Matching
+// the class AND meeting the block's tier makes a break fast and fruitful.
+enum class ToolType : std::uint8_t { None, Pickaxe, Axe, Shovel };
+
+// Tool tiers, low to high. A block's required tier (BlockInfo::toolTier) gates
+// its drop; a tool's tier (ItemInfo::toolTier) must meet it. 0 = no tool / not
+// a tool (soft blocks, ungated).
+inline constexpr int kTierWood   = 1;
+inline constexpr int kTierStone  = 2;
+inline constexpr int kTierCopper = 3;
 
 // The player's hotbar is a fixed strip of assigned slots (ItemId::None = an
 // empty slot). Lives here rather than in game internals because the save
@@ -99,6 +130,9 @@ struct ItemInfo {
     bool        placeable = false;         // can it be placed in the world?
     BlockId     placesBlock = BlockId::Air; // which block it places
     BlockId     nodeBlock = BlockId::Air;  // the node that yields this raw (see nodeForRaw)
+    ToolType    tool = ToolType::None;     // the mining-tool class this item IS (None = not a tool)
+    int         toolTier = 0;              // tool tier (kTierWood/Stone/Copper); 0 = not a tool
+    float       miningSpeed = 1.0f;        // break-speed divisor vs. the block's by-hand hardness
 };
 
 struct ItemStack {
@@ -109,6 +143,9 @@ struct ItemStack {
 const ItemInfo& itemInfo(ItemId id);
 
 inline const char* itemName(ItemId id) { return itemInfo(id).name; }
+inline ToolType    itemTool(ItemId id)        { return itemInfo(id).tool; }
+inline int         itemTier(ItemId id)        { return itemInfo(id).toolTier; }
+inline float       itemMiningSpeed(ItemId id) { return itemInfo(id).miningSpeed; }
 
 // The atlas tile to draw for this item in UI. Placeable items borrow their
 // block's side tile so icons always match the world; materials own an icon.

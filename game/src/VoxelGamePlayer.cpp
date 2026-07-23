@@ -5,6 +5,7 @@
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
 #include "game/WorldEdit.h"
+#include "game/DropSystem.h"
 #include "game/Raycast.h"
 #include "game/PowerSystem.h"
 
@@ -12,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 using namespace vg;
@@ -22,6 +24,25 @@ namespace {
     // different spots doesn't sound machine-gun identical.
     float pitchJitter(const glm::ivec3& p) {
         return 1.0f + (static_cast<int>(hash2(p.x * 31 + p.y, p.z, 517u) % 21u) - 10) * 0.01f;
+    }
+
+    // Timed breaking + tiered tool gating. `hardness` is the by-hand break
+    // time; the right tool CLASS at the block's TIER divides it by the tool's
+    // miningSpeed. A gated block (toolTier > 0) drops nothing without that tool.
+    bool hasHarvestTool(ItemId held, BlockId block) {
+        return blockTool(block) != ToolType::None &&
+               itemTool(held) == blockTool(block) &&
+               itemTier(held) >= blockToolTier(block);
+    }
+    float breakSeconds(BlockId block, ItemId held) {
+        const float base = blockHardness(block);
+        if (base <= 0.0f) return 0.0f; // effectively instant (unset hardness)
+        return hasHarvestTool(held, block)
+                   ? base / std::max(0.01f, itemMiningSpeed(held))
+                   : base; // wrong/no tool: full by-hand time (and no drop if gated)
+    }
+    bool yieldsDrop(BlockId block, ItemId held) {
+        return blockToolTier(block) == 0 || hasHarvestTool(held, block);
     }
 
 } // namespace
@@ -189,9 +210,23 @@ void VoxelGame::onUpdate(float dt) {
     // is applied here. Hotbar ASSIGNMENTS deliberately survive (they're
     // references, not items): the slots grey out at count 0 and re-enable as
     // the pack is rebuilt.
+    const glm::vec3 preMoveEye = cam.position; // death spot, before the respawn
     const PlayerController::MoveResult mv =
         m_player.move(dt, input(), cam, *m_world, m_settings, audio());
     if (mv.died) {
+        // Non-void death scatters the whole pack at the spot (recoverable);
+        // the void, and any death in the transient arena, still fully wipes.
+        if (!mv.fellOff && m_dimension == DimensionId::Overworld) {
+            const glm::vec3 feet = preMoveEye - glm::vec3(0.0f, kEyeHeight, 0.0f);
+            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                const int c = m_inventory.count(id);
+                if (c > 0) {
+                    spawnDrop(feet + glm::vec3(0.0f, 0.4f, 0.0f), id, c,
+                              kDeathDropPickupDelay);
+                }
+            }
+        }
         m_inventory = Inventory{};
         // Death in the arena ends the fight: the respawn plateau is an
         // Overworld place, so the dimension follows the body home.
@@ -294,24 +329,8 @@ void VoxelGame::onUpdate(float dt) {
     } else if (aim.hit) {
         const glm::ivec3 tb = aim.block;
 
-        // Mine: break the block (WorldEdit keeps the registries + power in
-        // sync) and collect its drop plus any handed-back buffered items.
-        if (!swordHit && input().wasMousePressed(SDL_BUTTON_LEFT)) {
-            const WorldEdit::BreakResult r =
-                WorldEdit::breakBlock(*m_world, editRegistries(), tb);
-            m_inventory.add(r.drop.id, r.drop.count);
-            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
-                const ItemId id = static_cast<ItemId>(i);
-                m_inventory.add(id, r.returned.count(id));
-            }
-            if (r.brokeLeaves) {
-                rollLeafSapling(tb);
-            }
-            audio().playAt("mine", glm::vec3(tb) + glm::vec3(0.5f), kMineVolume,
-                           pitchJitter(tb));
-            if (r.powerChanged) solvePowerAndMarkDirty();
-            updateTitle();
-        }
+        // (Mining is timed and runs off the HELD button; see the break block
+        // below, after the RMB/wrench edits.)
         // RMB: on a machine, open its panel (Shift+RMB to place against it
         // instead); otherwise place the held item into the empty target cell.
         if (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT)) {
@@ -369,4 +388,70 @@ void VoxelGame::onUpdate(float dt) {
             WorldEdit::rotateBelt(*m_world, m_belts, tb);
         }
     }
+
+    // Timed breaking: holding LMB while aiming at a breakable Overworld cell
+    // accrues progress against its hardness; the matching tool is faster (and,
+    // for a gated block, the only way to keep the drop). A pure weapon (the
+    // sword) swings on press instead — it never mines. When the aim leaves the
+    // cell or the button releases, progress resets.
+    const bool canMine = aim.hit && m_dimension == DimensionId::Overworld &&
+                         !swordHit && held != ItemId::CopperSword &&
+                         input().isMouseDown(SDL_BUTTON_LEFT);
+    if (canMine) {
+        const glm::ivec3 tb = aim.block;
+        const BlockId bid = m_world->getBlock(tb.x, tb.y, tb.z);
+        if (!m_breaking || m_breakTarget != tb) {
+            m_breaking = true;
+            m_breakTarget = tb;
+            m_breakProgress = 0.0f;
+        }
+        m_breakNeeded = breakSeconds(bid, held);
+        m_breakProgress += dt;
+        if (m_breakProgress >= m_breakNeeded) {
+            const bool keepDrop = yieldsDrop(bid, held);
+            const WorldEdit::BreakResult r =
+                WorldEdit::breakBlock(*m_world, editRegistries(), tb);
+            const glm::vec3 dropPos = glm::vec3(tb) + glm::vec3(0.5f);
+            if (keepDrop && r.drop.id != ItemId::None) {
+                spawnDrop(dropPos, r.drop.id, r.drop.count);
+            }
+            // Machine buffers / belt cargo handed back are the player's own,
+            // gated or not — they always drop.
+            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                const int c = r.returned.count(id);
+                if (c > 0) spawnDrop(dropPos, id, c);
+            }
+            // Sifting topsoil turns up pebbles (the wooden-tool ingredient), and
+            // chopped leaves shed sticks — the two hand-gathered bootstrap items.
+            auto roll = [&](float p) {
+                m_lootRng = m_lootRng * 1664525u + 1013904223u;
+                return (m_lootRng >> 8) % 10000u < static_cast<std::uint32_t>(p * 10000.0f);
+            };
+            if (keepDrop && (bid == BlockId::Grass || bid == BlockId::Dirt) &&
+                roll(kPebbleChance)) {
+                spawnDrop(dropPos, ItemId::Pebble, 1);
+            }
+            if (r.brokeLeaves) {
+                rollLeafSapling(tb);
+                if (roll(kStickChance)) spawnDrop(dropPos, ItemId::Stick, 1);
+            }
+            audio().playAt("mine", dropPos, kMineVolume, pitchJitter(tb));
+            if (r.powerChanged) solvePowerAndMarkDirty();
+            updateTitle();
+            m_breaking = false;
+            m_breakProgress = 0.0f;
+        }
+    } else {
+        m_breaking = false;
+        m_breakProgress = 0.0f;
+    }
+}
+
+// Spawn a physical item into the active dimension (mining yields, handed-back
+// machine buffers, the death-scattered pack). DropSystem merges it into a
+// nearby like drop so repeated mining doesn't flood the world with entities.
+void VoxelGame::spawnDrop(const glm::vec3& pos, ItemId id, int count,
+                          float pickupDelay) {
+    DropSystem::spawn(m_drops, pos, id, count, m_dimension, pickupDelay);
 }

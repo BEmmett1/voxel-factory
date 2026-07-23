@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/Inventory.h"
+#include "game/Drop.h"
 #include "game/PlayerController.h"
 #include "game/Weather.h"
 #include "game/WorldEdit.h"
@@ -9,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class World;
 
@@ -45,6 +47,10 @@ struct SaveData {
     // Appended in v15: total seconds of active play (drives the slot-picker
     // cards). Older saves keep the caller's default (0).
     double& playtime;
+    // Appended in v16: physical ground items (mining yields not yet collected,
+    // a death-scattered pack). Only Overworld drops are written; older saves
+    // load with the caller's default (empty). load() clears then fills it.
+    std::vector<DroppedItem>& drops;
 };
 
 // A small sidecar (`<save>.meta`) written next to each slot's save file so the

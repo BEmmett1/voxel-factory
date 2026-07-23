@@ -12,6 +12,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
@@ -898,6 +899,46 @@ void VoxelGame::drawHud() {
         glm::vec2 uv0, uv1;
         Atlas::uvForTile(iconTile(b.item), uv0, uv1);
         m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);
+    }
+
+    // Ground items: billboarded icons (same convention as belt cargo) with a
+    // gentle bob and a count badge on stacks. Culled behind the camera and
+    // beyond kDropRenderDist.
+    {
+        const float now = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        const glm::vec3 camPos = camera().position;
+        const float maxD2 = kDropRenderDist * kDropRenderDist;
+        for (const DroppedItem& d : m_drops) {
+            if (d.dim != m_dimension || d.id == ItemId::None) continue;
+            const float bob = 0.06f * std::sin(now * 2.0f + d.pos.x + d.pos.z);
+            const glm::vec3 wc = d.pos + glm::vec3(0.0f, 0.12f + bob, 0.0f);
+            const glm::vec3 rel = wc - camPos;
+            const float dist2 = glm::dot(rel, rel);
+            if (dist2 > maxD2) continue;
+            glm::vec2 sp;
+            if (!projectToScreen(wc, sp)) continue;
+            const float s = glm::clamp(115.0f / std::sqrt(std::max(0.25f, dist2)), 9.0f, 34.0f);
+            glm::vec2 uv0, uv1;
+            Atlas::uvForTile(iconTile(d.id), uv0, uv1);
+            m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);
+            if (d.count > 1) {
+                m_ui.text(sp.x + s * 0.15f, sp.y + s * 0.15f, 11.0f,
+                          std::to_string(d.count), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+            }
+        }
+    }
+
+    // Timed-break progress: a thin bar over the block being mined.
+    if (m_breaking && m_hasTarget) {
+        glm::vec2 sp;
+        if (projectToScreen(glm::vec3(m_breakTarget) + glm::vec3(0.5f, 1.1f, 0.5f), sp)) {
+            const float bw = 40.0f, bh = 6.0f;
+            const float bx = sp.x - bw * 0.5f, by = sp.y - bh * 0.5f;
+            const float frac = glm::clamp(
+                m_breakNeeded > 0.0f ? m_breakProgress / m_breakNeeded : 1.0f, 0.0f, 1.0f);
+            m_ui.rect(bx - 1, by - 1, bw + 2, bh + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.7f));
+            m_ui.rect(bx, by, bw * frac, bh, glm::vec4(0.92f, 0.82f, 0.25f, 0.95f));
+        }
     }
 
     // Look-at machine panel (name, input/output buffers, controls).

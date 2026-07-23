@@ -14,6 +14,7 @@
 #include "game/Machine.h"
 #include "game/Belt.h"
 #include "game/CreatureSystem.h"
+#include "game/Drop.h"
 #include "game/Dimension.h"
 #include "game/HashIVec3.h"
 #include "game/PlayerController.h"
@@ -116,11 +117,16 @@ private:
     }
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
+    void updateGrassSpread();                       // grass creeps onto adjacent dirt (renewable)
     void updateLeafDecay();                         // wither leaves cut off from logs
     void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
     void buildRainMesh();                           // per-frame falling streaks
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
+    // Spawn a physical item into the active dimension (mining yields + the
+    // death-scattered pack); the player auto-collects it in updateDrops().
+    void spawnDrop(const glm::vec3& pos, ItemId id, int count, float pickupDelay = 0.0f);
+    void updateDrops();                             // fall/settle + proximity pickup (onTick)
     bool cellOverlapsPlayer(const glm::ivec3& p);   // would a block here clip the player?
     bool projectToScreen(const glm::vec3& world, glm::vec2& outPx);
 
@@ -170,10 +176,16 @@ private:
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
+    std::uint32_t m_lootRng = 0x9E3779B9u; // rolls sift-pebble / leaf-stick drops
+    std::uint32_t m_growthRng = 0xC2B2AE35u; // grass-spread cell sampling
 
     // The entity layer (test creature). Owns its model/GPU assets and
     // instances; spawned fresh each launch, deliberately NOT saved.
     CreatureSystem m_creatures;
+
+    // Physical items on the ground (mining yields + a death-scattered pack).
+    // Overworld drops are saved; the physics/pickup run in onTick.
+    std::vector<DroppedItem> m_drops;
 
     engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows the intensity
     std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;
@@ -258,6 +270,13 @@ private:
 
     bool       m_hasTarget = false;
     glm::ivec3 m_targetBlock{0};
+
+    // Timed breaking: LMB-held progress against the aimed cell's hardness. Reset
+    // when the aim leaves the cell or the button releases.
+    bool       m_breaking = false;
+    glm::ivec3 m_breakTarget{0};
+    float      m_breakProgress = 0.0f; // seconds accumulated
+    float      m_breakNeeded   = 0.0f; // seconds required (for the HUD bar)
 
     // The player's body: velocities + health + move/damage (health is public
     // on the controller so SaveData binds to it). Reaching 0 hp triggers the

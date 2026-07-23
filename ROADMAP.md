@@ -28,6 +28,13 @@ calendar quarters counted from July 2026.
 - [x] Inventory screen + curated hotbar (July 2026): Tab overlay shows the
       full pack; the hotbar is ten player-assigned slots (assignments are
       references — they grey out at count 0 and survive death; saved in v12)
+- [x] Timed breaking + tool gating + ground drops (July 2026): blocks break
+      over time (`BlockInfo::hardness`); tough blocks (stone/ore behind a
+      pickaxe, wood behind an axe) break slowly and yield NOTHING without the
+      matching Copper tool (`requiresTool`); mining spawns physical
+      `DroppedItem`s that fall/settle and auto-collect (`DropSystem`), and a
+      non-void death scatters the pack at the spot (void still wipes). Saved in
+      v16. **Foundation for the harder start + deeper factory below.**
 
 ## Q4 2026 — content depth + combat foundations
 
@@ -41,8 +48,20 @@ the pillar slips to post-launch.
   concrete driver: boss dungeon islands need coordinates outside the home
   island (`World` is already sparse and world-coordinate; the `kWorldChunks`
   cap either lifts or arenas take a reserved coordinate band)
-- More machine/recipe tiers (charcoal/essence fuels, generator tiers),
-  multi-item belts, machine auto-eject
+- **Harder start / gated generator** (user vision — a real early-game ramp):
+  build on the tool-gating foundation. Introduce a crude *ungated* starter-tool
+  tier (e.g. a stone/wood tool craftable with no plates) so the Copper tools
+  can leave the starting kit, then push the Generator behind the tool climb
+  (raw → starter tool → mine copper → ingots → plates → generator) so getting
+  automation running is an earned milestone, not turn one. Tune hardness/costs
+  in play. (The starting kit currently just grants the Copper tools to avoid a
+  bootstrap deadlock — that's the crutch this replaces.)
+- **Factory depth (Factorio/Satisfactory direction, user vision):** the game
+  needs many more stages between "first machine" and "endgame". Staged
+  milestones: more machine/recipe tiers (charcoal/essence fuels, generator
+  tiers), multi-item / powered belts, machine output auto-eject, and richer
+  logistics (splitters/filters, buffered storage, maybe fluids). Each tier
+  should add a gating dependency so the tech tree deepens rather than widens.
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned

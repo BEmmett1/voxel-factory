@@ -6,6 +6,7 @@
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
 #include "game/MachineSystem.h"
+#include "game/DropSystem.h"
 #include "game/PowerSystem.h"
 
 #include <SDL3/SDL.h>
@@ -39,6 +40,70 @@ void VoxelGame::updateBucketFill() {
     if (m_bucketFill >= kBucketFillSeconds) {
         m_bucketFill = 0.0f;
         m_inventory.add(ItemId::SpringWater, 1);
+    }
+}
+
+// Advance ground items (fall/settle) and auto-collect any within reach of the
+// player. Settled drops cost nothing in the physics step; the pickup scan is a
+// squared-distance pass over the (small, merge-bounded) drop list.
+void VoxelGame::updateDrops() {
+    if (m_drops.empty()) return;
+    DropSystem::tick(m_drops, *m_world, kTickSeconds, m_dimension);
+
+    const glm::vec3 feet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+    // A cylinder around the player, not a sphere: a horizontal radius plus a
+    // vertical band that reaches an item resting in the 1-deep pit a just-mined
+    // block leaves (a sphere from the player's chest can't dip that low).
+    const float rH2 = kPickupRadius * kPickupRadius;
+    const float bodyMidY = feet.y + kPlayerHeight * 0.5f;
+    bool picked = false;
+    for (std::size_t i = 0; i < m_drops.size();) {
+        const DroppedItem& d = m_drops[i];
+        const float dx = d.pos.x - feet.x;
+        const float dz = d.pos.z - feet.z;
+        const float dy = d.pos.y - bodyMidY;
+        if (d.dim == m_dimension && d.pickupDelay <= 0.0f &&
+            dx * dx + dz * dz <= rH2 && std::abs(dy) <= kPickupVertical) {
+            m_inventory.add(d.id, d.count);
+            m_drops[i] = m_drops.back(); // swap-and-pop (order doesn't matter)
+            m_drops.pop_back();
+            picked = true;
+            continue;
+        }
+        ++i;
+    }
+    if (picked) {
+        audio().play("click", kUiVolume * 0.5f);
+        updateTitle();
+    }
+}
+
+// Grass slowly creeps onto exposed Dirt beside existing grass, so grass is a
+// renewable surface material (rain speeds it up, like the other growth).
+// Bounded: a handful of random surface columns per tick, scanning only the
+// surface band -- never a full-world sweep.
+void VoxelGame::updateGrassSpread() {
+    World& w = overworld();
+    const int span = kWorldChunks * CHUNK_SIZE;
+    const int samples = m_weather.raining ? 24 : 8;
+    for (int i = 0; i < samples; ++i) {
+        m_growthRng = m_growthRng * 1664525u + 1013904223u;
+        const int wx = static_cast<int>((m_growthRng >> 9) % static_cast<std::uint32_t>(span));
+        m_growthRng = m_growthRng * 1664525u + 1013904223u;
+        const int wz = static_cast<int>((m_growthRng >> 9) % static_cast<std::uint32_t>(span));
+        // Descend to the first solid block in the surface band.
+        for (int y = kPlateauY + 6; y >= kSurfaceY - 8; --y) {
+            const BlockId b = w.getBlock(wx, y, wz);
+            if (b == BlockId::Air) continue;
+            if (b == BlockId::Dirt && !isSolid(w.getBlock(wx, y + 1, wz)) &&
+                (w.getBlock(wx + 1, y, wz) == BlockId::Grass ||
+                 w.getBlock(wx - 1, y, wz) == BlockId::Grass ||
+                 w.getBlock(wx, y, wz + 1) == BlockId::Grass ||
+                 w.getBlock(wx, y, wz - 1) == BlockId::Grass)) {
+                w.setBlock(wx, y, wz, BlockId::Grass);
+            }
+            break; // only the exposed surface block matters
+        }
     }
 }
 
@@ -287,6 +352,7 @@ void VoxelGame::onTick() {
     updateSources();
     updateSaplings();
     updateLeafDecay();
+    updateGrassSpread();
 
     // Generators and collectors first: a burn flip re-solves the network so
     // the powered machines below see fresh power in this same tick.
@@ -314,4 +380,7 @@ void VoxelGame::onTick() {
         m_player.damage(ev.damageToPlayer, audio());
         m_player.shove(ev.playerKnock);
     }
+
+    // Ground items fall, settle, and are auto-collected on contact.
+    updateDrops();
 }

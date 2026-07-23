@@ -8,6 +8,22 @@ namespace {
     // built without Copper Plates -- plates come from a powered, fueled
     // Grinder, so the tech tree bootstraps through automation.
     const std::vector<Recipe> kRecipes = {
+        // ---- Early-game ladder (the hard start) ----
+        // The two lowest tool tiers. Wood tools come from hand-gathered sticks
+        // (leaves) + pebbles (sifting dirt/grass) and gate Stone + Logs; Stone
+        // tools come from mined stone + sticks and gate the ore tier (copper,
+        // crystal, essence).
+        {{{I::Stick, 2}, {I::Pebble, 3}},            {I::WoodPickaxe, 1}},
+        {{{I::Stick, 2}, {I::Pebble, 3}},            {I::WoodAxe, 1}},
+        {{{I::Stone, 3}, {I::Stick, 2}},             {I::StonePickaxe, 1}},
+        {{{I::Stone, 3}, {I::Stick, 2}},             {I::StoneAxe, 1}},
+        {{{I::Stone, 2}, {I::Stick, 2}},             {I::StoneShovel, 1}},
+        // Renewable Stone (the "long process"): compact a lot of dirt + sand.
+        // Dirt renews via the Composter, Sand via the Sand Source / Grinder, so
+        // the finite island is never the bottleneck.
+        {{{I::DirtItem, 4}, {I::Sand, 4}},           {I::Stone, 2}},
+        // The Composter machine: turns renewable plant matter into Dirt.
+        {{{I::Wood, 6}, {I::Stick, 4}},              {I::ComposterItem, 1}},
         // Hand basics.
         {{{I::CopperOre, 2}},                        {I::CopperIngot, 1}},
         {{{I::CopperIngot, 1}},                      {I::WireItem, 2}},
@@ -23,6 +39,10 @@ namespace {
         {{{I::CopperPlate, 2}},                      {I::Conduit, 2}},
         {{{I::CopperPlate, 2}},                      {I::Wrench, 1}},
         {{{I::CopperPlate, 2}, {I::Wood, 1}},        {I::CopperSword, 1}},
+        // Copper tools (top tier): gate copper-tier blocks; the fastest.
+        {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperPickaxe, 1}},
+        {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperAxe, 1}},
+        {{{I::CopperPlate, 2}, {I::Wood, 2}},        {I::CopperShovel, 1}},
         {{{I::CopperPlate, 3}, {I::Crystal, 1}, {I::Wood, 2}}, {I::MachineFrame, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 2}},      {I::CauldronItem, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 1}, {I::Vial, 1}}, {I::InfuserItem, 1}},
@@ -64,10 +84,15 @@ namespace {
     // the inputs for.
     const std::vector<MachineRecipe> kMachineRecipes = {
         // Grinder: presses plates (the machine-made part every later machine
-        // needs) and grinds raws to powder.
+        // needs) and grinds raws to powder. Also crushes Stone back into Sand,
+        // so Sand is renewable from Stone (which is renewable from dirt+sand).
         {B::Grinder,  {{I::CopperIngot, 1}},                       {I::CopperPlate, 1},     3.0f},
         {B::Grinder,  {{I::Herb, 1}},                              {I::GroundHerb, 1},      2.0f},
         {B::Grinder,  {{I::Crystal, 1}},                           {I::CrystalDust, 1},     2.0f},
+        {B::Grinder,  {{I::Stone, 1}},                             {I::Sand, 2},            2.0f},
+        // Composter: renewable Dirt from plant matter (sticks / saplings).
+        {B::Composter, {{I::Stick, 3}},                            {I::DirtItem, 2},        2.5f},
+        {B::Composter, {{I::SaplingItem, 1}},                      {I::DirtItem, 3},        3.0f},
         // Cauldron: powder + water -> solution/tincture
         {B::Cauldron, {{I::GroundHerb, 1}, {I::SpringWater, 1}},   {I::HerbalTincture, 1},  3.0f},
         {B::Cauldron, {{I::CrystalDust, 1}, {I::SpringWater, 1}},  {I::MineralSolution, 1}, 3.0f},
