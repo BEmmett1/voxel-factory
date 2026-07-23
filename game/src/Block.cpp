@@ -88,6 +88,15 @@ namespace {
          .tiles = {52, 58, 58}}, // open water top, stave sides
         {.id = B::VoidStone, .name = "Voidstone", .color = {0.24f, 0.16f, 0.36f},
          .tiles = {60, 60, 60}}, // arena ground; deliberately no drop
+        // Source fusion: the hybrid node + the source that grows it. The
+        // Resonant Source rides every data-driven source path (grows via
+        // updateSources, drops a relocatable item, glows) with no new sim
+        // code; the node is harvested like any other.
+        {.id = B::ResonantNode, .name = "Resonant Node", .color = {0.95f, 0.55f, 0.95f},
+         .node = true, .drop = {I::Resonance, 1}, .tiles = {61, 61, 61}},
+        {.id = B::ResonantSource, .name = "Resonant Source", .color = {1.00f, 0.60f, 1.00f},
+         .emissive = 0.7f, .source = true, .spawnsNode = B::ResonantNode,
+         .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

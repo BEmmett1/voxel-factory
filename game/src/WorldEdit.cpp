@@ -83,4 +83,26 @@ bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& p
     return true;
 }
 
+bool fuseSources(World& world, const Registries& regs, const glm::ivec3& aimed) {
+    const BlockId a = world.getBlock(aimed.x, aimed.y, aimed.z);
+    if (!isSource(a)) return false;
+
+    static const glm::ivec3 kNeighbors[6] = {
+        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    for (const glm::ivec3& d : kNeighbors) {
+        const glm::ivec3 n = aimed + d;
+        const BlockId b = world.getBlock(n.x, n.y, n.z);
+        if (!isSource(b) || b == a) continue; // need a DIFFERENT source
+
+        // Consume both parents into one Resonant Source at the aimed cell.
+        regs.sources.erase(aimed);
+        regs.sources.erase(n);
+        world.setBlock(n.x, n.y, n.z, BlockId::Air);
+        world.setBlock(aimed.x, aimed.y, aimed.z, BlockId::ResonantSource);
+        regs.sources[aimed] = 0.0f; // starts growing its patch
+        return true;
+    }
+    return false;
+}
+
 } // namespace WorldEdit

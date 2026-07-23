@@ -79,6 +79,11 @@ enum class ItemId : std::uint8_t {
     VoidCatalyst,
     StormKey,
     StormCore,
+    // Source fusion: the hybrid raw the Resonant Source yields, its
+    // relocatable source item, and the consumed catalyst that fuses a pair.
+    Resonance,
+    ResonantSourceItem,
+    FusionCatalyst,
     Count
 };
 

@@ -56,6 +56,10 @@ enum class BlockId : std::uint8_t {
     // The boss arena's ground (BossArena dimension). Drops nothing -- the
     // arena is transient and not a quarry.
     VoidStone,
+    // Source fusion: two adjacent different sources fuse (via a Fusion
+    // Catalyst) into a Resonant Source that grows Resonant Nodes.
+    ResonantNode,
+    ResonantSource,
     Count
 };
 

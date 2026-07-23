@@ -56,4 +56,11 @@ namespace WorldEdit {
     // cardinals (and queueing the arrow remesh). False = no belt there.
     bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos);
 
+    // Source fusion: if `aimed` is a source with an orthogonally-adjacent
+    // source of a DIFFERENT type, consume both (partner cell -> Air) and
+    // transmute `aimed` into a Resonant Source, keeping the source registry
+    // in sync. Returns false (no change) if there is no valid pair. The
+    // caller owns the catalyst spend + the sound.
+    bool fuseSources(World& world, const Registries& regs, const glm::ivec3& aimed);
+
 } // namespace WorldEdit

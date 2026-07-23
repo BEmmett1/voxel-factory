@@ -171,6 +171,18 @@ World & closed-loop economy:
   Elixir → Refined Elixir → Philosopher's Catalyst → Philosopher's Stone.
 - **Closed loop** — new sources are hand-craftable from a Catalyst + 8 of the raw, so
   resource production itself is expandable.
+- **Source fusion** — the **Fusion Catalyst** (hand-craft, a hotbar tool like the boss
+  keys) is RMB'd at a source block; `WorldEdit::fuseSources` consumes it plus one
+  orthogonally-adjacent source of a DIFFERENT type, transmuting the aimed cell into a
+  **Resonant Source** (the partner cell clears). The hybrid rides every data-driven
+  source path unchanged (grows **Resonant Node**s via `updateSources`, drops a
+  relocatable `ResonantSourceItem`, glows, Miner-harvestable) — no new sim code. Its
+  raw, **Resonance**, is a premium catalyst: `Resonance → Philosopher's Catalyst` (a
+  terminal sink feeding the source/key crafts) and `Resonance ×2 → Fusion Catalyst`
+  (self-sustaining). The bootstrap catalyst costs a **Philosopher's Stone** — giving the
+  chain's former dead-end trophy a use, so fusion is the true endgame reward.
+  Overworld-only (arena edits already deny); append-only blocks/items mean no save
+  version bump. F6 dev kit grants a Fusion Catalyst.
 - **Curated hotbar + inventory screen** — the hotbar is ten player-assigned slots
   (`m_hotbar` is `std::array<ItemId, kHotbarSlots>`; `ItemId::None` = empty; keys 1-9/0,
   wheel cycles all ten). The **Tab overlay** (`m_invOpen`, `invLayout()`/`update`/

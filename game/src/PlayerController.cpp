@@ -76,19 +76,34 @@ PlayerController::MoveResult PlayerController::move(
 
     // Axis-separated move-and-slide against the voxel grid.
     glm::vec3 feet = camera.position - glm::vec3(0.0f, kEyeHeight, 0.0f);
+
+    // Un-stick: if the tick begins with the box already embedded in solid
+    // blocks (a node grew into us, a boss knocked us into terrain, a load
+    // dropped us in geometry), pop straight up until it clears so the player
+    // can never be frozen. Bounded — a pathological fully-enclosed spot leaves
+    // `stuck` set, and the axis gates below then let motion through regardless
+    // so the player can still walk/fall out rather than lock up.
+    bool stuck = playerCollides(world, feet);
+    if (stuck) {
+        for (int i = 0; i < kUnstickMaxLift && playerCollides(world, feet); ++i)
+            feet.y += 1.0f;
+        stuck = playerCollides(world, feet);
+        m_velY = 0.0f; // don't carry downward velocity while popping out
+    }
+
     glm::vec3 next = feet;
     next.x += m_velXZ.x * dt;
-    if (!playerCollides(world, next)) feet.x = next.x;
+    if (stuck || !playerCollides(world, next)) feet.x = next.x;
     else m_velXZ.x = 0.0f; // ran into a wall
     next = feet;
     next.z += m_velXZ.z * dt;
-    if (!playerCollides(world, next)) feet.z = next.z;
+    if (stuck || !playerCollides(world, next)) feet.z = next.z;
     else m_velXZ.z = 0.0f;
 
     m_grounded = false;
     next = feet;
     next.y += m_velY * dt;
-    if (!playerCollides(world, next)) {
+    if (stuck || !playerCollides(world, next)) {
         feet.y = next.y;
     } else if (m_velY <= 0.0f) {
         feet.y = std::floor(next.y) + 1.0f; // land: snap feet onto the block top

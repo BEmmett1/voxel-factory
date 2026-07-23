@@ -157,6 +157,12 @@ void VoxelGame::updateSources() {
             for (int y = pos.y + 2; y >= pos.y - 3; --y) {
                 if (overworld().getBlock(x, y, z) == BlockId::Grass &&
                     overworld().getBlock(x, y + 1, z) == BlockId::Air) {
+                    // Never grow a node into the player, who would be embedded
+                    // and stuck — same guard updateSaplings uses below.
+                    if (m_dimension == DimensionId::Overworld &&
+                        cellOverlapsPlayer({x, y + 1, z})) {
+                        break; // retry a different column next tick
+                    }
                     overworld().setBlock(x, y + 1, z, node);
                     placedNode = true;
                     break;
