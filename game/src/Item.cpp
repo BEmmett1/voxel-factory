@@ -82,6 +82,12 @@ namespace {
         {.id = I::VoidCatalyst, .name = "Void Catalyst", .atlasTile = 91},
         {.id = I::StormKey, .name = "Storm Key", .atlasTile = 92},
         {.id = I::StormCore, .name = "Storm Core", .atlasTile = 93},
+        // Source fusion. Resonance is Miner-harvestable (nodeBlock); the
+        // source item relocates the hybrid (borrows its block side tile); the
+        // catalyst is a consumed tool.
+        {.id = I::Resonance, .name = "Resonance", .atlasTile = 94, .nodeBlock = B::ResonantNode},
+        {.id = I::ResonantSourceItem, .name = "Resonant Source", .placeable = true, .placesBlock = B::ResonantSource},
+        {.id = I::FusionCatalyst, .name = "Fusion Catalyst", .atlasTile = 95},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

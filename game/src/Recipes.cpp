@@ -42,6 +42,14 @@ namespace {
         // Storm Key is gated on beating the Void Warden (its catalyst).
         {{{I::PhilosophersCatalyst, 1}, {I::Crystal, 4}, {I::Essence, 2}}, {I::TeleportKey, 1}},
         {{{I::VoidCatalyst, 1}, {I::Crystal, 4}, {I::SpringWater, 4}},     {I::StormKey, 1}},
+        // Source fusion. The bootstrap catalyst finally gives the
+        // Philosopher's Stone (the chain's dead-end trophy) a use; fusion
+        // output then sustains more catalysts AND converts to premium
+        // Philosopher's Catalyst -- closing the loop the same way the source
+        // crafts above do (resource production is itself craftable).
+        {{{I::PhilosophersStone, 1}, {I::Crystal, 2}, {I::Essence, 2}}, {I::FusionCatalyst, 1}},
+        {{{I::Resonance, 2}},                                          {I::FusionCatalyst, 1}},
+        {{{I::Resonance, 1}},                                          {I::PhilosophersCatalyst, 1}},
     };
 }
 

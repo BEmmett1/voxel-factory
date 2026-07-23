@@ -87,11 +87,13 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // F6 is a dev key (the F4 precedent): the boss-testing kit — a Teleport
-    // Key + Copper Sword, assigned onto the hotbar so they are usable at once
-    // (the default hotbar is full; the last two slots are sacrificed).
+    // Key + Copper Sword + Fusion Catalyst, plus two different source blocks so
+    // fusion is testable straight away (place them adjacent, RMB the catalyst).
+    // All assigned onto the hotbar so they are usable at once (the default
+    // hotbar is full; the last slots are sacrificed).
     if (input().wasKeyPressed(SDL_SCANCODE_F6)) {
-        auto give = [&](ItemId id, int fallbackSlot) {
-            m_inventory.add(id, 1);
+        auto give = [&](ItemId id, int count, int fallbackSlot) {
+            m_inventory.add(id, count);
             for (ItemId s : m_hotbar) {
                 if (s == id) return; // already assigned
             }
@@ -100,9 +102,12 @@ void VoxelGame::onUpdate(float dt) {
             }
             m_hotbar[fallbackSlot] = id;
         };
-        give(ItemId::TeleportKey, kHotbarSlots - 3);
-        give(ItemId::StormKey, kHotbarSlots - 2);
-        give(ItemId::CopperSword, kHotbarSlots - 1);
+        give(ItemId::CrystalSourceItem, 4, kHotbarSlots - 6);
+        give(ItemId::EssenceSourceItem, 4, kHotbarSlots - 5);
+        give(ItemId::TeleportKey, 1, kHotbarSlots - 4);
+        give(ItemId::StormKey, 1, kHotbarSlots - 3);
+        give(ItemId::CopperSword, 1, kHotbarSlots - 2);
+        give(ItemId::FusionCatalyst, 1, kHotbarSlots - 1);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }
@@ -311,7 +316,18 @@ void VoxelGame::onUpdate(float dt) {
         // instead); otherwise place the held item into the empty target cell.
         if (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT)) {
             const bool aimedMachine = m_machines.find(tb) != m_machines.end();
-            if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
+            if (held == ItemId::FusionCatalyst && m_inventory.has(held)) {
+                // Fuse the aimed source with a different adjacent source; the
+                // catalyst is spent only on a successful pairing.
+                if (WorldEdit::fuseSources(*m_world, editRegistries(), tb)) {
+                    audio().playAt("craft", glm::vec3(tb) + glm::vec3(0.5f),
+                                   kCraftVolume, pitchJitter(tb));
+                    m_inventory.remove(held, 1);
+                    updateTitle();
+                } else {
+                    audio().play("deny", kCraftVolume);
+                }
+            } else if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);
             } else {
                 const glm::ivec3 p = aim.block + aim.normal;

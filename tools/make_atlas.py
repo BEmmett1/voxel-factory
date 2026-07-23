@@ -126,10 +126,12 @@ COPPER = (179, 115, 77)
 SAND = (217, 199, 140)
 WATER = (64, 128, 217)
 ESSENCE = (153, 71, 184)
+RESONANT = (236, 130, 236)  # fusion hybrid (crystal + essence)
 
 SOURCES = {  # tile -> glow color (matches the Source* block colors)
     54: (77, 242, 77), 55: (191, 140, 255), 56: (255, 140, 64),
     57: (255, 235, 140), 59: (217, 89, 255),
+    62: (255, 150, 255),  # resonant source (source fusion)
 }
 
 BARREL = (102, 71, 38)  # rain-barrel staves
@@ -489,6 +491,14 @@ def nodes_and_sources():
     t.disc(8, 12, 2, shade(ESSENCE, 1.3))
     t.px(8, 3, (245, 220, 255))
 
+    t = paint(61)                                    # resonant node (fusion)
+    t.fill(shade(STONE, 0.6), noise=0.10, edge=0.2)
+    for cx, cy, h in ((5, 9, 5), (10, 10, 6), (8, 7, 4)):
+        for k in range(h):                           # magenta shard columns
+            t.px(cx, cy - k, shade(RESONANT, 0.9 + k * 0.12))
+            t.px(cx + 1, cy - k + 1, shade(RESONANT, 0.7))
+        t.px(cx, cy - h, (255, 240, 255))
+
     for tile, glow in SOURCES.items():
         source(paint(tile), glow)
 
@@ -627,6 +637,17 @@ def items():
     gem(t, (200, 40, 60), big=True)
     for dx, dy in ((-7, 0), (7, 0), (0, -7), (0, 7)):
         t.px(8 + dx, 8 + dy, (255, 210, 220))
+
+    t = paint(94)                                    # resonance (fusion raw)
+    gem(t, RESONANT)
+    t.px(4, 4, (255, 245, 255))
+    t.px(12, 11, (255, 220, 255))
+
+    t = paint(95)                                    # fusion catalyst
+    gem(t, RESONANT)
+    t.ring(8, 8, 6, shade(CRYSTAL, 1.15))            # crystal + essence halo
+    t.px(11, 4, (255, 240, 255))
+    t.px(5, 12, (235, 200, 255))
 
 
 def boss_tier():

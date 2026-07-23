@@ -52,7 +52,8 @@ you want to *discard* hand edits and start over.
 | 54 | herb source | 55 | crystal source |
 | 56 | copper source | 57 | sand source |
 | 58 | water source | 59 | essence source |
-| 60 | voidstone (boss arena) | 61-63 | spare |
+| 60 | voidstone (boss arena) | 61 | resonant node |
+| 62 | resonant source | 63 | spare |
 
 ## Rows 4-5 — item icons (tiles 64-95; transparency welcome)
 
@@ -73,7 +74,7 @@ you want to *discard* hand edits and start over.
 | 88 | philosopher's catalyst | 89 | philosopher's stone |
 | 90 | teleport key | 91 | void catalyst |
 | 92 | storm key | 93 | storm core |
-| 94-95 | spare | | |
+| 94 | resonance | 95 | fusion catalyst |
 
 ## Rows 6-7 — spare (tiles 96-127)
 
