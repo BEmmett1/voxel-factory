@@ -42,6 +42,7 @@ namespace vg {
     inline constexpr float kPlayerHalfW  = 0.30f;  // half width of the player's box
     inline constexpr float kPlayerHeight = 1.80f;
     inline constexpr float kEyeHeight    = 1.62f;  // camera above the feet
+    inline constexpr int   kUnstickMaxLift = 3;    // blocks to pop up out of an embed before giving up
     inline constexpr float kVoidY        = -8.0f;  // fall below this: pack lost, respawn
     // -------------------------------------------------------
 
