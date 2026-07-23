@@ -449,6 +449,49 @@ Player physics (pressure & pull):
   bridging, since verticality must be built, not flown.
 - Blocks can't be placed overlapping the player's box.
 
+Timed breaking, tool gating & ground drops (foundation for a harder start —
+see ROADMAP):
+- **Timed breaking** — mining is HELD, not a click: onUpdate accrues
+  `m_breakProgress` (dt) against the aimed cell while LMB is down, breaking it
+  when it reaches `breakSeconds(block, held)` (`VoxelGamePlayer.cpp`). A thin
+  progress bar draws over the target (`drawHud`). Progress resets when the aim
+  leaves the cell or the button releases. A pure weapon (the Copper Sword)
+  swings on press and never mines; anything else mines at its tool/hand speed.
+- **Tool gating** — `BlockInfo` gained `hardness` (seconds to break with the
+  correct tool), `tool` (`ToolType` class), and `requiresTool`. `ItemInfo`
+  gained `tool` + `miningSpeed`. `breakSeconds` divides hardness by the tool's
+  speed when it matches, else multiplies by `kHandBreakPenalty` (the wrong/no
+  tool is slower); `yieldsDrop` forfeits the drop entirely for a `requiresTool`
+  block broken without its class. Copper **Pickaxe** (stone/ore/crystal/
+  essence/resonant/voidstone), **Axe** (logs), and **Shovel** (dirt/grass/sand,
+  ungated — just faster) are hand-crafted from Copper Plate + Wood. Your own
+  placed machines/sources stay retrievable by hand (soft, ungated). Both wood
+  and stone gate, so the **starting kit grants one of each Copper tool** to
+  avoid a bootstrap deadlock (the real ramp — a crude ungated starter tier,
+  tools out of the kit, gated Generator — is a ROADMAP item).
+- **Ground drops** (`Drop.h` / `DropSystem.*` — free functions + VoxelGame
+  glue, the MachineSystem/WorldEdit precedent) — mining spawns physical
+  `DroppedItem`s (`spawnDrop`) instead of adding straight to the pack; they
+  fall + settle onto the first solid block (`DropSystem::tick` in onTick) and
+  the player auto-collects any within a pickup **cylinder** (`updateDrops`:
+  `kPickupRadius` horizontal + `kPickupVertical` band, dimension-filtered — a
+  cylinder, not a sphere, so an item resting in the 1-deep pit a just-mined
+  block leaves is still in reach). A non-void death scatters the whole pack at
+  the death spot (recoverable; the void and arena death still fully wipe — the
+  earlier death-drops decision). Rendered as billboarded icons like belt cargo
+  (`drawHud`, culled behind-camera + beyond `kDropRenderDist`).
+- **Optimized:** `DropSystem::spawn` merges into a nearby like drop (bounds the
+  entity count under repeated mining) and caps the population (oldest settled
+  evicted); a `settled` flag skips physics for resting drops; pickup is a
+  squared-distance pass; billboards reuse `UiRenderer` (no new GPU state).
+  Timed breaking is O(1)/frame and only while LMB is held.
+- Overworld drops are saved (v16 append; older saves load with an empty list);
+  the arena is transient so its drops are never written. Knobs live in the
+  `// ---- Mining & tools ----` and `// ---- Drops ----` blocks of
+  VoxelGameInternal.h (`kHandBreakPenalty`, `kPickupRadius`, `kPickupVertical`,
+  `kDropRenderDist`, `kDeathDropPickupDelay`) plus DropSystem.cpp's own physics
+  constants.
+
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
   `%APPDATA%\BennyThompson\voxel-factory\`; `kOrgName` is a placeholder studio name,
@@ -457,14 +500,17 @@ Persistence:
   before regenerating. The file holds seed, all chunks, player camera/inventory/
   slot, machines (type/buffers/recipe/progress — generators/barrels ride along),
   belts (facing/cargo), source + sapling timers, weather state, player
-  health (appended in v10; v9 saves still load with full-health default), and the
-  hotbar slot assignments (appended in v12; older saves keep `vg::kDefaultHotbar`).
+  health (appended in v10; v9 saves still load with full-health default), the
+  hotbar slot assignments (appended in v12; older saves keep `vg::kDefaultHotbar`),
+  and the Overworld ground-item drops (pos/id/count, appended in v16; older saves
+  load with an empty list).
   Auto-load on launch (fresh island if absent/invalid), auto-save on every quit path via
   the engine's `onExit()` hook, F5 quick-saves. Bump `kVersion` whenever enums or layout
   change — old saves are then discarded rather than misread. Exception: a bump that only
   APPENDS trailing fields may keep older versions loadable (`kOldestLoadable`; the
-  caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar, and
-  v14→v15 for playtime — any enum/layout change must drop that compatibility.
+  caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar,
+  v14→v15 for playtime, and v15→v16 for ground drops — any enum/layout change must
+  drop that compatibility.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /

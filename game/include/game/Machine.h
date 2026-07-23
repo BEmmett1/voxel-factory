@@ -70,6 +70,7 @@ inline constexpr MachineTraits kMachineTraits[] = {
     {.block = BlockId::Miner, .kind = MachineKind::Miner},
     {.block = BlockId::RainBarrel, .kind = MachineKind::Collector, .demand = 0,
      .collects = ItemId::SpringWater, .collectCap = 10, .collectSeconds = 12.0f},
+    {.block = BlockId::Composter}, // Processor: composts plant matter into Dirt
 };
 
 static_assert([] {

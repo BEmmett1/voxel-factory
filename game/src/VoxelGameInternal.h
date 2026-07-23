@@ -52,6 +52,23 @@ namespace vg {
     inline constexpr float kFallDamagePerVel = 0.5f;  // hearts per blocks/s beyond safe
     inline constexpr float kDraughtHeal      = 4.0f;  // hearts per Healing Draught
 
+    // ---- Mining & tools (timed breaking + tiered tool gating) ----
+    // blockHardness(id) is the by-hand break time; the matching tool at the
+    // block's tier divides it by the tool's miningSpeed (see breakSeconds).
+    // Gated blocks (toolTier > 0) yield nothing without that tool (yieldsDrop).
+    // Early-grind gathering chances (hand tier):
+    inline constexpr float kPebbleChance = 0.25f; // pebble per grass/dirt sifted
+    inline constexpr float kStickChance  = 0.5f;  // stick per leaf broken
+
+    // ---- Drops (physical ground items) ----
+    // Pickup is a cylinder: within kPickupRadius horizontally AND within
+    // kPickupVertical of the body mid-point (reaches items resting in the pit a
+    // freshly-mined block leaves).
+    inline constexpr float kPickupRadius        = 1.6f;  // horizontal auto-collect radius
+    inline constexpr float kPickupVertical      = 1.8f;  // vertical half-band for pickup
+    inline constexpr float kDropRenderDist      = 26.0f; // billboards cull beyond this
+    inline constexpr float kDeathDropPickupDelay = 0.8f; // grace before re-grabbing a death scatter
+
     // ---- Melee (the sword swings through the aim raycast) ----
     inline constexpr float kSwordDamage    = 2.0f;   // per hit (creature hearts)
     inline constexpr float kSwordCooldown  = 0.35f;  // seconds between swings

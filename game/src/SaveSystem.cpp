@@ -12,14 +12,16 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 15;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 17;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
     // v12 appended the ten hotbar slot ids, v13/v14 appended the per-boss
-    // defeated flags, and v15 appended the playtime double. Any REORDERING or
-    // non-tail change must drop this compatibility and require an exact version
-    // match again.
+    // defeated flags, v15 appended the playtime double, and v16 appended the
+    // ground-item drops. v17 only GREW the BlockId/ItemId enums at their tails
+    // (Composter block + stick/pebble/tool items) — no layout change, so old
+    // saves still load. Any REORDERING or non-tail change must drop this
+    // compatibility and require an exact version match again.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -165,6 +167,27 @@ bool save(const std::string& path, const SaveData& d) {
 
     // Total active playtime in seconds (appended in v15).
     writePod(out, d.playtime);
+
+    // Ground items (appended in v16). Only Overworld drops are persisted (the
+    // arena is transient); position + id + count is enough — velocity/settle
+    // rebuild on load.
+    std::uint32_t dropCount = 0;
+    for (const DroppedItem& dr : d.drops) {
+        if (dr.dim == DimensionId::Overworld && dr.id != ItemId::None && dr.count > 0) {
+            ++dropCount;
+        }
+    }
+    writePod(out, dropCount);
+    for (const DroppedItem& dr : d.drops) {
+        if (dr.dim != DimensionId::Overworld || dr.id == ItemId::None || dr.count <= 0) {
+            continue;
+        }
+        writePod(out, dr.pos.x);
+        writePod(out, dr.pos.y);
+        writePod(out, dr.pos.z);
+        writePod(out, static_cast<std::uint8_t>(dr.id));
+        writePod(out, static_cast<std::int32_t>(dr.count));
+    }
 
     out.close();
     if (!out.good()) return false;
@@ -327,6 +350,30 @@ bool load(const std::string& path, SaveData& d) {
 
     // Playtime: appended in v15; older saves keep the caller's default (0).
     if (version >= 15 && !readPod(in, d.playtime)) return false;
+
+    // Ground items: appended in v16; older saves leave the list empty. Loaded
+    // drops start settled in the Overworld (velocity/settle aren't persisted).
+    d.drops.clear();
+    if (version >= 16) {
+        std::uint32_t dropCount = 0;
+        if (!readPod(in, dropCount) || dropCount > 1000000u) return false;
+        d.drops.reserve(dropCount);
+        for (std::uint32_t i = 0; i < dropCount; ++i) {
+            DroppedItem dr;
+            if (!readPod(in, dr.pos.x) || !readPod(in, dr.pos.y) || !readPod(in, dr.pos.z)) {
+                return false;
+            }
+            std::uint8_t id = 0;
+            std::int32_t c = 0;
+            if (!readPod(in, id) || id >= static_cast<std::uint8_t>(ItemId::Count)) return false;
+            if (!readPod(in, c) || c <= 0) return false;
+            dr.id = static_cast<ItemId>(id);
+            dr.count = c;
+            dr.dim = DimensionId::Overworld;
+            dr.settled = true;
+            d.drops.push_back(dr);
+        }
+    }
 
     return true;
 }

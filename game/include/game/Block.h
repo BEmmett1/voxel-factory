@@ -60,11 +60,15 @@ enum class BlockId : std::uint8_t {
     // Catalyst) into a Resonant Source that grows Resonant Nodes.
     ResonantNode,
     ResonantSource,
+    // Composter machine: composts plant matter into renewable Dirt.
+    Composter,
     Count
 };
 
 // Defined in Item.h; only the drop field below needs the type.
 enum class ItemId : std::uint8_t;
+// Defined in Item.h; a fixed underlying type lets it be a BlockInfo member here.
+enum class ToolType : std::uint8_t;
 
 // What mining a block yields ({None, 0} = nothing).
 struct BlockDrop {
@@ -93,6 +97,14 @@ struct BlockInfo {
     BlockId     spawnsNode = BlockId::Air; // the node a source grows (sources only)
     BlockDrop   drop {};            // what mining it yields
     BlockTiles  tiles {};           // atlas tiles per face
+    // Timed breaking + tool gating. `hardness` is the seconds to break BY HAND
+    // (0 => effectively instant); a matching tool divides that by its speed.
+    // `tool` is the class that breaks it efficiently; `toolTier` is the minimum
+    // tool tier for the drop (0 = ungated soft block: always drops, tool just
+    // faster; >0 = gated: no drop without the right class at that tier).
+    float       hardness = 0.0f;
+    ToolType    tool = ToolType{};  // ToolType::None (0)
+    int         toolTier = 0;
 };
 
 // Static properties for a block type.
@@ -104,3 +116,6 @@ inline bool isMachine(BlockId id)          { return blockInfo(id).machine; }
 inline bool isSource(BlockId id)           { return blockInfo(id).source; }
 inline bool isResourceNode(BlockId id)     { return blockInfo(id).node; }
 inline BlockId sourceSpawnsNode(BlockId id){ return blockInfo(id).spawnsNode; }
+inline float blockHardness(BlockId id)     { return blockInfo(id).hardness; }
+inline ToolType blockTool(BlockId id)      { return blockInfo(id).tool; }
+inline int  blockToolTier(BlockId id)      { return blockInfo(id).toolTier; }

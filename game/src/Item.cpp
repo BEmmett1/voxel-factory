@@ -88,6 +88,30 @@ namespace {
         {.id = I::Resonance, .name = "Resonance", .atlasTile = 94, .nodeBlock = B::ResonantNode},
         {.id = I::ResonantSourceItem, .name = "Resonant Source", .placeable = true, .placesBlock = B::ResonantSource},
         {.id = I::FusionCatalyst, .name = "Fusion Catalyst", .atlasTile = 95},
+        // Mining tools. `tool` is the block class they break; `toolTier` gates
+        // which blocks drop; `miningSpeed` divides the block's by-hand hardness,
+        // so higher tiers break faster. Copper is the top tier.
+        {.id = I::CopperPickaxe, .name = "Copper Pickaxe", .atlasTile = 96,
+         .tool = ToolType::Pickaxe, .toolTier = kTierCopper, .miningSpeed = 8.0f},
+        {.id = I::CopperAxe, .name = "Copper Axe", .atlasTile = 97,
+         .tool = ToolType::Axe, .toolTier = kTierCopper, .miningSpeed = 8.0f},
+        {.id = I::CopperShovel, .name = "Copper Shovel", .atlasTile = 98,
+         .tool = ToolType::Shovel, .toolTier = kTierCopper, .miningSpeed = 8.0f},
+        // Early grind: hand-gathered bits + the Wood and Stone tiers.
+        {.id = I::Stick, .name = "Stick", .atlasTile = 99},
+        {.id = I::Pebble, .name = "Pebble", .atlasTile = 100},
+        {.id = I::WoodPickaxe, .name = "Wood Pickaxe", .atlasTile = 101,
+         .tool = ToolType::Pickaxe, .toolTier = kTierWood, .miningSpeed = 4.0f},
+        {.id = I::WoodAxe, .name = "Wood Axe", .atlasTile = 102,
+         .tool = ToolType::Axe, .toolTier = kTierWood, .miningSpeed = 4.0f},
+        {.id = I::StonePickaxe, .name = "Stone Pickaxe", .atlasTile = 103,
+         .tool = ToolType::Pickaxe, .toolTier = kTierStone, .miningSpeed = 6.0f},
+        {.id = I::StoneAxe, .name = "Stone Axe", .atlasTile = 104,
+         .tool = ToolType::Axe, .toolTier = kTierStone, .miningSpeed = 6.0f},
+        {.id = I::StoneShovel, .name = "Stone Shovel", .atlasTile = 105,
+         .tool = ToolType::Shovel, .toolTier = kTierStone, .miningSpeed = 6.0f},
+        // The Composter machine (renewable dirt).
+        {.id = I::ComposterItem, .name = "Composter", .placeable = true, .placesBlock = B::Composter},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),
