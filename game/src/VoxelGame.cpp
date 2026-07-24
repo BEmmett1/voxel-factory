@@ -127,6 +127,7 @@ void VoxelGame::startNewGame(int slot) {
     // leaves for Sticks, sift dirt/grass for Pebbles, craft Wood tools, mine
     // Stone, climb the Stone -> Copper tool ladder. Nothing is handed to you.
     // (F6 stays the dev shortcut for testing the later game.)
+    m_armor.fill(ItemId::None); // a fresh start is unarmored
 
     startPlaying();
 }
@@ -147,6 +148,7 @@ void VoxelGame::startPlaying() {
     // Chunks are born dirty, so the first remeshDirtyChunks() sweep (top of the
     // first onRender) builds every mesh; power just needs one seed solve.
     m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
+    recomputeArmor(); // seed mitigation from a loaded save's equipped armor
     updateHums(); // a loaded save's energized machines hum from frame one
     // Fresh each launch; not part of the save. A few blocks from spawn, snapped
     // to ground inside the system.
@@ -182,7 +184,7 @@ bool VoxelGame::saveGame() {
     SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                m_bucketFill, pos, yaw, pitch,
                m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
-               m_tempestDefeated, m_playtime, m_drops};
+               m_tempestDefeated, m_playtime, m_drops, m_armor};
     return SaveSystem::save(m_savePath, d);
 }
 
@@ -195,7 +197,7 @@ bool VoxelGame::loadGame() {
         SaveData d{overworld(), m_inventory, editRegistries(), m_weather, m_player,
                    m_bucketFill, camera().position, camera().yaw, camera().pitch,
                    m_worldSeed, m_sourceRng, slot, m_hotbar, m_bossDefeated,
-                   m_tempestDefeated, m_playtime, m_drops};
+                   m_tempestDefeated, m_playtime, m_drops, m_armor};
         if (SaveSystem::load(path, d)) {
             // Pre-v12 saves carry slot indices up to the old ~20-entry hotbar.
             m_selectedSlot = std::clamp(slot, 0, kHotbarSlots - 1);
@@ -211,6 +213,7 @@ bool VoxelGame::loadGame() {
         m_sources.clear();
         m_saplings.clear();
         m_drops.clear();
+        m_armor.fill(ItemId::None);
         m_weather = Weather{};
         m_bucketFill = 0.0f;
         m_player.health = kMaxHealth;

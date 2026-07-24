@@ -241,6 +241,7 @@ namespace {
         float invY = 0; // owned-items grid, PanelLayout::InvCols wide
         int   invRows = 0;
         float tooltipY = 0;
+        float armorLabelY = 0, armorY = 0;   // the kArmorSlots equip cells
         float hotbarLabelY = 0, hotbarY = 0; // the kHotbarSlots assignment cells
         float footerY = 0;
     };
@@ -250,13 +251,15 @@ namespace {
         L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
         const float headerH = 40.0f, tooltipH = 18.0f, labelH = 20.0f, footerH = 24.0f;
         const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        const float hotbarH = PanelLayout::Cell + PanelLayout::Gap;
-        L.panelH = headerH + invH + tooltipH + labelH + hotbarH + footerH + 12.0f;
+        const float stripH = PanelLayout::Cell + PanelLayout::Gap;
+        L.panelH = headerH + invH + tooltipH + 2 * (labelH + stripH) + footerH + 12.0f;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.invY = L.py + headerH;
         L.tooltipY = L.invY + invH + 2.0f;
-        L.hotbarLabelY = L.tooltipY + tooltipH;
+        L.armorLabelY = L.tooltipY + tooltipH;
+        L.armorY = L.armorLabelY + labelH;
+        L.hotbarLabelY = L.armorY + stripH;
         L.hotbarY = L.hotbarLabelY + labelH;
         L.footerY = L.py + L.panelH - footerH + 2.0f;
         return L;
@@ -675,6 +678,12 @@ void VoxelGame::closeInventoryUi() {
     audio().play("close", kUiVolume);
 }
 
+void VoxelGame::recomputeArmor() {
+    float sum = 0.0f;
+    for (const ItemId id : m_armor) sum += itemArmor(id);
+    m_armorMitigation = sum < kArmorMaxReduction ? sum : kArmorMaxReduction;
+}
+
 void VoxelGame::updateInventoryUi() {
     const auto invItems = itemsOf(m_inventory);
     const InvLayout L = invLayout(window().width(), window().height(),
@@ -685,6 +694,8 @@ void VoxelGame::updateInventoryUi() {
                                 static_cast<int>(invItems.size()), PanelLayout::InvCols);
     const int slotHit = hitCell(mx, my, L.px + 16.0f, L.hotbarY, kHotbarSlots,
                                 PanelLayout::InvCols);
+    const int armorHit = hitCell(mx, my, L.px + 16.0f, L.armorY, kArmorSlots,
+                                 PanelLayout::InvCols);
 
     // LMB press picks up an assignment: from the grid it's a reference copy
     // (the item stays in the inventory); from a slot it clears the slot and
@@ -706,7 +717,16 @@ void VoxelGame::updateInventoryUi() {
     // anywhere else just drops the drag -- which for a slot-sourced drag IS
     // the clear gesture.
     if (m_invDrag != ItemId::None && input().wasMouseReleased(SDL_BUTTON_LEFT)) {
-        if (slotHit >= 0) {
+        const ArmorSlot as = itemArmorSlot(m_invDrag);
+        const int armorIdx = static_cast<int>(as) - 1; // Head=0/Body=1/Feet=2
+        if (as != ArmorSlot::None && armorHit == armorIdx && m_inventory.has(m_invDrag)) {
+            // Equip into the piece's own slot: the worn piece leaves the pack;
+            // a piece already there swaps back in.
+            if (m_armor[armorIdx] != ItemId::None) m_inventory.add(m_armor[armorIdx], 1);
+            m_inventory.remove(m_invDrag, 1);
+            m_armor[armorIdx] = m_invDrag;
+            recomputeArmor();
+        } else if (slotHit >= 0) {
             for (ItemId& s : m_hotbar) {
                 if (s == m_invDrag) s = ItemId::None;
             }
@@ -717,9 +737,16 @@ void VoxelGame::updateInventoryUi() {
         updateTitle();
     }
 
-    // RMB on a slot clears it directly; elsewhere it closes (menu precedent).
+    // RMB unequips an armor slot / clears a hotbar slot directly; elsewhere it
+    // closes (menu precedent).
     if (input().wasMousePressed(SDL_BUTTON_RIGHT)) {
-        if (slotHit >= 0 && m_hotbar[slotHit] != ItemId::None) {
+        if (armorHit >= 0 && m_armor[armorHit] != ItemId::None) {
+            m_inventory.add(m_armor[armorHit], 1);
+            m_armor[armorHit] = ItemId::None;
+            recomputeArmor();
+            audio().play("click", kUiVolume);
+            updateTitle();
+        } else if (slotHit >= 0 && m_hotbar[slotHit] != ItemId::None) {
             m_hotbar[slotHit] = ItemId::None;
             audio().play("click", kUiVolume);
             updateTitle();
@@ -740,6 +767,35 @@ void VoxelGame::drawInventoryUi() {
 
     // Everything the player owns, with counts.
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
+
+    // The armor strip: head/body/feet equip slots. Drag a matching piece here
+    // to wear it (it leaves the pack); RMB unequips.
+    m_ui.text(L.px + 16, L.armorLabelY + 2, 13.0f, "ARMOR", kTextHeader);
+    const char* const kArmorNames[kArmorSlots] = {"HEAD", "BODY", "FEET"};
+    const int armorHover = hitCell(mx, my, L.px + 16.0f, L.armorY, kArmorSlots,
+                                   PanelLayout::InvCols);
+    for (int i = 0; i < kArmorSlots; ++i) {
+        const float cx = L.px + 16.0f + i * (PanelLayout::Cell + PanelLayout::Gap);
+        const float cy = L.armorY;
+        const bool dropHere = m_invDrag != ItemId::None &&
+                              itemArmorSlot(m_invDrag) == static_cast<ArmorSlot>(i + 1);
+        if (dropHere) {
+            m_ui.rect(cx - 3, cy - 3, PanelLayout::Cell + 6, PanelLayout::Cell + 6,
+                      glm::vec4(0.20f, 0.55f, 0.25f, 0.9f));
+        }
+        m_ui.rect(cx, cy, PanelLayout::Cell, PanelLayout::Cell,
+                  glm::vec4(0.16f, 0.16f, 0.19f, 1.0f));
+        const ItemId id = m_armor[i];
+        if (id == ItemId::None) {
+            m_ui.text(cx + 4, cy + PanelLayout::Cell * 0.5f - 5, 9.0f, kArmorNames[i],
+                      glm::vec4(0.55f, 0.55f, 0.6f, 1.0f));
+            continue;
+        }
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(id), uv0, uv1);
+        m_ui.icon(m_atlas, cx + 4, cy + 4, PanelLayout::Cell - 8, PanelLayout::Cell - 8,
+                  uv0, uv1);
+    }
 
     // The hotbar strip: assignment slots (empty slab / greyed at count 0),
     // with the selected slot outlined like the HUD.
@@ -779,12 +835,15 @@ void VoxelGame::drawInventoryUi() {
     if (hovered == ItemId::None && slotHover >= 0) {
         hovered = m_hotbar[slotHover];
     }
+    if (hovered == ItemId::None && armorHover >= 0) {
+        hovered = m_armor[armorHover];
+    }
     if (hovered != ItemId::None) {
         m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), kTextTooltip);
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
-              "DRAG TO A SLOT TO ASSIGN   RMB SLOT CLEAR   TAB / ESC CLOSE",
+              "DRAG TO HOTBAR / ARMOR   RMB CLEAR OR UNEQUIP   TAB / ESC CLOSE",
               kTextFooter);
 
     // The dragged assignment rides the cursor, drawn last so it sits on top
@@ -864,6 +923,32 @@ void VoxelGame::drawHud() {
                 m_ui.rect(hx, hy, segW * fill, segH, glm::vec4(0.85f, 0.20f, 0.25f, 0.95f));
             }
         }
+    }
+
+    // Equipped armor: three small icons above the hotbar's RIGHT end, mirroring
+    // the hearts on the left.
+    {
+        const float segW = 18.0f, segGap = 4.0f;
+        const float ay = y - segW - 10.0f;
+        for (int i = 0; i < kArmorSlots; ++i) {
+            const float ax = x0 + totalW - (kArmorSlots - i) * (segW + segGap) + segGap;
+            m_ui.rect(ax, ay, segW, segW, glm::vec4(0.10f, 0.10f, 0.12f, 0.85f));
+            const ItemId id = m_armor[i];
+            if (id == ItemId::None) continue;
+            glm::vec2 uv0, uv1;
+            Atlas::uvForTile(iconTile(id), uv0, uv1);
+            m_ui.icon(m_atlas, ax + 1, ay + 1, segW - 2, segW - 2, uv0, uv1);
+        }
+    }
+
+    // Elixir of Vigor: a thin timer bar above the hearts while the buff is live.
+    if (m_vigorTimer > 0.0f) {
+        const float bw = static_cast<float>(kMaxHealth) * 20.0f, bh = 4.0f;
+        const float by = y - 42.0f;
+        m_ui.text(x0, by - 14, 11.0f, "VIGOR", glm::vec4(0.55f, 0.9f, 0.5f, 1.0f));
+        m_ui.rect(x0, by, bw, bh, glm::vec4(0.10f, 0.10f, 0.14f, 0.9f));
+        m_ui.rect(x0, by, bw * (m_vigorTimer / kVigorSeconds), bh,
+                  glm::vec4(0.45f, 0.85f, 0.35f, 0.95f));
     }
 
     // Held-bucket rain collection: a small fill bar above the hotbar.

@@ -111,6 +111,10 @@ namespace {
         // spare machine atlas tiles (35 top, 36 side).
         {.id = B::Composter, .name = "Composter", .color = {0.36f, 0.25f, 0.14f},
          .machine = true, .drop = {I::ComposterItem, 1}, .tiles = {35, 36, 36}, .hardness = 0.5f},
+        // Forge machine: block-crafts weapons/armor. Uses spare machine atlas
+        // tiles (37 top, 38 side).
+        {.id = B::Forge, .name = "Forge", .color = {0.30f, 0.22f, 0.24f},
+         .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

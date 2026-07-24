@@ -377,7 +377,8 @@ void VoxelGame::onTick() {
     const glm::vec3 playerFeet = camera().position - glm::vec3(0.0f, kEyeHeight, 0.0f);
     const CreatureSystem::Events ev = m_creatures.update(*m_world, m_dimension, playerFeet);
     if (ev.damageToPlayer > 0.0f) {
-        m_player.damage(ev.damageToPlayer, audio());
+        // Armor softens combat damage (fall damage stays raw — see kArmor knobs).
+        m_player.damage(ev.damageToPlayer * (1.0f - m_armorMitigation), audio());
         m_player.shove(ev.playerKnock);
     }
 

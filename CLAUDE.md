@@ -492,6 +492,36 @@ see ROADMAP):
   `kDropRenderDist`, `kDeathDropPickupDelay`) plus DropSystem.cpp's own physics
   constants.
 
+Combat depth (the pillar's second wave — armor, the armory, and the potions'
+combat jobs):
+- **Ranged + buff potions** — the previously-inert alchemy products now fight.
+  **Mana Vial**: LMB casts a hitscan alchemy bolt along the aim ray
+  (`CreatureSystem::tryRangedAttack`, sharing the melee `rayPickCreature` helper —
+  blocked by nearer solid blocks, longer `kBoltReach`, its own `kCastCooldown`,
+  spends one vial, never mines, a boss kill rides the same `awardBossKill` path
+  as the sword). **Elixir of Vigor**: RMB drinks for a timed `m_vigorTimer` buff
+  multiplying weapon damage (`kVigorDamageMult`, applied to BOTH sword and bolt);
+  transient (not saved), HUD timer bar above the hearts. Knobs in the
+  `// ---- Combat gear & potions ----` block of VoxelGameInternal.h.
+- **Armor + mitigation** — three equip slots (head/body/feet) in `m_armor`
+  (`std::array<ItemId, kArmorSlots>`). `ItemInfo` gained `armorSlot` (an
+  `ArmorSlot` enum) + `armor` (flat reduction). Equipped via the Tab overlay:
+  the armor strip sits above the hotbar strip (`invLayout` extended), drag a
+  matching piece onto its own slot to wear it (the piece LEAVES the pack, unlike
+  the reference-only hotbar assignments), RMB unequips. `recomputeArmor()` caches
+  the summed reduction (capped at `kArmorMaxReduction`) into `m_armorMitigation`,
+  applied ONLY to combat damage (`VoxelGameSim.cpp` boss-strike site) — fall
+  damage stays raw by design. On death the worn pieces fold back into the pack
+  first, so they scatter (normal death) or wipe (void/arena) uniformly. Saved in
+  v18 (append; older saves load unarmored).
+- **The Forge** — a `MachineKind::Processor` machine (`BlockId::Forge`,
+  hand-crafted from `MachineFrame + Plate ×2`), so the sim tick / power solve /
+  panel UI all dispatch on it unchanged. Its `MachineRecipe` rows forge the
+  Copper armor set from plates and the **Aegis** set gated on the boss drops
+  (**Void Catalyst** / **Storm Core** — the Storm Core's first sink), realizing
+  "factories are the real weapon": gearing up is an automation problem. Append-
+  only blocks/items; the F6 dev kit grants a Forge + mats + a ready Aegis set.
+
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
   `%APPDATA%\BennyThompson\voxel-factory\`; `kOrgName` is a placeholder studio name,

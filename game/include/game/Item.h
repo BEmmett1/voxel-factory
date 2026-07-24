@@ -103,6 +103,17 @@ enum class ItemId : std::uint8_t {
     StoneShovel,
     // The Composter machine (renewable dirt from plant matter).
     ComposterItem,
+    // Combat armor: equipped into head/body/feet slots for flat combat damage
+    // reduction. The Copper set forges from plates; the Aegis set is gated on
+    // the boss drops (Void Catalyst / Storm Core), so gearing up is a
+    // fight -> forge -> harder-fight loop. Forged at the Forge machine.
+    CopperHelm,
+    CopperChest,
+    CopperBoots,
+    AegisHelm,
+    AegisChest,
+    AegisBoots,
+    ForgeItem,
     Count
 };
 
@@ -110,6 +121,11 @@ enum class ItemId : std::uint8_t {
 // (BlockInfo::tool); an item names the class it IS (ItemInfo::tool). Matching
 // the class AND meeting the block's tier makes a break fast and fruitful.
 enum class ToolType : std::uint8_t { None, Pickaxe, Axe, Shovel };
+
+// Which equipment slot a piece of armor occupies (ItemInfo::armorSlot). None =
+// the item is not armor. The three slots index the player's m_armor array.
+enum class ArmorSlot : std::uint8_t { None, Head, Body, Feet };
+inline constexpr int kArmorSlots = 3; // head, body, feet
 
 // Tool tiers, low to high. A block's required tier (BlockInfo::toolTier) gates
 // its drop; a tool's tier (ItemInfo::toolTier) must meet it. 0 = no tool / not
@@ -133,6 +149,8 @@ struct ItemInfo {
     ToolType    tool = ToolType::None;     // the mining-tool class this item IS (None = not a tool)
     int         toolTier = 0;              // tool tier (kTierWood/Stone/Copper); 0 = not a tool
     float       miningSpeed = 1.0f;        // break-speed divisor vs. the block's by-hand hardness
+    ArmorSlot   armorSlot = ArmorSlot::None; // equip slot (None = not armor)
+    float       armor = 0.0f;              // flat combat damage reduction, 0..1 (armor only)
 };
 
 struct ItemStack {
@@ -146,6 +164,8 @@ inline const char* itemName(ItemId id) { return itemInfo(id).name; }
 inline ToolType    itemTool(ItemId id)        { return itemInfo(id).tool; }
 inline int         itemTier(ItemId id)        { return itemInfo(id).toolTier; }
 inline float       itemMiningSpeed(ItemId id) { return itemInfo(id).miningSpeed; }
+inline ArmorSlot   itemArmorSlot(ItemId id)   { return itemInfo(id).armorSlot; }
+inline float       itemArmor(ItemId id)       { return itemInfo(id).armor; }
 
 // The atlas tile to draw for this item in UI. Placeable items borrow their
 // block's side tile so icons always match the world; materials own an icon.

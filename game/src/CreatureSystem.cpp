@@ -165,16 +165,14 @@ void CreatureSystem::clearDimension(DimensionId dim) {
         m_creatures.end());
 }
 
-CreatureSystem::MeleeResult CreatureSystem::tryMeleeAttack(
-    const World& world, engine::Audio& audio,
-    const glm::vec3& origin, const glm::vec3& dir, DimensionId active) {
-    MeleeResult r;
-
-    // A wall between us and the creature blocks the swing.
-    float tBlock = kReach;
-    const RaycastHit aim = raycastVoxel(world, origin, dir, kReach);
+int CreatureSystem::rayPickCreature(const World& world, const glm::vec3& origin,
+                                    const glm::vec3& dir, DimensionId active,
+                                    float reach) const {
+    // A wall between us and the creature blocks the shot/swing.
+    float tBlock = reach;
+    const RaycastHit aim = raycastVoxel(world, origin, dir, reach);
     if (aim.hit) {
-        float t = kReach;
+        float t = reach;
         if (rayAabb(origin, dir, glm::vec3(aim.block), glm::vec3(aim.block) + 1.0f, t)) {
             tBlock = t;
         }
@@ -189,17 +187,26 @@ CreatureSystem::MeleeResult CreatureSystem::tryMeleeAttack(
         const glm::vec3 lo = c.pos - glm::vec3(sp.halfW, 0.0f, sp.halfW);
         const glm::vec3 hi = c.pos + glm::vec3(sp.halfW, sp.height, sp.halfW);
         float t = 0.0f;
-        if (rayAabb(origin, dir, lo, hi, t) && t <= kReach && t < bestT) {
+        if (rayAabb(origin, dir, lo, hi, t) && t <= reach && t < bestT) {
             bestT = t;
             best = i;
         }
     }
+    return best;
+}
+
+CreatureSystem::MeleeResult CreatureSystem::tryMeleeAttack(
+    const World& world, engine::Audio& audio,
+    const glm::vec3& origin, const glm::vec3& dir, DimensionId active,
+    float damage) {
+    MeleeResult r;
+    const int best = rayPickCreature(world, origin, dir, active, kReach);
     if (best < 0) return r;
     r.hit = true;
 
     Creature& c = m_creatures[best];
     const CreatureSpecies& sp = speciesOf(c.species);
-    c.hp -= kSwordDamage;
+    c.hp -= damage;
     c.hurtFlash = 1.0f;
     const glm::vec3 center = c.pos + glm::vec3(0.0f, sp.height * 0.5f, 0.0f);
     if (c.hp <= 0.0f) {
@@ -228,6 +235,44 @@ CreatureSystem::MeleeResult CreatureSystem::tryMeleeAttack(
         c.target = c.pos + away * kCreatureWanderRadius; // flee
         c.walking = true;
     } // a Boss shrugs off the shove and keeps coming
+    return r;
+}
+
+CreatureSystem::MeleeResult CreatureSystem::tryRangedAttack(
+    const World& world, engine::Audio& audio,
+    const glm::vec3& origin, const glm::vec3& dir, DimensionId active,
+    float damage, float reach) {
+    MeleeResult r;
+    const int best = rayPickCreature(world, origin, dir, active, reach);
+    if (best < 0) return r;
+    r.hit = true;
+
+    Creature& c = m_creatures[best];
+    const CreatureSpecies& sp = speciesOf(c.species);
+    c.hp -= damage;
+    c.hurtFlash = 1.0f;
+    const glm::vec3 center = c.pos + glm::vec3(0.0f, sp.height * 0.5f, 0.0f);
+    if (c.hp <= 0.0f) {
+        audio.playAt("hit", center, kHurtVolume, 0.7f);
+        if (sp.kind == CreatureKind::Boss) {
+            r.bossDied = true;
+            r.drop = sp.drop;
+            r.bossSpecies = c.species;
+            r.bossName = sp.name;
+        }
+        m_creatures.erase(m_creatures.begin() + best);
+        return r;
+    }
+    audio.playAt("hit", center, kHurtVolume);
+    // A bolt stings but doesn't knock back; a struck wanderer still flees.
+    if (sp.kind == CreatureKind::Wanderer) {
+        glm::vec3 away = c.pos - origin;
+        away.y = 0.0f;
+        away = (glm::dot(away, away) > 1e-6f) ? glm::normalize(away)
+                                              : glm::vec3(0.0f, 0.0f, 1.0f);
+        c.target = c.pos + away * kCreatureWanderRadius;
+        c.walking = true;
+    }
     return r;
 }
 

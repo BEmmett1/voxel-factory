@@ -94,8 +94,9 @@ private:
     void drawMachineUi();
     void openInventoryUi();      // Tab: full inventory + hotbar assignment
     void closeInventoryUi();
-    void updateInventoryUi();    // drag items onto hotbar slots
+    void updateInventoryUi();    // drag items onto hotbar / armor slots
     void drawInventoryUi();
+    void recomputeArmor();       // refresh m_armorMitigation from m_armor
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
@@ -167,6 +168,12 @@ private:
     // (drawn greyed) and even the death wipe; restocking re-enables them.
     std::array<ItemId, kHotbarSlots> m_hotbar{};
     int m_selectedSlot = 0;
+
+    // Equipped armor (head/body/feet; None = empty). Unlike hotbar slots these
+    // HOLD the piece — it leaves the pack while worn, and rides the pack's fate
+    // on death. m_armorMitigation caches the summed reduction (recomputeArmor).
+    std::array<ItemId, kArmorSlots> m_armor{ItemId::None, ItemId::None, ItemId::None};
+    float m_armorMitigation = 0.0f;
 
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> m_machines;
     std::unordered_set<glm::ivec3, IVec3Hash> m_hungryGenerators; // networks wanting power
@@ -283,4 +290,6 @@ private:
     // same penalty as falling off the island: pack lost, respawn.
     PlayerController m_player;
     float m_attackCooldown = 0.0f; // seconds until the sword can swing again
+    float m_castCooldown = 0.0f;   // seconds until the Mana Vial can cast again
+    float m_vigorTimer = 0.0f;     // seconds of Elixir of Vigor buff remaining
 };

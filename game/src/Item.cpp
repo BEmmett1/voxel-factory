@@ -112,6 +112,24 @@ namespace {
          .tool = ToolType::Shovel, .toolTier = kTierStone, .miningSpeed = 6.0f},
         // The Composter machine (renewable dirt).
         {.id = I::ComposterItem, .name = "Composter", .placeable = true, .placesBlock = B::Composter},
+        // Combat armor. `armorSlot` picks the equip slot; `armor` is the flat
+        // combat damage reduction (fraction). Icons live in atlas tiles 106+
+        // (see assets/ATLAS.md). The Copper set totals 0.30; the boss-gated
+        // Aegis set totals 0.50.
+        {.id = I::CopperHelm,  .name = "Copper Helm",  .atlasTile = 106,
+         .armorSlot = ArmorSlot::Head, .armor = 0.08f},
+        {.id = I::CopperChest, .name = "Copper Chestplate", .atlasTile = 107,
+         .armorSlot = ArmorSlot::Body, .armor = 0.16f},
+        {.id = I::CopperBoots, .name = "Copper Boots", .atlasTile = 108,
+         .armorSlot = ArmorSlot::Feet, .armor = 0.06f},
+        {.id = I::AegisHelm,   .name = "Aegis Helm",   .atlasTile = 109,
+         .armorSlot = ArmorSlot::Head, .armor = 0.14f},
+        {.id = I::AegisChest,  .name = "Aegis Chestplate", .atlasTile = 110,
+         .armorSlot = ArmorSlot::Body, .armor = 0.26f},
+        {.id = I::AegisBoots,  .name = "Aegis Boots",  .atlasTile = 111,
+         .armorSlot = ArmorSlot::Feet, .armor = 0.10f},
+        // The Forge machine (block-crafts weapons/armor).
+        {.id = I::ForgeItem, .name = "Forge", .placeable = true, .placesBlock = B::Forge},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

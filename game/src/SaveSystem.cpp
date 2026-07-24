@@ -12,7 +12,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 17;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 18;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -20,7 +20,9 @@ namespace {
     // defeated flags, v15 appended the playtime double, and v16 appended the
     // ground-item drops. v17 only GREW the BlockId/ItemId enums at their tails
     // (Composter block + stick/pebble/tool items) — no layout change, so old
-    // saves still load. Any REORDERING or non-tail change must drop this
+    // saves still load. v18 appended the three equipped-armor slot ids at the
+    // tail (older saves default to unarmored) and GREW the enums (Forge block +
+    // armor/Forge items). Any REORDERING or non-tail change must drop this
     // compatibility and require an exact version match again.
     constexpr std::uint32_t kOldestLoadable = 9;
 
@@ -187,6 +189,11 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, dr.pos.z);
         writePod(out, static_cast<std::uint8_t>(dr.id));
         writePod(out, static_cast<std::int32_t>(dr.count));
+    }
+
+    // Equipped armor (appended in v18); 0 = ItemId::None = empty slot.
+    for (const ItemId id : d.armor) {
+        writePod(out, static_cast<std::uint8_t>(id));
     }
 
     out.close();
@@ -372,6 +379,16 @@ bool load(const std::string& path, SaveData& d) {
             dr.dim = DimensionId::Overworld;
             dr.settled = true;
             d.drops.push_back(dr);
+        }
+    }
+
+    // Equipped armor: appended in v18; older saves leave the caller's default
+    // (all None). A worn piece must still be a valid item id.
+    if (version >= 18) {
+        for (ItemId& cell : d.armor) {
+            std::uint8_t v = 0;
+            if (!readPod(in, v) || v >= static_cast<std::uint8_t>(ItemId::Count)) return false;
+            cell = static_cast<ItemId>(v);
         }
     }
 
