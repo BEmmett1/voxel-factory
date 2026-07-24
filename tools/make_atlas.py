@@ -119,6 +119,8 @@ SCAFFOLD = (173, 158, 122)
 SAPLING = (115, 184, 71)
 LOG = (115, 84, 46)
 LEAVES = (46, 128, 41)
+COMPOST = (92, 64, 36)   # composter housing
+FORGE = (77, 56, 61)     # forge housing (dark metal)
 
 HERB = (51, 140, 56)
 CRYSTAL = (140, 115, 217)
@@ -137,6 +139,9 @@ SOURCES = {  # tile -> glow color (matches the Source* block colors)
 BARREL = (102, 71, 38)  # rain-barrel staves
 
 GOLD = (255, 214, 51)
+EMBER = (255, 140, 40)    # forge fire
+WOODHEAD = (150, 110, 66) # wood-tool head (tan)
+AEGIS = (150, 130, 220)   # aegis armor (void + storm alloy)
 DARK = (25, 25, 30)
 GLASS_EDGE = (170, 200, 215)
 GLASS_SHINE = (230, 245, 255)
@@ -440,6 +445,44 @@ def machines():
     t.rect(5, 4, 10, 7, shade(MINER, 0.55))
     t.hline(5, 5, 10, shade(MINER, 1.3))
 
+    t = paint(35)                                    # composter top: open bin
+    t.fill(COMPOST, noise=0.10)
+    t.outline(shade(COMPOST, 0.55))
+    t.rect(2, 2, 13, 13, shade(DIRT, 0.7))           # compost pile inside rim
+    t.speckle(shade(HERB, 1.1), 6, seed=30, size=2)  # green plant matter
+    t.speckle(shade(LOG, 1.2), 4, seed=31)           # woody bits
+    t.speckle(shade(DIRT, 0.5), 3, seed=32)          # dark rot
+    t.rivets(shade(COMPOST, 1.4))
+
+    t = paint(36)                                    # composter side: slat bin
+    t.fill(COMPOST, noise=0.10)
+    for x in (3, 7, 11):                             # plank seams
+        t.vline(x, 0, 15, shade(COMPOST, 0.6))
+    for y in (4, 9, 13):                             # slat gaps showing compost
+        t.hline(y, 1, 14, shade(DIRT, 0.55))
+        t.hline(y + 1, 1, 14, shade(COMPOST, 0.7))
+    t.speckle(shade(HERB, 1.0), 3, seed=33)
+    t.rivets(shade(COMPOST, 1.3))
+
+    t = paint(37)                                    # forge top: ember pit + anvil
+    plate(t, FORGE)
+    t.rect(4, 3, 11, 4, shade(STONE, 0.7))           # anvil bar across the top
+    t.disc(8, 9, 4, shade(FORGE, 0.4))               # fire pit
+    t.disc(8, 9, 3, (200, 70, 20))
+    t.disc(8, 9, 2, EMBER)
+    t.px(8, 9, (255, 230, 150))
+    for dx, dy in ((-5, 0), (5, 0), (0, 5)):         # heat glints
+        t.px(8 + dx, 9 + dy, shade(EMBER, 1.1))
+
+    t = paint(38)                                    # forge side: glowing mouth
+    plate(t, FORGE)
+    t.hline(5, 4, 11, shade(STONE, 0.9))             # lintel
+    t.rect(4, 7, 11, 12, shade(FORGE, 0.4))          # furnace opening
+    t.rect(5, 8, 10, 11, (180, 60, 20))              # inner glow
+    t.rect(6, 9, 9, 11, EMBER)
+    t.px(7, 10, (255, 235, 160))
+    t.px(8, 10, (255, 235, 160))
+
 
 def nodes_and_sources():
     t = paint(48)                                    # herb bush
@@ -705,6 +748,91 @@ def boss_tier():
     t.px(4, 5, (200, 235, 255))
 
 
+def tool_icon(t, head, kind):
+    """Item icon: a wooden haft (lower-left) with a material head (upper-right)."""
+    for d in range(8):                               # diagonal haft
+        t.px(4 + d, 12 - d, shade(LOG, 1.2))
+        t.px(5 + d, 12 - d, shade(LOG, 0.9))
+    t.px(3, 13, shade(LOG, 1.0))                     # grip
+    t.px(2, 14, shade(LOG, 0.8))                     # pommel
+    hx, hy = 11, 4                                   # head anchor (haft top)
+    if kind == "pick":
+        for d in range(5):                           # two prongs sweeping out
+            t.px(hx - 4 + d, hy + (4 - d), shade(head, 1.15))
+            t.px(hx + d, hy + d, shade(head, 0.9))
+        t.px(hx, hy, shade(head, 1.35))
+    elif kind == "axe":
+        for y in range(-3, 4):                       # blade fan, upper-right
+            half = 3 - abs(y)
+            t.hline(hy + y, hx, hx + 1 + half, shade(head, 1.0 + y * 0.03))
+        t.px(hx + 4, hy, shade(head, 1.4))
+    elif kind == "shovel":
+        t.rect(hx - 2, hy - 2, hx + 2, hy + 1, head)  # scoop
+        t.hline(hy - 2, hx - 2, hx + 2, shade(head, 1.3))
+        t.px(hx, hy + 2, shade(head, 0.8))
+    t.px(hx - 1, hy - 1, (255, 255, 255), 180)       # glint
+
+
+def armor_icon(t, col, piece):
+    """Item icon: a piece of worn armor in the given material color."""
+    hi, lo = shade(col, 1.35), shade(col, 0.55)
+    if piece == "helm":
+        t.disc(8, 7, 5, col)                         # dome
+        t.rect(3, 7, 12, 10, col)                    # face frame
+        t.rect(4, 8, 11, 9, lo)                      # visor recess
+        t.hline(8, 5, 10, DARK)                      # eye slit
+        t.ring(8, 7, 5, lo)                          # rim
+        t.px(5, 4, hi)
+        t.px(6, 3, hi)                               # crown shine
+    elif piece == "chest":
+        t.rect(3, 4, 12, 6, col)                     # collar / pauldrons
+        t.rect(4, 6, 11, 13, col)                    # torso
+        t.px(3, 6, lo)
+        t.px(12, 6, lo)
+        t.vline(8, 7, 12, lo)                        # sternum seam
+        t.rect(4, 6, 5, 9, hi)                       # highlight
+        t.hline(13, 5, 10, lo)                       # skirt edge
+    elif piece == "boots":
+        for bx in (3, 9):                            # a pair
+            t.rect(bx, 5, bx + 3, 9, col)            # shaft
+            t.rect(bx, 9, bx + 4, 11, col)           # foot
+            t.px(bx, 6, hi)                          # shine
+            t.hline(12, bx, bx + 4, lo)              # sole
+
+
+def tools_and_armor():
+    tool_icon(paint(96), COPPER, "pick")             # copper pickaxe
+    tool_icon(paint(97), COPPER, "axe")              # copper axe
+    tool_icon(paint(98), COPPER, "shovel")           # copper shovel
+
+    t = paint(99)                                    # stick
+    for d in range(10):
+        t.px(4 + d, 13 - d, shade(LOG, 1.15))
+        t.px(4 + d, 12 - d, shade(LOG, 0.85))
+    t.px(14, 3, shade(LOG, 1.3))
+    t.px(3, 14, shade(LOG, 0.7))
+
+    t = paint(100)                                   # pebble (cluster)
+    t.disc(6, 9, 3, STONE)
+    t.disc(10, 11, 2, shade(STONE, 1.1))
+    t.disc(11, 7, 2, shade(STONE, 0.85))
+    t.px(5, 8, shade(STONE, 1.4))
+    t.px(9, 10, shade(STONE, 1.3))
+
+    tool_icon(paint(101), WOODHEAD, "pick")          # wood pickaxe
+    tool_icon(paint(102), WOODHEAD, "axe")           # wood axe
+    tool_icon(paint(103), STONE, "pick")             # stone pickaxe
+    tool_icon(paint(104), STONE, "axe")              # stone axe
+    tool_icon(paint(105), STONE, "shovel")           # stone shovel
+
+    armor_icon(paint(106), COPPER, "helm")           # copper helm
+    armor_icon(paint(107), COPPER, "chest")          # copper chestplate
+    armor_icon(paint(108), COPPER, "boots")          # copper boots
+    armor_icon(paint(109), AEGIS, "helm")            # aegis helm
+    armor_icon(paint(110), AEGIS, "chest")           # aegis chestplate
+    armor_icon(paint(111), AEGIS, "boots")           # aegis boots
+
+
 # --- PNG writer -------------------------------------------------------------
 
 def write_png(path, w, h, rgba):
@@ -726,6 +854,7 @@ def main():
     nodes_and_sources()
     items()
     boss_tier()
+    tools_and_armor()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

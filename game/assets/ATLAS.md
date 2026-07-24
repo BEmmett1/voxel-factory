@@ -92,8 +92,7 @@ you want to *discard* hand edits and start over.
 | 110 | aegis chestplate | 111 | aegis boots |
 | 112-127 | spare | | |
 
-Tiles 37/38 (forge) and 106-111 (armor) are **claimed by code but not yet
-painted** — they render as whatever the PNG holds there until drawn. The rest
-are free for new blocks/items. Claim a tile here, then point the code at it (the
-`tiles` field on the kBlocks row for blocks, `atlasTile` on the kItems row for
-material items).
+All tiles above are painted by `make_atlas.py`. The rest (112-127 + the row-2
+gap at 39-47) are free for new blocks/items. Claim a tile here, add a painter to
+`make_atlas.py`, and point the code at it (the `tiles` field on the kBlocks row
+for blocks, `atlasTile` on the kItems row for material items).
