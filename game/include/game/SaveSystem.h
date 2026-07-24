@@ -51,6 +51,9 @@ struct SaveData {
     // a death-scattered pack). Only Overworld drops are written; older saves
     // load with the caller's default (empty). load() clears then fills it.
     std::vector<DroppedItem>& drops;
+    // Appended in v18: equipped armor (head/body/feet; None = empty). Older
+    // saves keep the caller's default (all empty).
+    std::array<ItemId, kArmorSlots>& armor;
 };
 
 // A small sidecar (`<save>.meta`) written next to each slot's save file so the

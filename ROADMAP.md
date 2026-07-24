@@ -48,14 +48,13 @@ the pillar slips to post-launch.
   concrete driver: boss dungeon islands need coordinates outside the home
   island (`World` is already sparse and world-coordinate; the `kWorldChunks`
   cap either lifts or arenas take a reserved coordinate band)
-- **Harder start / gated generator** (user vision — a real early-game ramp):
-  build on the tool-gating foundation. Introduce a crude *ungated* starter-tool
-  tier (e.g. a stone/wood tool craftable with no plates) so the Copper tools
-  can leave the starting kit, then push the Generator behind the tool climb
-  (raw → starter tool → mine copper → ingots → plates → generator) so getting
-  automation running is an earned milestone, not turn one. Tune hardness/costs
-  in play. (The starting kit currently just grants the Copper tools to avoid a
-  bootstrap deadlock — that's the crutch this replaces.)
+- [x] **Harder start / gated generator** (July 2026): the early-game ramp
+  landed. Hand-gathered Sticks (leaves) + Pebbles (sifting dirt/grass) build an
+  ungated Wood tool tier; Stone tools come next; both gate their block tiers
+  (wood tools → Stone/Logs, stone tools → the ore tier), so the Generator now
+  sits behind the climb (raw → wood tool → stone → copper → ingots → generator).
+  A **Composter** (plant matter → Dirt) and renewable Stone/Sand keep the finite
+  island from bottlenecking. The starting kit is now empty. Tune costs in play.
 - **Factory depth (Factorio/Satisfactory direction, user vision):** the game
   needs many more stages between "first machine" and "endgame". Staged
   milestones: more machine/recipe tiers (charcoal/essence fuels, generator
@@ -77,14 +76,25 @@ the pillar slips to post-launch.
   - [x] First melee weapon (July 2026): the Copper Sword (Plate ×2 + Wood,
     hotbar tool) swings through the aim ray with priority over mining —
     creatures take damage/knockback/hurt-flash, flee, and die in three hits;
-    misses fall through to normal mining. Armor slots with damage mitigation
-    remain
-  - Forge/armory machine tier: weapons and armor are machine-crafted from the
-    plate → frame → crystal/essence chain, so gearing up is an automation
-    problem — factories are the real weapon
-  - The dormant potions get their job: Healing Draught heals (done July 2026 —
-    rides the hotbar, RMB drinks), Mana Vial fuels a ranged alchemy attack,
-    Elixir of Vigor buffs
+    misses fall through to normal mining
+  - [x] Armor + mitigation (July 2026): three equip slots (head/body/feet) with
+    flat COMBAT damage reduction (fall damage stays raw — the hardcore pressure),
+    capped at `kArmorMaxReduction`. Equipped via the Tab overlay (drag to a slot,
+    RMB unequips); worn pieces leave the pack and ride its fate on death. Saved
+    in v18. The Copper set (0.30 total) forges from plates; the boss-gated Aegis
+    set (0.50) is the fight → forge payoff below
+  - [x] Forge/armory machine tier (July 2026): the **Forge** (a Processor
+    machine, `MachineFrame + Plate ×2`) block-crafts armor from the plate/frame
+    chain — the Copper set from plates, the **Aegis** set gated on the boss
+    drops (**Void Catalyst** / **Storm Core**, finally giving the Storm Core a
+    sink). Gearing up is now an automation problem: factories are the real
+    weapon. (Weapons beyond the hand Copper Sword — forge-made blades/tiers —
+    are the next Forge recipes to add.)
+  - [x] The dormant potions get their job (July 2026): Healing Draught heals
+    (RMB drinks), **Mana Vial** now casts a ranged alchemy bolt (LMB hitscan
+    along the aim ray, its own cooldown), and **Elixir of Vigor** grants a timed
+    weapon-damage buff (×`kVigorDamageMult` to sword AND bolt). Both alchemy
+    branches (Infuser/Alembic) now feed combat
 - [x] Main menu + multiple save slots (July 2026): the game boots into a
   NEW GAME / CONTINUE / SETTINGS / QUIT shell over an unbuilt world; three
   save slots (`save_<n>.vxf`) with a picker showing per-slot playtime +

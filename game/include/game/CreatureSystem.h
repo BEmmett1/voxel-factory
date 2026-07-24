@@ -97,9 +97,15 @@ public:
         SpeciesId bossSpecies = SpeciesId::TestCreature; // which boss fell
         const char* bossName = "";   // for the victory message
     };
+    // Melee swing (short reach, knockback). `damage` lets the Elixir of Vigor
+    // buff scale the hit; callers pass the base sword damage times the buff.
     MeleeResult tryMeleeAttack(const World& world, engine::Audio& audio,
                                const glm::vec3& origin, const glm::vec3& dir,
-                               DimensionId active);
+                               DimensionId active, float damage);
+    // Mana Vial bolt: same ray-vs-creature pick, longer reach, no knockback.
+    MeleeResult tryRangedAttack(const World& world, engine::Audio& audio,
+                                const glm::vec3& origin, const glm::vec3& dir,
+                                DimensionId active, float damage, float reach);
 
     // Boss HP bar feed: the first living Boss in `dim`, if any.
     bool  bossAlive(DimensionId dim) const;
@@ -133,6 +139,11 @@ private:
     };
 
     const Creature* firstBoss(DimensionId dim) const;
+
+    // Nearest creature in `active` struck by the ray within `reach`, blocked by
+    // a nearer solid block. Returns its index (-1 = miss). Shared by melee/ranged.
+    int rayPickCreature(const World& world, const glm::vec3& origin,
+                        const glm::vec3& dir, DimensionId active, float reach) const;
 
     std::array<SpeciesAssets, static_cast<std::size_t>(SpeciesId::Count)> m_assets;
     engine::Shader         m_shader;

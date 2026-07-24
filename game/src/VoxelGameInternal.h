@@ -78,6 +78,20 @@ namespace vg {
     inline constexpr float kCreatureHealth = 6.0f;   // test creature (3 hits)
     inline constexpr float kFlashDecay     = 5.0f;   // hurt tint fade, per second
 
+    // ---- Combat gear & potions (the dormant alchemy gets its combat job) ----
+    // Mana Vial: a ranged alchemy bolt cast along the aim ray (hitscan). Reaches
+    // farther than the sword and has its own cooldown, so it's kite-and-poke.
+    inline constexpr float kBoltDamage   = 2.5f;   // per bolt (creature hearts)
+    inline constexpr float kBoltReach    = 18.0f;  // blocks the bolt travels
+    inline constexpr float kCastCooldown = 0.5f;   // seconds between casts
+    // Elixir of Vigor: a timed buff multiplying weapon (sword + bolt) damage.
+    inline constexpr float kVigorSeconds    = 20.0f; // buff duration, seconds
+    inline constexpr float kVigorDamageMult = 1.5f;  // weapon damage while buffed
+    // Armor: equipped pieces sum a flat COMBAT damage reduction (fall damage is
+    // deliberately unmitigated — falling is the hardcore-death pressure). Capped
+    // so no loadout reaches invulnerability.
+    inline constexpr float kArmorMaxReduction = 0.60f;
+
     // Save location (%APPDATA%\<org>\<app>\). kOrgName is a placeholder until
     // a studio name exists; migrateLegacySave() makes renaming it free.
     inline constexpr const char* kOrgName  = "BennyThompson";

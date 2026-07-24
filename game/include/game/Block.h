@@ -62,6 +62,8 @@ enum class BlockId : std::uint8_t {
     ResonantSource,
     // Composter machine: composts plant matter into renewable Dirt.
     Composter,
+    // Forge machine: block-crafts weapons/armor from the plate/frame chain.
+    Forge,
     Count
 };
 

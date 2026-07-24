@@ -50,6 +50,9 @@ namespace {
         {{{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}}, {I::DistillerItem, 1}},
         {{{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}}, {I::TransmuterItem, 1}},
         {{{I::MachineFrame, 1}, {I::CopperPlate, 3}, {I::Stone, 4}}, {I::MinerItem, 1}},
+        // The Forge: the armory machine. Weapons/armor are forged, not
+        // hand-crafted, so gearing up is an automation problem.
+        {{{I::MachineFrame, 1}, {I::CopperPlate, 2}}, {I::ForgeItem, 1}},
         // End-game: transmute new resource sources from a catalyst + the raw.
         // This closes the loop -- resource production itself is craftable.
         {{{I::PhilosophersCatalyst, 1}, {I::Herb, 8}},        {I::HerbSourceItem, 1}},
@@ -105,6 +108,15 @@ namespace {
         {B::Distiller,  {{I::ElixirOfVigor, 1}, {I::Essence, 1}},        {I::RefinedElixir, 1},        6.0f},
         {B::Transmuter, {{I::RefinedElixir, 1}, {I::CrystalDust, 1}},    {I::PhilosophersCatalyst, 1}, 8.0f},
         {B::Transmuter, {{I::PhilosophersCatalyst, 1}, {I::ElixirOfVigor, 1}}, {I::PhilosophersStone, 1}, 10.0f},
+        // Forge: the armory. The Copper set forges from plates; the Aegis set is
+        // gated on the boss drops (Void Catalyst / Storm Core), giving those
+        // trophies a sink and closing the fight -> forge -> harder-fight loop.
+        {B::Forge, {{I::CopperPlate, 3}},                             {I::CopperHelm, 1},  5.0f},
+        {B::Forge, {{I::CopperPlate, 5}},                             {I::CopperChest, 1}, 7.0f},
+        {B::Forge, {{I::CopperPlate, 3}},                             {I::CopperBoots, 1}, 5.0f},
+        {B::Forge, {{I::MachineFrame, 1}, {I::VoidCatalyst, 1}},      {I::AegisHelm, 1},   8.0f},
+        {B::Forge, {{I::MachineFrame, 2}, {I::VoidCatalyst, 1}, {I::StormCore, 1}}, {I::AegisChest, 1}, 12.0f},
+        {B::Forge, {{I::MachineFrame, 1}, {I::StormCore, 1}},         {I::AegisBoots, 1},  8.0f},
     };
 }
 

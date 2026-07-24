@@ -40,7 +40,9 @@ you want to *discard* hand edits and start over.
 | 28 | alembic side (retort) | 29 | distiller top (pipes) |
 | 30 | distiller side (column) | 31 | transmuter top (alchemy circle) |
 | 32 | transmuter side (gem) | 33 | miner top |
-| 34 | miner side (drill) | 35-47 | spare |
+| 34 | miner side (drill) | 35 | composter top |
+| 36 | composter side | 37 | forge top |
+| 38 | forge side | 39-47 | spare |
 
 ## Row 3 — nodes & sources (tiles 48-63)
 
@@ -81,8 +83,17 @@ you want to *discard* hand edits and start over.
 | tile | content | tile | content |
 |-----:|---------|-----:|---------|
 | 96 | copper pickaxe | 97 | copper axe |
-| 98 | copper shovel | 99-127 | spare |
+| 98 | copper shovel | 99 | stick |
+| 100 | pebble | 101 | wood pickaxe |
+| 102 | wood axe | 103 | stone pickaxe |
+| 104 | stone axe | 105 | stone shovel |
+| 106 | copper helm | 107 | copper chestplate |
+| 108 | copper boots | 109 | aegis helm |
+| 110 | aegis chestplate | 111 | aegis boots |
+| 112-127 | spare | | |
 
-The rest are free for new blocks/items. Claim a tile here, then point the code
-at it (the `tiles` field on the kBlocks row for blocks, `atlasTile` on the
-kItems row for material items).
+Tiles 37/38 (forge) and 106-111 (armor) are **claimed by code but not yet
+painted** — they render as whatever the PNG holds there until drawn. The rest
+are free for new blocks/items. Claim a tile here, then point the code at it (the
+`tiles` field on the kBlocks row for blocks, `atlasTile` on the kItems row for
+material items).

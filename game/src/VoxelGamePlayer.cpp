@@ -78,6 +78,8 @@ void VoxelGame::onUpdate(float dt) {
         m_playtime += dt; // active-play seconds for the slot cards (excludes menus)
         m_creatures.frameAdvance(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
+        m_castCooldown = std::max(0.0f, m_castCooldown - dt);
+        m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);
 
         // Victory linger: soak in the win, then ride home automatically.
         if (m_victoryTimer > 0.0f) {
@@ -129,6 +131,19 @@ void VoxelGame::onUpdate(float dt) {
         give(ItemId::StormKey, 1, kHotbarSlots - 3);
         give(ItemId::CopperSword, 1, kHotbarSlots - 2);
         give(ItemId::FusionCatalyst, 1, kHotbarSlots - 1);
+        // Combat pillar: usable gear on the hotbar (Forge to place, Mana Vials
+        // to cast, Elixirs to drink) plus the mats + boss drops to forge armor
+        // and a ready Aegis set to equip via Tab straight away.
+        give(ItemId::ForgeItem, 1, kHotbarSlots - 7);
+        give(ItemId::ManaVial, 16, kHotbarSlots - 8);
+        give(ItemId::ElixirOfVigor, 8, kHotbarSlots - 9);
+        m_inventory.add(ItemId::CopperPlate, 24);
+        m_inventory.add(ItemId::MachineFrame, 6);
+        m_inventory.add(ItemId::VoidCatalyst, 3);
+        m_inventory.add(ItemId::StormCore, 3);
+        m_inventory.add(ItemId::AegisHelm, 1);
+        m_inventory.add(ItemId::AegisChest, 1);
+        m_inventory.add(ItemId::AegisBoots, 1);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }
@@ -214,6 +229,13 @@ void VoxelGame::onUpdate(float dt) {
     const PlayerController::MoveResult mv =
         m_player.move(dt, input(), cam, *m_world, m_settings, audio());
     if (mv.died) {
+        // Worn armor rides the pack's fate: fold it back into the inventory so
+        // the scatter/wipe below treats it uniformly (scattered on a normal
+        // death, lost to the void/arena).
+        for (ItemId& a : m_armor) {
+            if (a != ItemId::None) { m_inventory.add(a, 1); a = ItemId::None; }
+        }
+        recomputeArmor();
         // Non-void death scatters the whole pack at the spot (recoverable);
         // the void, and any death in the transient arena, still fully wipes.
         if (!mv.fellOff && m_dimension == DimensionId::Overworld) {
@@ -273,6 +295,13 @@ void VoxelGame::onUpdate(float dt) {
             audio().play("heal", kHurtVolume);
             updateTitle();
             drank = true;
+        } else if (held == ItemId::ElixirOfVigor && m_inventory.has(held)) {
+            // A draught of vigor: refresh the timed weapon-damage buff.
+            m_inventory.remove(held, 1);
+            m_vigorTimer = kVigorSeconds;
+            audio().play("heal", kHurtVolume);
+            updateTitle();
+            drank = true;
         } else if (held == ItemId::TeleportKey && m_inventory.has(held) &&
                    m_dimension == DimensionId::Overworld) {
             // The expensive tickets, consumed on use; return trips are free.
@@ -287,6 +316,22 @@ void VoxelGame::onUpdate(float dt) {
         }
     }
 
+    // The Elixir of Vigor buff scales both weapons while it lasts.
+    const float vigorMult = m_vigorTimer > 0.0f ? kVigorDamageMult : 1.0f;
+
+    // VICTORY: the unique drop lands in the pack, the species' progression flag
+    // sticks (saved), and the linger timer starts the ride home. Shared by the
+    // sword and the Mana Vial bolt.
+    auto awardBossKill = [&](const CreatureSystem::MeleeResult& mr) {
+        m_inventory.add(mr.drop, 1);
+        if (mr.bossSpecies == SpeciesId::VoidWarden) m_bossDefeated = true;
+        if (mr.bossSpecies == SpeciesId::Tempest) m_tempestDefeated = true;
+        m_victoryTimer = kVictorySeconds;
+        window().setTitle(std::string("Voxel Factory  —  ") + mr.bossName +
+                          " FALLS. VICTORY!");
+        audio().play("craft", kCraftVolume);
+    };
+
     // Sword: LMB swings along the aim ray, creatures first (needs no block
     // under the crosshair). A connected swing consumes the click; a miss
     // whooshes and falls through to mining.
@@ -296,20 +341,25 @@ void VoxelGame::onUpdate(float dt) {
         m_attackCooldown = kSwordCooldown;
         audio().play("swing", kUiVolume);
         const CreatureSystem::MeleeResult mr = m_creatures.tryMeleeAttack(
-            *m_world, audio(), cam.position, cam.front(), m_dimension);
+            *m_world, audio(), cam.position, cam.front(), m_dimension,
+            kSwordDamage * vigorMult);
         swordHit = mr.hit;
-        if (mr.bossDied) {
-            // VICTORY: the unique drop lands in the pack, the species'
-            // progression flag sticks (saved), and the linger timer starts
-            // the ride home.
-            m_inventory.add(mr.drop, 1);
-            if (mr.bossSpecies == SpeciesId::VoidWarden) m_bossDefeated = true;
-            if (mr.bossSpecies == SpeciesId::Tempest) m_tempestDefeated = true;
-            m_victoryTimer = kVictorySeconds;
-            window().setTitle(std::string("Voxel Factory  —  ") + mr.bossName +
-                              " FALLS. VICTORY!");
-            audio().play("craft", kCraftVolume);
-        }
+        if (mr.bossDied) awardBossKill(mr);
+    }
+
+    // Mana Vial: LMB casts a ranged alchemy bolt (hitscan) and spends the vial.
+    // A cast always consumes the click, so it never falls through to mining.
+    if (input().wasMousePressed(SDL_BUTTON_LEFT) && m_castCooldown <= 0.0f &&
+        held == ItemId::ManaVial && m_inventory.has(held)) {
+        m_castCooldown = kCastCooldown;
+        m_inventory.remove(held, 1);
+        audio().play("swing", kUiVolume); // the whoosh doubles as a cast sound
+        const CreatureSystem::MeleeResult mr = m_creatures.tryRangedAttack(
+            *m_world, audio(), cam.position, cam.front(), m_dimension,
+            kBoltDamage * vigorMult, kBoltReach);
+        if (mr.bossDied) awardBossKill(mr);
+        swordHit = true; // the click was spent on the cast: no mining, no arena deny
+        updateTitle();
     }
 
     // Aim and edit.
@@ -396,6 +446,7 @@ void VoxelGame::onUpdate(float dt) {
     // cell or the button releases, progress resets.
     const bool canMine = aim.hit && m_dimension == DimensionId::Overworld &&
                          !swordHit && held != ItemId::CopperSword &&
+                         held != ItemId::ManaVial &&
                          input().isMouseDown(SDL_BUTTON_LEFT);
     if (canMine) {
         const glm::ivec3 tb = aim.block;
