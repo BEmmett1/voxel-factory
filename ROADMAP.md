@@ -61,6 +61,37 @@ the pillar slips to post-launch.
   tiers), multi-item / powered belts, machine output auto-eject, and richer
   logistics (splitters/filters, buffered storage, maybe fluids). Each tier
   should add a gating dependency so the tech tree deepens rather than widens.
+- **Crafting overhaul — the Alchemy Circle (user vision):** hand-crafting is a
+  flat ~40-row menu that is instant, free, and needs no world state — it
+  undercuts the factory it is supposed to bootstrap. Move it into the world.
+  The E menu shrinks to a survival tier (sticks/pebbles, the wood → stone tool
+  ramp, Bucket, Scaffold, and the circle's own parts); everything else moves
+  onto the **Alchemy Circle**, a multiblock: a **Rune Core** with **Pedestal**
+  blocks on the eight ring cells at radius 2 — a 5×5 footprint, deliberately
+  roomy so belts can reach the pedestals from outside and the thing occupies
+  real factory floor. A recipe is a *ring pattern with
+  per-slot counts* plus a center catalyst, matched rotation-invariantly — an
+  eight-slot necklace, not a Minecraft 3×3 bitmap, so quantities carry meaning
+  and orientation never punishes you. RMB the core opens a radial panel drawing
+  the eight pedestals in their true world positions; drag from the inventory
+  grid into ring cells with the existing dupe-safe `m_drag` machinery, or
+  activate a known-blueprint row to auto-arrange (the machine panel's MAKE-row
+  idiom). The 4-pedestal **Lesser Circle** runs UNPOWERED and slow, so the
+  Generator keeps a bootstrap path; the 8-pedestal **Greater Circle** draws
+  power, runs faster, and unlocks the eight-slot patterns — pedestal count is
+  the tier. Pedestals are `Machine` entities with a one-item buffer, so belts
+  feed them and the whole circle AUTOMATES: gearing up stays an automation
+  problem. New `MachineKind`s + enum-tail blocks/items ride the existing
+  machine save records, so **no save-format break**.
+- **Deeper machine chains:** the Circle only bites if the tree is deep enough
+  to be worth a structure. Add real intermediates that each come out of a
+  machine — Copper Rod (Ingot → Rod ×2), Gear, Rune-Etched Plate (Plate +
+  Crystal Dust), Casing (Plate ×4) — and rebuild `MachineFrame` on top of them
+  (Casing + Gear ×2 + Etched Plate) instead of today's one-step Plate ×3 +
+  Crystal + Wood ×2, so every machine is three or four stages deep. Recipe rows
+  are APPEND-ONLY: `Machine::selectedRecipe` is a saved index into
+  `recipesForMachine()` order (SCALABILITY.md), so new rows go at a machine
+  group's tail, never in the middle.
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
@@ -102,7 +133,7 @@ the pillar slips to post-launch.
   overwrite/delete confirms, and legacy `save.vxf` auto-adopted as slot 0.
   Save v15 appends playtime; Settings is reachable from the menu too
 
-## Q1 2027 — bosses + Steam + hardening
+## Q1 2027 — bosses + visual depth + Steam + hardening
 
 - [x] Boss dungeons foundation (July 2026, landed early): a TRUE dimension
       system (`DimensionId`, one `World` per dimension, Overworld-only sim),
@@ -125,6 +156,50 @@ the pillar slips to post-launch.
 - The final boss drops the **Flight Stone** (late-game earned flight — the
   vision piece): flight is earned by mastering both halves of the game, the
   factory that arms you and the fight itself
+- **3D detailed blocks (sub-cube geometry, authored in Blockbench):** deferred
+  here from Q4 — the combat pillar and the crafting overhaul already fill that
+  quarter, and this is a renderer refactor with no gameplay dependency on
+  either. Every block is a full 1×1×1 cube today, so a wire is a wall and a
+  conveyor is a slab of paint. The real work is splitting `isSolid()`, which
+  currently means four things at once — gets meshed, occludes neighbours,
+  blocks movement, stops rays. Split it into `solid` (participates in
+  physics/rays) plus `fullCube` (occludes neighbours, keeps the fast paths),
+  and add a `blockBox(id)` returning boxes in cell-local 0..1 space, backed by
+  a `shape` field on `BlockInfo` indexing a `kBlockShapes` table of small box
+  lists with per-face atlas tiles. Six call sites thread it: the mesher's
+  unit-cube `kFaces[].corners` and its `isSolid(nb)` occlusion test,
+  `vg::boxCollides` (walk over a belt, not into it) plus the `floor(y)+1`
+  landing snap, the raycast DDA (refine inside the cell and keep stepping on a
+  miss, instead of "entered the cell = hit"), `CreatureSystem`'s hard-coded
+  unit-cube `rayAabb` occlusion test, and the highlight wireframe's fixed 1.01
+  unit cube. While there, give `RaycastHit` a `t`/hit point so the melee test
+  stops re-deriving it, and promote the existing private `rayAabb` helper into
+  a shared header. Shapes may be picked per cell from neighbour state — that is
+  how wires connect and belts corner — and the mesher already takes the belt
+  map to stamp the top-face arrow, so the out-of-band-state hook exists. Pure
+  presentation: **no save change**. Authoring: `.bbmodel` cuboid elements ARE
+  box lists with per-face UVs, and `BbModel::vertexData` is already
+  byte-identical to the chunk vertex layout (`{3,3,2,1}`), so add
+  `tools/bbmodel_to_shape.py` (sibling of `make_atlas.py`) to bake a Blockbench
+  model into the generated shape table at build time — the one real task is
+  blitting the model texture into a reserved atlas region and remapping its UVs
+  into that sub-rect (free tiles at 39-47 and 112-127, see `assets/ATLAS.md`).
+  Blocks stay in the chunk mesh: one draw call, zero per-block cost, and the
+  existing dirty-chunk invalidation keeps working. Runtime `engine::BbModel`
+  remains the ENTITY path; animated block props (a spinning gear) would need a
+  per-instance draw and are deliberately deferred
+- **Belts become tubes:** the first customer of block shapes, so it lands with
+  them. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
+  toward each connected neighbour (belt or machine), so runs read as continuous
+  pipe, corners look like corners, and it is thin enough to walk over. Two
+  follow-ons the current code makes obvious: `Belt` has no sub-cell progress,
+  so cargo teleports between cells — add a progress fraction and lerp it
+  against `m_beltTimer / kBeltStepTicks` so reagents visibly flow; and cargo is
+  drawn as a screen-space `UiRenderer` icon with no depth test and no distance
+  cull (an item behind a wall still draws), which world geometry inside the
+  glass would fix. Display-name-only change on the `kBlocks` row —
+  `BlockId::Conduit`'s ordinal must not move — and it opens vertical tube runs
+  later
 - Steamworks integration (app id, overlay, achievements, cloud saves)
 - Packaging: installer or Steam depot layout; code signing decision
 - [x] Logging to a file + crash handling (July 2026): `engine::Log` tees every
@@ -153,6 +228,10 @@ Kept here so they don't get lost — none are architectural dead-ends:
   feedback when a save/load fails, and no telemetry
 - Logging to a rotating file + crash dumps landed July 2026; no telemetry
 - World hard-capped at 6×6 chunks, held fully in memory and saved wholesale
+- The hand-craft menu is one unscrolled list whose panel height grows with the
+  recipe count (`craftLayout`), so it already overflows short windows —
+  `UiRenderer` has no scissor/clipping primitive. The Alchemy Circle above
+  removes most rows; a scrolling list would otherwise be needed first
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
