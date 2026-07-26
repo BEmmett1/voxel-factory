@@ -80,6 +80,9 @@ enum class BlockId : std::uint8_t {
 enum class ItemId : std::uint8_t;
 // Defined in Item.h; a fixed underlying type lets it be a BlockInfo member here.
 enum class ToolType : std::uint8_t;
+// Defined in BlockShape.h (which includes THIS header, so it can only be
+// forward-declared); same fixed-underlying-type trick as ToolType.
+enum class ShapeId : std::uint8_t;
 
 // What mining a block yields ({None, 0} = nothing).
 struct BlockDrop {
@@ -123,6 +126,13 @@ struct BlockInfo {
     float       hardness = 0.0f;
     ToolType    tool = ToolType{};  // ToolType::None (0)
     int         toolTier = 0;
+    // Which sub-cube geometry the block occupies (BlockShape.h). Default is
+    // ShapeId::FullCube — the implicit unit cube every block was before shapes
+    // existed. Presentation only: never saved, so ShapeId may be reordered.
+    // Declared LAST so a row can append `.shape = ...` without having to slot
+    // it ahead of the fields it already sets (designators must appear in
+    // member order).
+    ShapeId     shape = ShapeId{};  // ShapeId::FullCube (0)
 };
 
 // Static properties for a block type.
@@ -131,6 +141,7 @@ const BlockInfo& blockInfo(BlockId id);
 inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
 inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }
 inline bool isFullCube(BlockId id)         { return blockInfo(id).fullCube; }
+inline ShapeId blockShapeId(BlockId id)    { return blockInfo(id).shape; }
 inline bool isMachine(BlockId id)          { return blockInfo(id).machine; }
 inline bool isSource(BlockId id)           { return blockInfo(id).source; }
 inline bool isResourceNode(BlockId id)     { return blockInfo(id).node; }

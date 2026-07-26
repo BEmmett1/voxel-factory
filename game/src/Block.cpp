@@ -1,5 +1,6 @@
 #include "game/Block.h"
 
+#include "game/BlockShape.h"
 #include "game/Item.h"
 #include "game/Machine.h"
 
@@ -17,7 +18,9 @@ namespace {
     // drift from the enum. Omitted fields take BlockInfo's defaults (solid,
     // not a machine/source/node, no glow, no drop).
     constexpr BlockInfo kBlocks[] = {
-        {.id = B::Air, .name = "Air", .solid = false, .fullCube = false},
+        {.id = B::Air, .name = "Air", .solid = false, .fullCube = false,
+         .shape = ShapeId::Empty},
+        // (Every other row keeps the default ShapeId::FullCube.)
         {.id = B::Grass, .name = "Grass", .color = {0.30f, 0.62f, 0.26f},
          .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel},
         {.id = B::Dirt, .name = "Dirt", .color = {0.45f, 0.31f, 0.18f},
@@ -151,6 +154,28 @@ namespace {
         }
         return true;
     }(), "fullCube implies solid");
+
+    // Solidity and geometry must agree, or physics and rendering disagree
+    // about where a block is: a solid block needs something to stand on and
+    // hit, and a non-solid one must occupy nothing. This is what lets the
+    // collision and raycast code trust blockBoxes() alone.
+    static_assert([] {
+        for (const BlockInfo& b : kBlocks) {
+            if (b.solid != !blockShape(b.shape).boxes.empty()) return false;
+        }
+        return true;
+    }(), "a block is solid exactly when its shape has collision boxes");
+
+    // A full cube must actually fill its cell, or the mesher hides faces
+    // behind a hole.
+    static_assert([] {
+        for (const BlockInfo& b : kBlocks) {
+            if (!b.fullCube) continue;
+            const ShapeAabb& s = blockShape(b.shape).bounds;
+            if (s.lo != glm::vec3(0.0f) || s.hi != glm::vec3(1.0f)) return false;
+        }
+        return true;
+    }(), "fullCube blocks must have unit-cube bounds");
 
     // The machine traits registry (Machine.h) and the machine flags here must
     // name exactly the same blocks — a machine without a traits row (or a

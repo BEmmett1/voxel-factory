@@ -1,0 +1,114 @@
+#pragma once
+
+#include "game/Block.h"
+
+#include <glm/glm.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <span>
+
+// Sub-cube block geometry: the boxes a block actually occupies inside its cell,
+// instead of the implicit 1x1x1 every block was until now. A block names a
+// ShapeId on its kBlocks row; the shape supplies both what to DRAW (quads, with
+// baked atlas UVs) and what to COLLIDE with (boxes), which is why a tube can
+// stop a ray while occluding nothing.
+//
+// Shape data is baked from Blockbench models by tools/bbmodel_to_shape.py into
+// generated/BlockShapes.inl. Unlike BlockId and ItemId, ShapeId is NOT a save
+// encoding -- shapes are pure presentation, so this enum may be reordered and
+// rows may be removed freely.
+
+// One textured face of one box. Positions are cell-local (0..1); the mesher
+// adds the block's world origin. `face` indexes ChunkMesher's kFaces
+// (+X,-X,+Y,-Y,+Z,-Z). `cull` marks a face flush with a cell wall -- the only
+// faces the mesher may drop against a fullCube neighbour. `uv` is
+// {u0,v0,u1,v1} in absolute sheet UV, and u0 > u1 (or v0 > v1) means the face
+// is MIRRORED: interpolate with mix() and the sign takes care of itself. Do
+// not sort the rect.
+struct ShapeQuad {
+    glm::vec3    lo, hi;
+    std::uint8_t face = 0;
+    bool         cull = false;
+    glm::vec4    uv {0.0f};
+};
+
+// A cell-local AABB (0..1), for collision and raycasts.
+struct ShapeAabb {
+    glm::vec3 lo {0.0f};
+    glm::vec3 hi {1.0f};
+};
+
+// Minecraft-style animated texture: `frames` bands stacked down the sheet,
+// `vStride` apart in UV. Advancing a frame is a uniform, never a remesh.
+struct ShapeAnim {
+    int   frames = 1;
+    int   frameTime = 0;
+    float vStride = 0.0f;
+};
+
+// Shape identity. FullCube is 0 so it stays the BlockInfo default (that field
+// is declared with a forward-declared ShapeId, so it cannot name an enumerator
+// -- same trick as ToolType).
+enum class ShapeId : std::uint8_t {
+    FullCube = 0,   // the implicit unit cube: no quads, the mesher's fast path
+    Empty,          // occupies nothing (Air): no quads, no collision boxes
+    BrewingCauldron,
+    Count
+};
+
+#include "game/generated/BlockShapes.inl"
+
+// The unit cube's collision box. FullCube carries no quads on purpose: the
+// mesher's existing kFaces path draws it, and routing every plain block through
+// per-quad geometry would cost the whole world's meshing speed to buy nothing.
+inline constexpr ShapeAabb kUnitCubeBoxes[] = {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}};
+
+// Everything about a shape, one row per ShapeId.
+struct BlockShape {
+    ShapeId                    id;      // must equal the row's position
+    std::span<const ShapeQuad> quads;   // empty => draw it as a unit cube
+    std::span<const ShapeAabb> boxes;   // empty => nothing to stand on or hit
+    ShapeAabb                  bounds;  // union of `boxes`; broad phase + highlight
+    ShapeAnim                  anim;
+};
+
+inline constexpr BlockShape kBlockShapes[] = {
+    {.id = ShapeId::FullCube, .boxes = kUnitCubeBoxes},
+    {.id = ShapeId::Empty, .bounds = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}}},
+    {.id = ShapeId::BrewingCauldron,
+     .quads = kShapeQuadsBrewingCauldron,
+     .boxes = kShapeBoxesBrewingCauldron,
+     .bounds = kShapeBoundsBrewingCauldron,
+     .anim = kShapeAnimBrewingCauldron},
+};
+
+static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
+              "kBlockShapes needs exactly one row per ShapeId");
+
+static_assert([] {
+    for (std::size_t i = 0; i < std::size(kBlockShapes); ++i) {
+        if (kBlockShapes[i].id != static_cast<ShapeId>(i)) return false;
+    }
+    return true;
+}(), "kBlockShapes rows must be in ShapeId enum order");
+
+inline constexpr const BlockShape& blockShape(ShapeId id) {
+    return kBlockShapes[static_cast<std::size_t>(id)];
+}
+inline const BlockShape& blockShape(BlockId id) {
+    return blockShape(blockInfo(id).shape);
+}
+
+// The boxes a block occupies, cell-local. Physics and raycasts walk these
+// instead of assuming a unit cube; an empty span means the cell is passable.
+inline std::span<const ShapeAabb> blockBoxes(BlockId id) {
+    return blockShape(id).boxes;
+}
+
+// The union of those boxes -- a broad-phase reject and what the target
+// highlight wraps.
+inline const ShapeAabb& blockBounds(BlockId id) {
+    return blockShape(id).bounds;
+}
