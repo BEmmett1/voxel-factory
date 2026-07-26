@@ -130,6 +130,15 @@ namespace {
          .armorSlot = ArmorSlot::Feet, .armor = 0.10f},
         // The Forge machine (block-crafts weapons/armor).
         {.id = I::ForgeItem, .name = "Forge", .placeable = true, .placesBlock = B::Forge},
+        // The shared parts tier, all Press-made: rods draw from ingots, gears
+        // from rods, casings from plates, etched plates from plates + crystal
+        // dust. The three converge into the Machine Frame. Icons at 112+.
+        {.id = I::CopperRod, .name = "Copper Rod", .atlasTile = 112},
+        {.id = I::Gear, .name = "Gear", .atlasTile = 113},
+        {.id = I::MachineCasing, .name = "Machine Casing", .atlasTile = 114},
+        {.id = I::EtchedPlate, .name = "Etched Plate", .atlasTile = 115},
+        // The Press machine (forms the parts tier + assembles the frame).
+        {.id = I::PressItem, .name = "Press", .placeable = true, .placesBlock = B::Press},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

@@ -64,6 +64,10 @@ enum class BlockId : std::uint8_t {
     Composter,
     // Forge machine: block-crafts weapons/armor from the plate/frame chain.
     Forge,
+    // Press machine: forms the shared parts tier (rods, gears, casings,
+    // etched plates) and assembles them into the Machine Frame every other
+    // machine is built from.
+    Press,
     Count
 };
 

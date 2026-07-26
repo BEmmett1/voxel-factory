@@ -114,6 +114,14 @@ enum class ItemId : std::uint8_t {
     AegisChest,
     AegisBoots,
     ForgeItem,
+    // The shared parts tier. Every machine now reaches MachineFrame through
+    // these, and every one of them comes out of the Press -- the tech tree
+    // deepens through automation rather than through the hand-craft menu.
+    CopperRod,
+    Gear,
+    MachineCasing,
+    EtchedPlate,
+    PressItem,
     Count
 };
 

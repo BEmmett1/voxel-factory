@@ -121,6 +121,7 @@ LOG = (115, 84, 46)
 LEAVES = (46, 128, 41)
 COMPOST = (92, 64, 36)   # composter housing
 FORGE = (77, 56, 61)     # forge housing (dark metal)
+PRESS = (107, 112, 133)  # press housing (blued steel)
 
 HERB = (51, 140, 56)
 CRYSTAL = (140, 115, 217)
@@ -483,6 +484,25 @@ def machines():
     t.px(7, 10, (255, 235, 160))
     t.px(8, 10, (255, 235, 160))
 
+    t = paint(39)                                    # press top: the ram + die
+    plate(t, PRESS)
+    t.rect(4, 4, 11, 7, shade(PRESS, 1.35))          # ram head, lit from above
+    t.hline(4, 4, 11, shade(PRESS, 1.6))
+    t.rect(5, 9, 10, 12, shade(PRESS, 0.45))         # die cavity below it
+    t.rect(6, 10, 9, 11, shade(COPPER, 0.9))         # stock waiting in the die
+    for x in (3, 12):                                # guide posts
+        t.vline(x, 3, 12, shade(PRESS, 0.7))
+
+    t = paint(40)                                    # press side: frame + screw
+    plate(t, PRESS)
+    t.rect(3, 2, 12, 4, shade(PRESS, 1.2))           # crown
+    for y in range(5, 10):                           # drive screw threads
+        t.hline(y, 6, 9, shade(PRESS, 1.45 if y % 2 else 0.75))
+    t.rect(4, 10, 11, 12, shade(PRESS, 1.3))         # platen
+    t.hline(13, 3, 12, shade(PRESS, 0.5))            # bed
+    t.px(7, 11, shade(COPPER, 1.2))                  # a bright worked edge
+    t.px(8, 11, shade(COPPER, 1.2))
+
 
 def nodes_and_sources():
     t = paint(48)                                    # herb bush
@@ -833,6 +853,42 @@ def tools_and_armor():
     armor_icon(paint(111), AEGIS, "boots")           # aegis boots
 
 
+def parts():
+    """The Press-made parts tier (rod -> gear, plate -> casing / etched)."""
+    t = paint(112)                                   # copper rod
+    for d in range(11):                              # a drawn bar on the diagonal
+        t.px(3 + d, 12 - d, shade(COPPER, 1.25))
+        t.px(4 + d, 12 - d, COPPER)
+        t.px(4 + d, 13 - d, shade(COPPER, 0.7))
+    t.px(3, 13, shade(COPPER, 0.55))
+    t.px(14, 2, shade(COPPER, 1.5))
+
+    t = paint(113)                                   # gear
+    t.disc(8, 8, 6, shade(COPPER, 0.85))
+    for dx, dy in ((0, -7), (0, 7), (-7, 0), (7, 0),
+                   (-5, -5), (5, -5), (-5, 5), (5, 5)):   # eight teeth
+        t.rect(8 + dx - 1, 8 + dy - 1, 8 + dx + 1, 8 + dy + 1, COPPER)
+    t.ring(8, 8, 6, shade(COPPER, 1.3))
+    t.disc(8, 8, 2, (0, 0, 0), 0)                    # bore
+    t.ring(8, 8, 2, shade(COPPER, 0.55))
+
+    t = paint(114)                                   # machine casing
+    t.rect(2, 3, 13, 13, shade(PRESS, 0.95))         # riveted steel box
+    t.rect(2, 3, 13, 4, shade(PRESS, 1.35))          # lit top edge
+    t.hline(13, 2, 13, shade(PRESS, 0.55))
+    t.rect(5, 6, 10, 10, shade(PRESS, 0.7))          # recessed panel
+    t.rect(6, 7, 9, 9, shade(PRESS, 1.1))
+    t.rivets(shade(PRESS, 1.5))
+
+    t = paint(115)                                   # etched plate
+    t.rect(3, 4, 12, 12, COPPER)
+    t.rect(3, 4, 12, 5, shade(COPPER, 1.3))          # same stock as a plate...
+    t.ring(8, 8, 3, shade(CRYSTAL, 1.35))            # ...scribed with a rune
+    t.hline(8, 5, 10, shade(CRYSTAL, 1.2))
+    t.vline(8, 5, 11, shade(CRYSTAL, 1.2))
+    t.px(8, 8, shade(CRYSTAL, 1.6))
+
+
 # --- PNG writer -------------------------------------------------------------
 
 def write_png(path, w, h, rgba):
@@ -855,6 +911,7 @@ def main():
     items()
     boss_tier()
     tools_and_armor()
+    parts()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

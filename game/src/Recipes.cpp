@@ -43,7 +43,10 @@ namespace {
         {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperPickaxe, 1}},
         {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperAxe, 1}},
         {{{I::CopperPlate, 2}, {I::Wood, 2}},        {I::CopperShovel, 1}},
-        {{{I::CopperPlate, 3}, {I::Crystal, 1}, {I::Wood, 2}}, {I::MachineFrame, 1}},
+        // The Press: forms the shared parts tier. Buildable without a Machine
+        // Frame (it is what MAKES them), so there is no cycle -- the ladder is
+        // ingots -> Grinder + Generator -> plates -> Press -> parts -> frame.
+        {{{I::CopperIngot, 2}, {I::CopperPlate, 2}, {I::Stone, 4}}, {I::PressItem, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 2}},      {I::CauldronItem, 1}},
         {{{I::MachineFrame, 1}, {I::Glass, 1}, {I::Vial, 1}}, {I::InfuserItem, 1}},
         {{{I::MachineFrame, 1}, {I::Crystal, 1}},    {I::AlembicItem, 1}},
@@ -117,6 +120,18 @@ namespace {
         {B::Forge, {{I::MachineFrame, 1}, {I::VoidCatalyst, 1}},      {I::AegisHelm, 1},   8.0f},
         {B::Forge, {{I::MachineFrame, 2}, {I::VoidCatalyst, 1}, {I::StormCore, 1}}, {I::AegisChest, 1}, 12.0f},
         {B::Forge, {{I::MachineFrame, 1}, {I::StormCore, 1}},         {I::AegisBoots, 1},  8.0f},
+        // Press: the shared parts tier. Every machine now reaches the Machine
+        // Frame through four machine steps instead of one hand-craft, so the
+        // factory has to exist before the tech tree opens up. APPENDED at the
+        // table tail -- Machine::selectedRecipe is a saved index into
+        // recipesForMachine() order, so splitting an existing machine's run
+        // would silently repoint saved selections.
+        {B::Press, {{I::CopperIngot, 1}},                             {I::CopperRod, 2},     2.0f},
+        {B::Press, {{I::CopperRod, 2}},                               {I::Gear, 1},          3.0f},
+        {B::Press, {{I::CopperPlate, 4}},                             {I::MachineCasing, 1}, 5.0f},
+        {B::Press, {{I::CopperPlate, 1}, {I::CrystalDust, 2}},        {I::EtchedPlate, 1},   4.0f},
+        {B::Press, {{I::MachineCasing, 1}, {I::Gear, 2}, {I::EtchedPlate, 1}},
+                                                                     {I::MachineFrame, 1},  8.0f},
     };
 }
 

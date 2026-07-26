@@ -6,8 +6,9 @@ The atlas is **256x128**: a **16x8 grid of 16px tiles**. Tile index =
 changes needed unless you *move* a tile. World tiles must stay fully opaque;
 item icons (rows 4-5) may use transparency.
 
-The mapping lives in code at `game/src/Atlas.cpp` (`kBlockTiles`: per-block
-top/side/bottom) and `game/src/Item.cpp` (`atlasTile` per material item;
+The mapping lives in code at `game/src/Block.cpp` (the `tiles` field on each
+kBlocks row: per-block top/side/bottom, surfaced by the inline
+`Atlas::tilesForBlock`) and `game/src/Item.cpp` (`atlasTile` per material item;
 placeable items reuse their block's side tile automatically).
 `tools/make_atlas.py` regenerates the whole file from scratch — run it only if
 you want to *discard* hand edits and start over.
@@ -42,7 +43,8 @@ you want to *discard* hand edits and start over.
 | 32 | transmuter side (gem) | 33 | miner top |
 | 34 | miner side (drill) | 35 | composter top |
 | 36 | composter side | 37 | forge top |
-| 38 | forge side | 39-47 | spare |
+| 38 | forge side | 39 | press top (ram + die) |
+| 40 | press side (screw + platen) | 41-47 | spare |
 
 ## Row 3 — nodes & sources (tiles 48-63)
 
@@ -90,9 +92,11 @@ you want to *discard* hand edits and start over.
 | 106 | copper helm | 107 | copper chestplate |
 | 108 | copper boots | 109 | aegis helm |
 | 110 | aegis chestplate | 111 | aegis boots |
-| 112-127 | spare | | |
+| 112 | copper rod | 113 | gear |
+| 114 | machine casing | 115 | etched plate |
+| 116-127 | spare | | |
 
-All tiles above are painted by `make_atlas.py`. The rest (112-127 + the row-2
-gap at 39-47) are free for new blocks/items. Claim a tile here, add a painter to
+All tiles above are painted by `make_atlas.py`. The rest (9-15, 41-47, 63, and
+116-127) are free for new blocks/items. Claim a tile here, add a painter to
 `make_atlas.py`, and point the code at it (the `tiles` field on the kBlocks row
 for blocks, `atlasTile` on the kItems row for material items).

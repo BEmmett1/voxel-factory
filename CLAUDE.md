@@ -522,6 +522,31 @@ combat jobs):
   "factories are the real weapon": gearing up is an automation problem. Append-
   only blocks/items; the F6 dev kit grants a Forge + mats + a ready Aegis set.
 
+The shared parts tier (crafting depth — the Alchemy Circle's foundation):
+- **The Press** — a `MachineKind::Processor` (`BlockId::Press`, hand-crafted
+  from `CopperIngot ×2 + CopperPlate ×2 + Stone ×4`), so the sim tick, power
+  solve, `machineAccepts`, and panel UI all dispatch on it unchanged. It forms
+  the four shared parts — **Copper Rod** (Ingot → Rod ×2), **Gear** (Rod ×2),
+  **Machine Casing** (Plate ×4), **Etched Plate** (Plate + Crystal Dust ×2) —
+  and assembles `Casing + Gear ×2 + Etched Plate` into the **Machine Frame**.
+- **MachineFrame is no longer hand-craftable.** Its `kRecipes` row is gone, so
+  every machine now sits four machine stages behind raw ore instead of one menu
+  click (6 ore + 1 crystal → 14 ore + 2 crystals). Intermediates coming out of
+  machines is the Forge's "gearing up is an automation problem" principle
+  applied to the tech tree itself; it also shrinks the craft menu, which
+  overflows short windows (`craftLayout` grows with the recipe count and
+  `UiRenderer` has no scissor primitive).
+- The Grinder keeps `Ingot → Plate` — it is the bootstrap machine, and moving
+  plates onto the Press would deadlock (the Press costs plates). Ladder:
+  hand Ingot → Grinder + Generator → Plates → Press → parts → Frame.
+- Append-only blocks/items and Press recipes appended at the `kMachineRecipes`
+  tail (`Machine::selectedRecipe` is a saved index into `recipesForMachine()`
+  order), so **no save version bump** — v18 saves load unchanged. Atlas tiles
+  39/40 (block) and 112-115 (icons). F6 grants a Press plus stock at every link.
+- Known-by-design: with five recipes, an AUTO Press fed mixed inputs makes
+  whichever recipe it can first. Lock a MAKE row, or dedicate a Press per part —
+  that division of labour is the intended logistics pressure.
+
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
   `%APPDATA%\BennyThompson\voxel-factory\`; `kOrgName` is a placeholder studio name,

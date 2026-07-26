@@ -144,6 +144,17 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::AegisHelm, 1);
         m_inventory.add(ItemId::AegisChest, 1);
         m_inventory.add(ItemId::AegisBoots, 1);
+        // Parts tier: a Press plus stock at every stage, so the chain
+        // (ingot -> rod -> gear, plate -> casing, plate + dust -> etched
+        // plate, all three -> frame) is testable from any link without
+        // grinding the whole ladder first.
+        give(ItemId::PressItem, 1, kHotbarSlots - 10);
+        m_inventory.add(ItemId::CopperIngot, 16);
+        m_inventory.add(ItemId::CrystalDust, 12);
+        m_inventory.add(ItemId::CopperRod, 8);
+        m_inventory.add(ItemId::Gear, 4);
+        m_inventory.add(ItemId::MachineCasing, 2);
+        m_inventory.add(ItemId::EtchedPlate, 2);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }

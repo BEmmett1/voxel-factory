@@ -115,6 +115,10 @@ namespace {
         // tiles (37 top, 38 side).
         {.id = B::Forge, .name = "Forge", .color = {0.30f, 0.22f, 0.24f},
          .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f},
+        // Press machine: forms the shared parts tier. Uses spare machine atlas
+        // tiles (39 top, 40 side).
+        {.id = B::Press, .name = "Press", .color = {0.42f, 0.44f, 0.52f},
+         .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

@@ -83,15 +83,20 @@ the pillar slips to post-launch.
   feed them and the whole circle AUTOMATES: gearing up stays an automation
   problem. New `MachineKind`s + enum-tail blocks/items ride the existing
   machine save records, so **no save-format break**.
-- **Deeper machine chains:** the Circle only bites if the tree is deep enough
-  to be worth a structure. Add real intermediates that each come out of a
-  machine — Copper Rod (Ingot → Rod ×2), Gear, Rune-Etched Plate (Plate +
-  Crystal Dust), Casing (Plate ×4) — and rebuild `MachineFrame` on top of them
-  (Casing + Gear ×2 + Etched Plate) instead of today's one-step Plate ×3 +
-  Crystal + Wood ×2, so every machine is three or four stages deep. Recipe rows
-  are APPEND-ONLY: `Machine::selectedRecipe` is a saved index into
-  `recipesForMachine()` order (SCALABILITY.md), so new rows go at a machine
-  group's tail, never in the middle.
+- [x] **Deeper machine chains** (July 2026): the shared parts tier landed. A new
+  **Press** (`MachineKind::Processor`, hand-crafted from Ingot ×2 + Plate ×2 +
+  Stone ×4) forms Copper Rod (Ingot → Rod ×2), Gear (Rod ×2), Machine Casing
+  (Plate ×4) and Etched Plate (Plate + Crystal Dust ×2), then assembles all
+  three into the **Machine Frame** — which is no longer hand-craftable at all.
+  Every machine now sits four machine steps behind raw ore instead of one
+  hand-craft (a frame went from 6 ore + 1 crystal to 14 ore + 2 crystals), and
+  the craft menu lost a row rather than gaining any. Pure data: one traits row,
+  one block, five items, no new `MachineKind`, **no save bump** (enum tail
+  growth only, the v17 precedent) — the Press recipes are appended at the table
+  tail because `Machine::selectedRecipe` is a saved index into
+  `recipesForMachine()` order (SCALABILITY.md). With five recipes on one Press,
+  AUTO picks the first recipe it has inputs for, so dedicating Presses per part
+  is the intended logistics pressure. Tune costs in play.
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
