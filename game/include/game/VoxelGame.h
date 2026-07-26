@@ -50,6 +50,7 @@ protected:
 
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
+    void buildShapeSheet();      // load assets/shapes.png (optional; loud if absent)
     void buildWorld();           // generate terrain + the demo structures
     void buildArena(World& w, SpeciesId boss); // the boss's arena variant
     void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
@@ -145,6 +146,13 @@ private:
     engine::Texture    m_atlas;
     std::unordered_map<glm::ivec3, engine::Mesh, IVec3Hash> m_chunkMeshes;
     std::vector<float> m_meshScratch;   // reused vertex staging buffer
+    // Sub-cube block geometry (BlockShape.h) is a second pass per chunk: same
+    // vertex layout, but UVs address shapes.png instead of the atlas. A world
+    // with no shaped blocks uploads nothing here and draws nothing extra.
+    engine::Texture    m_shapes;
+    bool               m_shapesReady = false;
+    std::unordered_map<glm::ivec3, engine::Mesh, IVec3Hash> m_chunkShapeMeshes;
+    std::vector<float> m_shapeScratch;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
     engine::Mesh       m_highlightMesh;

@@ -3,6 +3,7 @@
 #include "game/World.h"
 #include "game/Chunk.h"
 #include "game/Block.h"
+#include "game/BlockShape.h"
 #include "game/Atlas.h"
 
 #include <array>
@@ -38,11 +39,64 @@ namespace {
                                uv.x, uv.y, emissive});
     }
 
+    // Emit one shaped block's baked quads at `base`. `neighbor(fi)` supplies
+    // the block across face fi, consulted only for quads flush with a cell
+    // wall -- the only ones a full-cube neighbor can legally hide.
+    template <typename NeighborFn>
+    void appendShaped(std::vector<float>& out, const BlockShape& shape,
+                      const glm::vec3& base, float emissive, NeighborFn neighbor) {
+        for (const ShapeQuad& q : shape.quads) {
+            if (q.cull && isFullCube(neighbor(q.face))) continue;
+
+            const glm::vec3 lo = base + q.lo;
+            const glm::vec3 hi = base + q.hi;
+
+            // The quad lies on `axis` at whichever side it faces; the other
+            // two axes are swept by the texture's u and v parameters. The
+            // mapping comes from the bake (kShapeFaceAxes) so a mirrored or
+            // upside-down model is fixed by one sign there, not here.
+            const int axis = q.face >> 1;
+            const float fixed = (q.face & 1) == 0 ? hi[axis] : lo[axis];
+            const int uA = kShapeFaceAxes[q.face][0], uD = kShapeFaceAxes[q.face][1];
+            const int vA = kShapeFaceAxes[q.face][2], vD = kShapeFaceAxes[q.face][3];
+
+            const auto corner = [&](float s, float t) {
+                glm::vec3 p{0.0f};
+                p[axis] = fixed;
+                p[uA] = uD > 0 ? glm::mix(lo[uA], hi[uA], s) : glm::mix(hi[uA], lo[uA], s);
+                p[vA] = vD > 0 ? glm::mix(lo[vA], hi[vA], t) : glm::mix(hi[vA], lo[vA], t);
+                return p;
+            };
+            // u0 > u1 (or v0 > v1) means a mirrored face: mix() carries the
+            // sign, so the rect is used exactly as baked and never sorted.
+            const auto texel = [&](float s, float t) {
+                return glm::vec2(glm::mix(q.uv.x, q.uv.z, s),
+                                 glm::mix(q.uv.y, q.uv.w, t));
+            };
+
+            const glm::vec3& n = kFaces[q.face].normal;
+            const glm::vec3 p00 = corner(0, 0), p10 = corner(1, 0);
+            const glm::vec3 p11 = corner(1, 1), p01 = corner(0, 1);
+
+            // Reverse winding: sweeping (s,t) with the bake's axis mapping
+            // walks each face CLOCKWISE seen from outside. Cosmetic today
+            // (GL_CULL_FACE is off) but wrong to leave for whenever it isn't.
+            pushVertex(out, p00, n, texel(0, 0), emissive);
+            pushVertex(out, p11, n, texel(1, 1), emissive);
+            pushVertex(out, p10, n, texel(1, 0), emissive);
+
+            pushVertex(out, p00, n, texel(0, 0), emissive);
+            pushVertex(out, p01, n, texel(0, 1), emissive);
+            pushVertex(out, p11, n, texel(1, 1), emissive);
+        }
+    }
+
 } // namespace
 
 namespace ChunkMesher {
 
-    void appendChunk(std::vector<float>& out, const World& world,
+    void appendChunk(std::vector<float>& out, std::vector<float>& shapedOut,
+                     const World& world,
                      const Chunk& chunk, const glm::ivec3& chunkCoord,
                      const PowerState& power, const BeltMap& belts) {
         constexpr float kEnergizedEmissive = 0.7f;
@@ -55,6 +109,23 @@ namespace ChunkMesher {
             const auto it = world.chunks().find(chunkCoord + kFaces[fi].offset);
             neighbors[fi] = it != world.chunks().end() ? it->second.get() : nullptr;
         }
+
+        // The block across face `fi` from local cell (lx,ly,lz). Shared by the
+        // cube and shaped paths.
+        const auto neighborAt = [&](int lx, int ly, int lz, int fi) -> BlockId {
+            const glm::ivec3 nl = glm::ivec3(lx, ly, lz) + kFaces[fi].offset;
+            if (chunk.inBounds(nl.x, nl.y, nl.z)) {
+                return chunk.get(nl.x, nl.y, nl.z);
+            }
+            if (const Chunk* nc = neighbors[fi]) {
+                // Exactly one component stepped out; wrap it into the
+                // neighbor's local space.
+                return nc->get((nl.x + CHUNK_SIZE) % CHUNK_SIZE,
+                               (nl.y + CHUNK_SIZE) % CHUNK_SIZE,
+                               (nl.z + CHUNK_SIZE) % CHUNK_SIZE);
+            }
+            return BlockId::Air; // ungenerated space
+        };
 
         for (int lz = 0; lz < CHUNK_SIZE; ++lz) {
             for (int ly = 0; ly < CHUNK_SIZE; ++ly) {
@@ -70,21 +141,18 @@ namespace ChunkMesher {
 
                     const glm::vec3 base(w);
 
+                    // Shaped blocks emit their baked quads into the second
+                    // buffer (different sheet) and skip the unit-cube path.
+                    const BlockShape& shape = blockShape(id);
+                    if (!shape.quads.empty()) {
+                        appendShaped(shapedOut, shape, base, emissive,
+                                     [&](int fi) { return neighborAt(lx, ly, lz, fi); });
+                        continue;
+                    }
+
                     for (int fi = 0; fi < 6; ++fi) {
                         const Face& f = kFaces[fi];
-                        const glm::ivec3 nl = glm::ivec3(lx, ly, lz) + f.offset;
-                        BlockId nb;
-                        if (chunk.inBounds(nl.x, nl.y, nl.z)) {
-                            nb = chunk.get(nl.x, nl.y, nl.z);
-                        } else if (const Chunk* nc = neighbors[fi]) {
-                            // Exactly one component stepped out; wrap it into
-                            // the neighbor's local space.
-                            nb = nc->get((nl.x + CHUNK_SIZE) % CHUNK_SIZE,
-                                         (nl.y + CHUNK_SIZE) % CHUNK_SIZE,
-                                         (nl.z + CHUNK_SIZE) % CHUNK_SIZE);
-                        } else {
-                            nb = BlockId::Air; // ungenerated space
-                        }
+                        const BlockId nb = neighborAt(lx, ly, lz, fi);
                         // Only a neighbor that FILLS its cell can hide this
                         // face; a sub-cube shape leaves gaps to see through.
                         if (isFullCube(nb)) continue;

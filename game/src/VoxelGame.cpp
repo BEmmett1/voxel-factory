@@ -71,6 +71,7 @@ void VoxelGame::onStart() {
     m_shader.setInt("uAtlas", 0); // atlas lives on texture unit 0
 
     buildAtlas();
+    buildShapeSheet();
 
     // The saves and settings live in the OS-preferred data directory. Resolved
     // before audio setup so the loaded master volume applies from frame one.
@@ -276,6 +277,7 @@ void VoxelGame::switchDimension(DimensionId dim) {
     m_world = m_worlds[static_cast<std::size_t>(dim)].get();
 
     m_chunkMeshes.clear();
+    m_chunkShapeMeshes.clear(); // the shaped pass caches per chunk coord too
     for (const auto& [coord, chunk] : m_world->chunks()) {
         chunk->markDirty();
     }

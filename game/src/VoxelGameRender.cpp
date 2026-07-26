@@ -49,6 +49,24 @@ namespace {
 
 } // namespace
 
+// The shaped-block sheet, baked by tools/bbmodel_to_shape.py. Unlike the
+// atlas there is no generated fallback and no expected size (shape UVs are
+// absolute, so any dimensions load): if it is missing, shaped blocks simply
+// don't draw and say so once. Silently substituting the atlas would texture
+// them with whatever tiles happened to line up, which is harder to diagnose
+// than nothing at all.
+void VoxelGame::buildShapeSheet() {
+    const char* base = SDL_GetBasePath(); // owned by SDL, do not free
+    const std::string path = (base ? std::string(base) : "") + "assets/shapes.png";
+    engine::Image img;
+    if (!engine::loadImage(path, img)) {
+        SDL_Log("assets/shapes.png missing or unreadable -- shaped blocks will not draw");
+        return;
+    }
+    m_shapes.createFromPixels(img.width, img.height, img.rgba.data());
+    m_shapesReady = true;
+}
+
 void VoxelGame::buildAtlas() {
     // Prefer the hand-paintable atlas file; fall back to generated color
     // swatches so the game always runs (and a broken PNG is loud, not fatal).
@@ -186,10 +204,14 @@ void VoxelGame::remeshDirtyChunks() {
     for (const auto& [coord, chunk] : m_world->chunks()) {
         if (!chunk->dirty()) continue;
         m_meshScratch.clear();
-        ChunkMesher::appendChunk(m_meshScratch, *m_world, *chunk, coord, power, belts);
+        m_shapeScratch.clear();
+        ChunkMesher::appendChunk(m_meshScratch, m_shapeScratch, *m_world, *chunk,
+                                 coord, power, belts);
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
+        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1},
+                                         GL_DYNAMIC_DRAW);
         chunk->clearDirty();
         ++chunks;
     }
@@ -280,6 +302,16 @@ void VoxelGame::onRender() {
     m_shader.setMat4("uModel", glm::mat4(1.0f));
     for (auto& [coord, mesh] : m_chunkMeshes) {
         mesh.draw();
+    }
+
+    // Shaped blocks: same shader and uniforms, second sheet. Skipped whole
+    // when nothing in the world carries a ShapeId.
+    if (m_shapesReady) {
+        m_shapes.bind(0);
+        for (auto& [coord, mesh] : m_chunkShapeMeshes) {
+            mesh.draw();
+        }
+        m_atlas.bind(0);
     }
 
     // Target outline: flat wireframe cube around the aimed block.
