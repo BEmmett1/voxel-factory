@@ -7,6 +7,13 @@ namespace {
     // stable (the menu relies on it). Only the Generator and Grinder can be
     // built without Copper Plates -- plates come from a powered, fueled
     // Grinder, so the tech tree bootstraps through automation.
+    // Hand-crafting is now a SURVIVAL TIER only. It is instant, free, and needs
+    // no world state, which is exactly why it must not be able to build the
+    // factory: everything past this list moved onto the Alchemy Circle
+    // (kCircleRecipes below), where crafting occupies floor space, takes time,
+    // and can be belt-fed. What stays here is what you need to get off the
+    // ground with nothing -- plus the Circle's own two parts, or the tech tree
+    // would deadlock behind a circle you cannot build.
     const std::vector<Recipe> kRecipes = {
         // ---- Early-game ladder (the hard start) ----
         // The two lowest tool tiers. Wood tools come from hand-gathered sticks
@@ -22,60 +29,16 @@ namespace {
         // Dirt renews via the Composter, Sand via the Sand Source / Grinder, so
         // the finite island is never the bottleneck.
         {{{I::DirtItem, 4}, {I::Sand, 4}},           {I::Stone, 2}},
-        // The Composter machine: turns renewable plant matter into Dirt.
-        {{{I::Wood, 6}, {I::Stick, 4}},              {I::ComposterItem, 1}},
-        // Hand basics.
+        // Hand basics: smelting, glass, and the two structural staples.
         {{{I::CopperOre, 2}},                        {I::CopperIngot, 1}},
-        {{{I::CopperIngot, 1}},                      {I::WireItem, 2}},
         {{{I::Stone, 1}},                            {I::ScaffoldItem, 4}},
         {{{I::Sand, 1}},                             {I::Glass, 1}},
         {{{I::Glass, 1}},                            {I::Vial, 1}},
         {{{I::Wood, 3}},                             {I::Bucket, 1}},
-        // The bootstrap pair: buildable straight from ingots.
-        {{{I::CopperIngot, 3}, {I::Stone, 4}},       {I::GrinderItem, 1}},
-        {{{I::CopperIngot, 2}, {I::Stone, 2}, {I::Wood, 2}}, {I::GeneratorItem, 1}},
-        {{{I::Wood, 6}, {I::Bucket, 1}},             {I::RainBarrelItem, 1}},
-        // Plate-gated gear (plates are Grinder-made).
-        {{{I::CopperPlate, 2}},                      {I::Conduit, 2}},
-        {{{I::CopperPlate, 2}},                      {I::Wrench, 1}},
-        {{{I::CopperPlate, 2}, {I::Wood, 1}},        {I::CopperSword, 1}},
-        // Copper tools (top tier): gate copper-tier blocks; the fastest.
-        {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperPickaxe, 1}},
-        {{{I::CopperPlate, 3}, {I::Wood, 2}},        {I::CopperAxe, 1}},
-        {{{I::CopperPlate, 2}, {I::Wood, 2}},        {I::CopperShovel, 1}},
-        // The Press: forms the shared parts tier. Buildable without a Machine
-        // Frame (it is what MAKES them), so there is no cycle -- the ladder is
-        // ingots -> Grinder + Generator -> plates -> Press -> parts -> frame.
-        {{{I::CopperIngot, 2}, {I::CopperPlate, 2}, {I::Stone, 4}}, {I::PressItem, 1}},
-        {{{I::MachineFrame, 1}, {I::Glass, 2}},      {I::CauldronItem, 1}},
-        {{{I::MachineFrame, 1}, {I::Glass, 1}, {I::Vial, 1}}, {I::InfuserItem, 1}},
-        {{{I::MachineFrame, 1}, {I::Crystal, 1}},    {I::AlembicItem, 1}},
-        {{{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}}, {I::DistillerItem, 1}},
-        {{{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}}, {I::TransmuterItem, 1}},
-        {{{I::MachineFrame, 1}, {I::CopperPlate, 3}, {I::Stone, 4}}, {I::MinerItem, 1}},
-        // The Forge: the armory machine. Weapons/armor are forged, not
-        // hand-crafted, so gearing up is an automation problem.
-        {{{I::MachineFrame, 1}, {I::CopperPlate, 2}}, {I::ForgeItem, 1}},
-        // End-game: transmute new resource sources from a catalyst + the raw.
-        // This closes the loop -- resource production itself is craftable.
-        {{{I::PhilosophersCatalyst, 1}, {I::Herb, 8}},        {I::HerbSourceItem, 1}},
-        {{{I::PhilosophersCatalyst, 1}, {I::Crystal, 8}},     {I::CrystalSourceItem, 1}},
-        {{{I::PhilosophersCatalyst, 1}, {I::CopperOre, 8}},   {I::CopperSourceItem, 1}},
-        {{{I::PhilosophersCatalyst, 1}, {I::Sand, 8}},        {I::SandSourceItem, 1}},
-        {{{I::PhilosophersCatalyst, 1}, {I::Essence, 8}},     {I::EssenceSourceItem, 1}},
-        // Tickets to the boss arenas: philosopher-adjacent and consumed on
-        // use -- the factory produces both your gear and your fights. The
-        // Storm Key is gated on beating the Void Warden (its catalyst).
-        {{{I::PhilosophersCatalyst, 1}, {I::Crystal, 4}, {I::Essence, 2}}, {I::TeleportKey, 1}},
-        {{{I::VoidCatalyst, 1}, {I::Crystal, 4}, {I::SpringWater, 4}},     {I::StormKey, 1}},
-        // Source fusion. The bootstrap catalyst finally gives the
-        // Philosopher's Stone (the chain's dead-end trophy) a use; fusion
-        // output then sustains more catalysts AND converts to premium
-        // Philosopher's Catalyst -- closing the loop the same way the source
-        // crafts above do (resource production is itself craftable).
-        {{{I::PhilosophersStone, 1}, {I::Crystal, 2}, {I::Essence, 2}}, {I::FusionCatalyst, 1}},
-        {{{I::Resonance, 2}},                                          {I::FusionCatalyst, 1}},
-        {{{I::Resonance, 1}},                                          {I::PhilosophersCatalyst, 1}},
+        // The Alchemy Circle itself -- the one piece of the factory you may
+        // still build by hand, because it is the gateway to all the rest.
+        {{{I::Stone, 4}, {I::CopperIngot, 1}},       {I::PedestalItem, 1}},
+        {{{I::Stone, 6}, {I::CopperIngot, 2}, {I::Crystal, 1}}, {I::RuneCoreItem, 1}},
     };
 }
 
@@ -135,8 +98,95 @@ namespace {
     };
 }
 
+namespace {
+    // ---- The Alchemy Circle ----------------------------------------------
+    // A 4-slot `ring` lists the CARDINAL pedestals clockwise from north
+    // (N, E, S, W); an 8-slot ring lists all eight (N, NE, E, SE, S, SW, W, NW)
+    // and needs a Greater circle. `{}` means the slot must be EMPTY, which is
+    // the strongest way to tell two otherwise-similar patterns apart.
+    //
+    // Slots match on "holds AT LEAST this many", so a belt topping a pedestal
+    // up never breaks the pattern. The cost is that one pattern can be a
+    // superset of another, so ORDER MATTERS: the more demanding variant is
+    // listed first and AUTO takes the first match. Locking a MAKE row in the
+    // panel is the escape hatch -- the same known-by-design bargain the Press
+    // makes with its five recipes.
+    const std::vector<CircleRecipe> kCircleRecipes = {
+        // -- Bootstrap tier: no plates, so a Lesser circle can build the
+        // machines that make plates. This is the whole reason the Lesser
+        // circle runs unpowered.
+        {{}, {{I::CopperIngot, 3}, {}, {I::Stone, 4}, {}},  {I::GrinderItem, 1},   6.0f},
+        {{}, {{I::CopperIngot, 2}, {I::Stone, 2}, {I::Wood, 2}, {}},
+                                                           {I::GeneratorItem, 1}, 6.0f},
+        {{}, {{I::Wood, 6}, {}, {I::Stick, 4}, {}},        {I::ComposterItem, 1}, 5.0f},
+        {{}, {{I::Wood, 6}, {}, {I::Bucket, 1}, {}},       {I::RainBarrelItem, 1}, 5.0f},
+        {{}, {{I::CopperIngot, 1}, {}, {}, {}},            {I::WireItem, 2},      2.0f},
+        // -- Plate tier. Conduit and the Wrench cost the same two plates and
+        // are told apart by ARRANGEMENT alone: both plates on one pedestal
+        // versus one plate on each of two opposite pedestals. That is the
+        // necklace earning its keep.
+        {{}, {{I::CopperIngot, 2}, {I::CopperPlate, 2}, {I::Stone, 4}, {}},
+                                                           {I::PressItem, 1},     8.0f},
+        // Pickaxe and Axe cost exactly the same; only the arrangement differs
+        // (wood OPPOSITE the plates vs. wood BESIDE them).
+        {{}, {{I::CopperPlate, 3}, {I::Wood, 2}, {}, {}},  {I::CopperAxe, 1},     4.0f},
+        {{}, {{I::CopperPlate, 3}, {}, {I::Wood, 2}, {}},  {I::CopperPickaxe, 1}, 4.0f},
+        {{}, {{I::CopperPlate, 2}, {}, {I::Wood, 2}, {}},  {I::CopperShovel, 1},  4.0f},
+        {{}, {{I::CopperPlate, 2}, {}, {I::Wood, 1}, {}},  {I::CopperSword, 1},   4.0f},
+        {{}, {{I::CopperPlate, 2}, {}, {}, {}},            {I::Conduit, 2},       3.0f},
+        {{}, {{I::CopperPlate, 1}, {}, {I::CopperPlate, 1}, {}}, {I::Wrench, 1},  3.0f},
+        // -- Machine Frame tier: the alchemy chain proper. Three-ingredient
+        // patterns first, so they win over their two-ingredient prefixes.
+        {{}, {{I::MachineFrame, 1}, {I::CopperPlate, 3}, {I::Stone, 4}, {}},
+                                                           {I::MinerItem, 1},     8.0f},
+        {{}, {{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}, {}},
+                                                           {I::DistillerItem, 1}, 8.0f},
+        {{}, {{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}, {}},
+                                                           {I::TransmuterItem, 1}, 8.0f},
+        {{}, {{I::MachineFrame, 1}, {I::Glass, 1}, {I::Vial, 1}, {}},
+                                                           {I::InfuserItem, 1},   6.0f},
+        {{}, {{I::MachineFrame, 1}, {}, {I::Glass, 2}, {}}, {I::CauldronItem, 1}, 6.0f},
+        {{}, {{I::MachineFrame, 1}, {}, {I::CopperPlate, 2}, {}}, {I::ForgeItem, 1}, 6.0f},
+        {{}, {{I::MachineFrame, 1}, {}, {I::Crystal, 1}, {}}, {I::AlembicItem, 1}, 6.0f},
+        // -- Source transmutation: the catalyst goes in the CORE, the raw on
+        // the ring. Resource production stays craftable, so the loop is closed.
+        {{I::PhilosophersCatalyst, 1}, {{I::Herb, 8}, {}, {}, {}},
+                                                           {I::HerbSourceItem, 1},    10.0f},
+        {{I::PhilosophersCatalyst, 1}, {{I::Crystal, 8}, {}, {}, {}},
+                                                           {I::CrystalSourceItem, 1}, 10.0f},
+        {{I::PhilosophersCatalyst, 1}, {{I::CopperOre, 8}, {}, {}, {}},
+                                                           {I::CopperSourceItem, 1},  10.0f},
+        {{I::PhilosophersCatalyst, 1}, {{I::Sand, 8}, {}, {}, {}},
+                                                           {I::SandSourceItem, 1},    10.0f},
+        {{I::PhilosophersCatalyst, 1}, {{I::Essence, 8}, {}, {}, {}},
+                                                           {I::EssenceSourceItem, 1}, 10.0f},
+        // Resonance conversions -- the 2-for-1 is listed first because a
+        // pedestal holding two Resonance also satisfies the 1-cost pattern.
+        {{}, {{I::Resonance, 2}, {}, {}, {}},              {I::FusionCatalyst, 1},       5.0f},
+        {{}, {{I::Resonance, 1}, {}, {}, {}},              {I::PhilosophersCatalyst, 1}, 5.0f},
+        // -- GREATER tier (all eight pedestals, powered): the boss keys. The
+        // full ring is the ceremony -- these are the game's biggest crafts.
+        {{I::PhilosophersCatalyst, 1},
+         {{I::Crystal, 1}, {I::Essence, 1}, {I::Crystal, 1}, {},
+          {I::Crystal, 1}, {I::Essence, 1}, {I::Crystal, 1}, {}},
+                                                           {I::TeleportKey, 1},   12.0f},
+        {{I::VoidCatalyst, 1},
+         {{I::Crystal, 1}, {I::SpringWater, 1}, {I::Crystal, 1}, {I::SpringWater, 1},
+          {I::Crystal, 1}, {I::SpringWater, 1}, {I::Crystal, 1}, {I::SpringWater, 1}},
+                                                           {I::StormKey, 1},      12.0f},
+        {{I::PhilosophersStone, 1},
+         {{I::Crystal, 1}, {}, {I::Essence, 1}, {},
+          {I::Crystal, 1}, {}, {I::Essence, 1}, {}},
+                                                           {I::FusionCatalyst, 1}, 15.0f},
+    };
+}
+
 const std::vector<MachineRecipe>& machineRecipes() {
     return kMachineRecipes;
+}
+
+const std::vector<CircleRecipe>& circleRecipes() {
+    return kCircleRecipes;
 }
 
 std::vector<const MachineRecipe*> recipesForMachine(BlockId type) {

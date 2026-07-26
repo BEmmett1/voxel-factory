@@ -44,7 +44,9 @@ you want to *discard* hand edits and start over.
 | 34 | miner side (drill) | 35 | composter top |
 | 36 | composter side | 37 | forge top |
 | 38 | forge side | 39 | press top (ram + die) |
-| 40 | press side (screw + platen) | 41-47 | spare |
+| 40 | press side (screw + platen) | 41 | rune core top (sigil) |
+| 42 | rune core side | 43 | pedestal top (socket) |
+| 44 | pedestal side | 45-47 | spare |
 
 ## Row 3 — nodes & sources (tiles 48-63)
 
@@ -96,7 +98,7 @@ you want to *discard* hand edits and start over.
 | 114 | machine casing | 115 | etched plate |
 | 116-127 | spare | | |
 
-All tiles above are painted by `make_atlas.py`. The rest (9-15, 41-47, 63, and
+All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63, and
 116-127) are free for new blocks/items. Claim a tile here, add a painter to
 `make_atlas.py`, and point the code at it (the `tiles` field on the kBlocks row
 for blocks, `atlasTile` on the kItems row for material items).

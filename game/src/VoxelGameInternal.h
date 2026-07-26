@@ -151,6 +151,15 @@ namespace vg {
     // now: see kMachineTraits in Machine.h.)
     inline constexpr float kSourceMinRadius = 22.0f;   // sources scatter beyond this ring
 
+    // ---- The Alchemy Circle (the crafting overhaul) ----
+    // How much slower a circle runs without the Greater tier's power. This is
+    // the whole price of the unpowered bootstrap path: a Lesser circle WILL
+    // build your first Generator, it will just make you wait for it.
+    inline constexpr float kLesserCircleSlowdown = 3.0f;
+    // A pedestal holds one item TYPE, up to this many. Deep enough that a belt
+    // can keep a pattern topped up, shallow enough to stay readable.
+    inline constexpr int   kPedestalCap = 16;
+
     // ---- Entities: the test creature. Tune freely. ----
     inline constexpr const char* kCreatureModel = "assets/models/creature.bbmodel";
     inline constexpr float kCreatureScale        = 1.0f;   // model is authored in blocks

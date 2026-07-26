@@ -5,6 +5,7 @@
 
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
+#include "game/AlchemyCircle.h"
 #include "game/Atlas.h"
 #include "game/MachineSystem.h"
 #include "game/SaveSystem.h"
@@ -68,6 +69,142 @@ namespace {
         L.tooltipY = L.invY + invH + 2.0f;
         L.footerY = L.py + L.panelH - footerH + 2.0f;
         return L;
+    }
+
+    // ---- Alchemy Circle panel -------------------------------------------
+    // The ring is drawn as a RING: the eight pedestal cells sit at their true
+    // compass bearings around the core's own catalyst cell, so what you see in
+    // the panel is the thing you built on the ground. Rotation-invariant
+    // matching is what makes that honest -- north on the panel is north in the
+    // world, and the pattern would still match if it weren't.
+    // The blueprint list is WINDOWED. `UiRenderer` has no scissor primitive, so
+    // a list that grows with the recipe table is how the hand-craft menu ended
+    // up taller than the window; here the panel height is fixed and the drawn
+    // rows scroll with the selection instead.
+    // Every fixed band of the circle panel, so the row window can be sized
+    // from what is actually left over instead of a guessed constant.
+    namespace circleMetrics {
+        inline constexpr float RowH    = 22.0f;
+        inline constexpr float HeaderH = 44.0f;
+        inline constexpr float RingH   = 196.0f;
+        inline constexpr float StatusH = 22.0f;
+        inline constexpr float BarH    = 20.0f;
+        inline constexpr float LabelH  = 20.0f;
+        inline constexpr float TooltipH = 18.0f;
+        inline constexpr float FooterH = 24.0f;
+        inline constexpr float Pad     = 10.0f;
+        inline constexpr int   MaxRows = 9;  // never taller than this
+        inline constexpr int   MinRows = 3;  // ...nor less usable than this
+
+        // Everything except the blueprint rows themselves.
+        inline float fixedHeight(int invRows) {
+            return HeaderH + RingH + StatusH + BarH + LabelH + PanelLayout::StripH +
+                   LabelH + static_cast<float>(invRows) *
+                       (PanelLayout::Cell + PanelLayout::Gap) +
+                   TooltipH + FooterH + Pad;
+        }
+    }
+
+    struct CircleRows {
+        int total = 0;   // blueprint rows + TAKE OUTPUTS
+        int visible = 0; // how many are drawn at once
+        int first = 0;   // index of the topmost drawn row
+    };
+
+    // How many rows fit in THIS window, given how tall the inventory grid is.
+    // The hand-craft menu overflows because its height grows with the recipe
+    // count; this panel instead scrolls, so it fits at any window size.
+    CircleRows circleRows(int total, int sel, int windowH, int invRows) {
+        const float avail = static_cast<float>(windowH) - 24.0f -
+                            circleMetrics::fixedHeight(invRows);
+        const int fits = static_cast<int>(avail / circleMetrics::RowH);
+        const int cap = std::clamp(fits, circleMetrics::MinRows, circleMetrics::MaxRows);
+        CircleRows r;
+        r.total = std::max(1, total);
+        r.visible = std::min(r.total, cap);
+        if (r.total > r.visible) {
+            r.first = std::max(0, std::min(sel - r.visible / 2, r.total - r.visible));
+        }
+        return r;
+    }
+
+    struct CircleLayout {
+        static constexpr float RowH = circleMetrics::RowH;
+        float px = 0, py = 0, panelW = 660.0f, panelH = 0;
+        float ringCx = 0, ringCy = 0;   // centre of the radial widget
+        float ringR = 80.0f;            // orbit radius of the eight cells
+        float statusY = 0;              // "WILL MAKE ..." line
+        float rowsY = 0;                // blueprint rows
+        int   rows = 0;
+        float barY = 0;
+        float outLabelY = 0, outY = 0;  // the core's output strip
+        float invLabelY = 0, invY = 0;
+        int   invRows = 0;
+        float tooltipY = 0, footerY = 0;
+    };
+
+    CircleLayout circleLayout(int w, int h, int nRows, int invCount) {
+        CircleLayout L;
+        L.rows = nRows;
+        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+        using namespace circleMetrics;
+        const float headerH = HeaderH, ringH = RingH, statusH = StatusH;
+        const float barH = BarH, stripH = PanelLayout::StripH, labelH = LabelH;
+        const float footerH = FooterH;
+        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
+        L.panelH = fixedHeight(L.invRows) + nRows * CircleLayout::RowH;
+        L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
+        L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
+        L.ringCx = L.px + L.panelW * 0.5f;
+        L.ringCy = L.py + headerH + ringH * 0.5f;
+        L.statusY = L.py + headerH + ringH;
+        L.rowsY = L.statusY + statusH;
+        L.barY = L.rowsY + nRows * CircleLayout::RowH + 2.0f;
+        L.outLabelY = L.barY + barH;
+        L.outY = L.outLabelY + labelH;
+        L.invLabelY = L.outY + stripH;
+        L.invY = L.invLabelY + labelH;
+        L.tooltipY = L.invY + invH + 2.0f;
+        L.footerY = L.py + L.panelH - footerH + 2.0f;
+        return L;
+    }
+
+    // Top-left corner of ring cell `slot` (0 = north, clockwise), and of the
+    // centre catalyst cell (slot == -1).
+    glm::vec2 circleCellPos(const CircleLayout& L, int slot) {
+        const float half = PanelLayout::Cell * 0.5f;
+        if (slot < 0) return {L.ringCx - half, L.ringCy - half};
+        const float a = glm::radians(-90.0f + 45.0f * static_cast<float>(slot));
+        return {L.ringCx + L.ringR * std::cos(a) - half,
+                L.ringCy + L.ringR * std::sin(a) - half};
+    }
+
+    // Which circle cell is under the cursor? -1 = the centre, -2 = none.
+    int circleHit(const CircleLayout& L, float mx, float my) {
+        for (int s = -1; s < AlchemyCircle::kRingSlots; ++s) {
+            const glm::vec2 p = circleCellPos(L, s);
+            if (mx >= p.x && mx < p.x + PanelLayout::Cell &&
+                my >= p.y && my < p.y + PanelLayout::Cell) {
+                return s;
+            }
+        }
+        return -2;
+    }
+
+    // A blueprint the player can actually lay right now: every ring slot and
+    // the catalyst are covered by what they carry. Listing only these keeps
+    // the panel short -- the hand menu's unscrolled overflow is a known trap.
+    bool canLay(const CircleRecipe& r, const Inventory& inv) {
+        Inventory need;
+        for (const ItemStack& s : r.ring) {
+            if (s.id != ItemId::None) need.add(s.id, s.count);
+        }
+        if (r.center.id != ItemId::None) need.add(r.center.id, r.center.count);
+        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            const ItemId id = static_cast<ItemId>(i);
+            if (need.count(id) > 0 && !inv.has(id, need.count(id))) return false;
+        }
+        return true;
     }
 
     // The item types present in an inventory, with counts, in enum order.
@@ -301,6 +438,9 @@ void VoxelGame::drawMachineUi() {
     if (mit == m_machines.end()) return;
     const Machine& mac = mit->second;
 
+    // A Rune Core gets the radial panel instead of the generic strip panel.
+    if (machineTraits(mac.type).kind == MachineKind::RuneCore) { drawCircleUi(); return; }
+
     const auto recipes = recipesForMachine(mac.type);
     const int rows = static_cast<int>(recipes.size()) + 2;
     const auto invItems = itemsOf(m_inventory);
@@ -337,6 +477,8 @@ void VoxelGame::drawMachineUi() {
             m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status, col);
             break;
         }
+        case MachineKind::Pedestal:
+            break; // a pedestal draws no power, so "NO POWER" would be a lie
         default: {
             const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
             m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
@@ -379,6 +521,12 @@ void VoxelGame::drawMachineUi() {
                           std::to_string(kMineRadius) + " )";
                     break;
                 }
+                case MachineKind::Pedestal:
+                    // Only reachable for an ORPHAN pedestal -- one with no Rune
+                    // Core behind it, so it is not part of any circle yet.
+                    label = "  A RING SLOT ( NEEDS A RUNE CORE 2 CELLS AWAY )";
+                    break;
+                case MachineKind::RuneCore: // dispatched to the circle panel
                 case MachineKind::Processor:
                     label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
                             "AUTO ( FIRST READY RECIPE )";
@@ -461,6 +609,20 @@ void VoxelGame::drawMachineUi() {
 void VoxelGame::openMachineUi(const glm::ivec3& pos) {
     m_machineUiOpen = true;
     m_machineUiPos = pos;
+    // Opening any PART of a circle opens the circle: a pedestal is a socket in
+    // a 5x5 multiblock, not a machine you tune on its own, and walking to the
+    // core just to look at the ring would be busywork. An orphan pedestal (no
+    // core behind it) still falls through to the plain machine panel.
+    if (m_world->getBlock(pos.x, pos.y, pos.z) == BlockId::Pedestal) {
+        for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
+            const glm::ivec3 core = pos - AlchemyCircle::kRingOffsets[static_cast<std::size_t>(s)];
+            if (m_world->getBlock(core.x, core.y, core.z) == BlockId::RuneCore &&
+                m_machines.count(core) > 0) {
+                m_machineUiPos = core;
+                break;
+            }
+        }
+    }
     m_machineUiSel = 0;
     window().setRelativeMouse(false); // release the cursor for hover/click
     audio().play("open", kUiVolume);
@@ -480,6 +642,14 @@ void VoxelGame::cancelDrag() {
     }
     if (m_drag.source == Drag::Source::PlayerInv) {
         m_inventory.add(m_drag.id, m_drag.count);
+    } else if (m_drag.source == Drag::Source::PedestalIn) {
+        const auto pit = m_machines.find(
+            AlchemyCircle::slotPos(m_machineUiPos, m_drag.slot));
+        if (pit != m_machines.end()) {
+            pit->second.input.add(m_drag.id, m_drag.count);
+        } else {
+            m_inventory.add(m_drag.id, m_drag.count); // pedestal vanished
+        }
     } else {
         const auto mit = m_machines.find(m_machineUiPos);
         if (mit != m_machines.end()) {
@@ -501,6 +671,8 @@ void VoxelGame::updateMachineUi() {
         return;
     }
     Machine& mac = mit->second;
+
+    if (machineTraits(mac.type).kind == MachineKind::RuneCore) { updateCircleUi(); return; }
 
     // Action rows: AUTO, one MAKE row per recipe, then TAKE OUTPUTS.
     const auto recipes = recipesForMachine(mac.type);
@@ -610,6 +782,394 @@ void VoxelGame::updateMachineUi() {
     }
 
     // E always closes; RMB closes only when it wasn't a pickup/drop.
+    if (input().wasKeyPressed(SDL_SCANCODE_E) || (rmb && !clickConsumed && !m_drag.active())) {
+        cancelDrag();
+        closeMachineUi();
+    }
+}
+
+// The blueprint rows the circle panel lists: every pattern the player can lay
+// from what they carry, in table order. Shared by update (activation) and draw.
+namespace {
+    std::vector<int> layableBlueprints(const Inventory& inv) {
+        std::vector<int> out;
+        const auto& all = circleRecipes();
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            if (canLay(all[i], inv)) out.push_back(static_cast<int>(i));
+        }
+        return out;
+    }
+}
+
+void VoxelGame::drawCircleUi() {
+    const auto mit = m_machines.find(m_machineUiPos);
+    if (mit == m_machines.end()) return;
+    const Machine& core = mit->second;
+
+    const auto blueprints = layableBlueprints(m_inventory);
+    const int total = static_cast<int>(blueprints.size()) + 1;
+    const auto invItems = itemsOf(m_inventory);
+    const auto outItems = itemsOf(core.output);
+    const int w = window().width(), h = window().height();
+    const int invRows = std::max(1, (static_cast<int>(invItems.size()) +
+                                     PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+    const CircleRows RW = circleRows(total, m_machineUiSel, h, invRows);
+    const CircleLayout L = circleLayout(w, h, RW.visible, static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    const AlchemyCircle::Tier tier =
+        AlchemyCircle::tierAt(*m_world, m_machines, m_machineUiPos);
+    const bool energized =
+        m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+    const auto ring = AlchemyCircle::ringContents(*m_world, m_machines, m_machineUiPos);
+    const AlchemyCircle::Match match =
+        AlchemyCircle::findMatch(ring, core.input, tier, energized, core.selectedRecipe);
+
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "ALCHEMY CIRCLE", 0.45f);
+
+    // Header: the tier is the pedestal count, so say so plainly.
+    const char* tierText = tier == AlchemyCircle::Tier::Greater ? "GREATER CIRCLE"
+                         : tier == AlchemyCircle::Tier::Lesser  ? "LESSER CIRCLE"
+                                                                : "INCOMPLETE";
+    const glm::vec4 tierColor = tier == AlchemyCircle::Tier::Greater
+                                    ? glm::vec4(0.75f, 0.65f, 1.0f, 1.0f)
+                                : tier == AlchemyCircle::Tier::Lesser
+                                    ? glm::vec4(0.65f, 0.85f, 0.95f, 1.0f)
+                                    : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f);
+    m_ui.text(L.px + L.panelW - 260, L.py + 15, 13.0f, tierText, tierColor);
+    m_ui.text(L.px + L.panelW - 110, L.py + 15, 13.0f,
+              energized ? "POWERED" : "UNPOWERED",
+              energized ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : kTextDim);
+
+    // The ring, drawn at true compass bearings. An empty pedestal is an open
+    // socket; a missing one is a dashed ghost, so what to build next is
+    // obvious from the panel alone.
+    for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
+        const glm::vec2 p = circleCellPos(L, s);
+        const bool present =
+            m_machines.count(AlchemyCircle::slotPos(m_machineUiPos, s)) > 0 &&
+            m_world->getBlock(AlchemyCircle::slotPos(m_machineUiPos, s).x,
+                              AlchemyCircle::slotPos(m_machineUiPos, s).y,
+                              AlchemyCircle::slotPos(m_machineUiPos, s).z) == BlockId::Pedestal;
+        if (!present) {
+            m_ui.rect(p.x, p.y, PanelLayout::Cell, PanelLayout::Cell,
+                      glm::vec4(0.14f, 0.12f, 0.16f, 0.75f));
+            m_ui.text(p.x + 14, p.y + 13, 13.0f, "+", kTextDim);
+            continue;
+        }
+        const ItemStack& held = ring[static_cast<std::size_t>(s)];
+        if (held.id == ItemId::None) {
+            m_ui.rect(p.x, p.y, PanelLayout::Cell, PanelLayout::Cell,
+                      glm::vec4(0.20f, 0.20f, 0.26f, 1.0f));
+        } else {
+            drawItemCell(m_ui, m_atlas, p.x, p.y, held.id, held.count);
+        }
+    }
+
+    // Centre: the catalyst socket.
+    const glm::vec2 cp = circleCellPos(L, -1);
+    const auto coreItems = itemsOf(core.input);
+    if (coreItems.empty()) {
+        m_ui.rect(cp.x, cp.y, PanelLayout::Cell, PanelLayout::Cell,
+                  glm::vec4(0.26f, 0.20f, 0.34f, 1.0f));
+    } else {
+        drawItemCell(m_ui, m_atlas, cp.x, cp.y, coreItems.front().first,
+                     coreItems.front().second);
+    }
+
+    // What the necklace currently spells.
+    std::string status;
+    glm::vec4 statusCol = kTextDim;
+    if (tier == AlchemyCircle::Tier::None) {
+        status = "NEEDS THE FOUR CARDINAL PEDESTALS ( RADIUS 2 )";
+        statusCol = glm::vec4(0.95f, 0.55f, 0.4f, 1.0f);
+    } else if (match) {
+        status = std::string("WILL MAKE ") + itemName(match.recipe->output.id) +
+                 "  ( " + std::to_string(static_cast<int>(
+                     AlchemyCircle::craftSeconds(*match.recipe, tier, energized))) + "S )";
+        statusCol = glm::vec4(0.55f, 0.95f, 0.6f, 1.0f);
+    } else {
+        status = "NO PATTERN -- LAY INGREDIENTS ON THE PEDESTALS";
+    }
+    m_ui.text(L.px + 16, L.statusY, 13.0f, status, statusCol);
+    if (RW.total > RW.visible) { // the list scrolls -- say where you are in it
+        const std::string pos = std::to_string(m_machineUiSel + 1) + "/" +
+                                std::to_string(RW.total);
+        m_ui.text(L.px + L.panelW - m_ui.textWidth(12.0f, pos) - 16, L.statusY, 12.0f,
+                  pos, kTextDim);
+    }
+
+    // Blueprint rows: only the window around the selection is drawn, and only
+    // patterns the pack can lay are listed at all.
+    for (int v = 0; v < RW.visible; ++v) {
+        const int i = RW.first + v;
+        if (i >= total) break;
+        const float ry = L.rowsY + v * CircleLayout::RowH;
+        const bool selected = (i == m_machineUiSel);
+        if (selected) m_ui.rect(L.px + 6, ry, L.panelW - 12, CircleLayout::RowH - 2, kRowSelBg);
+        std::string label;
+        bool dim = false;
+        if (i < static_cast<int>(blueprints.size())) {
+            const int idx = blueprints[static_cast<std::size_t>(i)];
+            const CircleRecipe& r = circleRecipes()[static_cast<std::size_t>(idx)];
+            const bool greater = r.ring.size() == AlchemyCircle::kRingSlots;
+            label = std::string(core.selectedRecipe == idx ? "> " : "  ") + "LAY " +
+                    itemName(r.output.id);
+            if (r.output.count > 1) label += " x" + std::to_string(r.output.count);
+            if (greater) label += "   ( GREATER )";
+            dim = greater && tier != AlchemyCircle::Tier::Greater;
+        } else {
+            label = "  TAKE OUTPUTS";
+            dim = outItems.empty();
+        }
+        m_ui.text(L.px + 16, ry + 4, 13.0f, label, rowColor(selected, dim));
+    }
+
+    // Progress + the core's output strip.
+    m_ui.rect(L.px + 16, L.barY, L.panelW - 32, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
+    if (core.crafting) {
+        const float frac = glm::clamp(
+            core.craftTime > 0 ? core.progress / core.craftTime : 0.0f, 0.0f, 1.0f);
+        m_ui.rect(L.px + 16, L.barY, (L.panelW - 32) * frac, 10,
+                  glm::vec4(0.65f, 0.45f, 0.95f, 0.95f));
+    }
+    m_ui.text(L.px + 16, L.outY + 16, 13.0f, "OUT:", glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
+    drawItemGrid(m_ui, m_atlas, L.px + 64.0f, L.outY + 6.0f, outItems, /*cols=*/99);
+
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
+
+    // Tooltip across all three regions (ring cells included).
+    ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
+    if (hovered == ItemId::None) {
+        hovered = hoveredItemIn(outItems, mx, my, L.px + 64.0f, L.outY + 6.0f, 99);
+    }
+    if (hovered == ItemId::None) {
+        const int c = circleHit(L, mx, my);
+        if (c >= 0) hovered = ring[static_cast<std::size_t>(c)].id;
+        else if (c == -1 && !coreItems.empty()) hovered = coreItems.front().first;
+    }
+    if (hovered != ItemId::None) {
+        m_ui.text(L.px + 16, L.tooltipY, 12.0f, itemName(hovered), kTextTooltip);
+    }
+
+    m_ui.text(L.px + 16, L.footerY, 12.0f,
+              "DRAG ONTO THE RING: LMB STACK / RMB ONE   ROWS: CLICK OR W/S + ENTER   ESC CLOSE",
+              kTextFooter);
+
+    if (m_drag.active()) {
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(m_drag.id), uv0, uv1);
+        const float s = 34.0f;
+        m_ui.icon(m_atlas, mx - s * 0.5f, my - s * 0.5f, s, s, uv0, uv1);
+        m_ui.text(mx + s * 0.35f, my + s * 0.2f, 12.0f, std::to_string(m_drag.count),
+                  glm::vec4(1.0f));
+    }
+
+    m_ui.end();
+}
+
+void VoxelGame::layBlueprint(int index) {
+    const auto mit = m_machines.find(m_machineUiPos);
+    if (mit == m_machines.end()) return;
+    Machine& core = mit->second;
+    const auto& all = circleRecipes();
+    if (index < 0 || index >= static_cast<int>(all.size())) return;
+    const CircleRecipe& r = all[static_cast<std::size_t>(index)];
+
+    // An 8-slot pattern needs the full ring; every pattern needs the cardinals.
+    const AlchemyCircle::Tier tier =
+        AlchemyCircle::tierAt(*m_world, m_machines, m_machineUiPos);
+    const bool bigEnough = r.ring.size() == 4 ? tier != AlchemyCircle::Tier::None
+                                              : tier == AlchemyCircle::Tier::Greater;
+    if (!bigEnough || !canLay(r, m_inventory)) {
+        audio().play("deny", kCraftVolume);
+        return;
+    }
+
+    // Sweep the ring (and the catalyst cell) back into the pack first, so
+    // re-laying over a half-built pattern is one click and never eats items.
+    for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
+        const auto pit = m_machines.find(AlchemyCircle::slotPos(m_machineUiPos, s));
+        if (pit == m_machines.end()) continue;
+        for (const auto& [id, cnt] : itemsOf(pit->second.input)) {
+            pit->second.input.remove(id, cnt);
+            m_inventory.add(id, cnt);
+        }
+    }
+    for (const auto& [id, cnt] : itemsOf(core.input)) {
+        core.input.remove(id, cnt);
+        m_inventory.add(id, cnt);
+    }
+
+    // Lay the pattern at rotation 0: a 4-slot pattern lands on the cardinals
+    // (the even ring slots), an 8-slot one on every slot.
+    const int stride = r.ring.size() == 4 ? 2 : 1;
+    for (std::size_t i = 0; i < r.ring.size(); ++i) {
+        const ItemStack& want = r.ring[i];
+        if (want.id == ItemId::None) continue;
+        const auto pit = m_machines.find(
+            AlchemyCircle::slotPos(m_machineUiPos, static_cast<int>(i) * stride));
+        if (pit == m_machines.end()) continue;
+        m_inventory.remove(want.id, want.count);
+        pit->second.input.add(want.id, want.count);
+    }
+    if (r.center.id != ItemId::None) {
+        m_inventory.remove(r.center.id, r.center.count);
+        core.input.add(r.center.id, r.center.count);
+    }
+    core.selectedRecipe = index; // the laid pattern is the intended one
+    core.progress = 0.0f;
+    audio().play("craft", kCraftVolume);
+    updateTitle();
+}
+
+void VoxelGame::updateCircleUi() {
+    const auto mit = m_machines.find(m_machineUiPos);
+    if (mit == m_machines.end()) { cancelDrag(); closeMachineUi(); return; }
+    Machine& core = mit->second;
+
+    const auto blueprints = layableBlueprints(m_inventory);
+    const int total = static_cast<int>(blueprints.size()) + 1; // + TAKE OUTPUTS
+    m_machineUiSel = std::clamp(m_machineUiSel, 0, total - 1);
+    const auto invItems = itemsOf(m_inventory);
+    const int invRows = std::max(1, (static_cast<int>(invItems.size()) +
+                                     PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+    const CircleRows RW = circleRows(total, m_machineUiSel, window().height(), invRows);
+    const CircleLayout L = circleLayout(window().width(), window().height(), RW.visible,
+                                        static_cast<int>(invItems.size()));
+    const float mx = input().mouseX(), my = input().mouseY();
+
+    // Nav walks the FULL list while only a window of it is drawn, so W/S at the
+    // window edge scrolls rather than wrapping inside the visible slice.
+    const int before = m_machineUiSel;
+    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
+        m_machineUiSel = (m_machineUiSel - 1 + total) % total;
+    }
+    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
+        m_machineUiSel = (m_machineUiSel + 1) % total;
+    }
+    const int wheel = input().wheelSteps();
+    if (wheel != 0) m_machineUiSel = ((m_machineUiSel - wheel) % total + total) % total;
+
+    int hoverRow = -1;
+    if (mx >= L.px && mx <= L.px + L.panelW && my >= L.rowsY &&
+        my < L.rowsY + RW.visible * CircleLayout::RowH) {
+        hoverRow = RW.first + static_cast<int>((my - L.rowsY) / CircleLayout::RowH);
+        if (hoverRow >= total) hoverRow = -1;
+    }
+    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && hoverRow >= 0) {
+        m_machineUiSel = hoverRow;
+    }
+    struct { bool enter, clickedRows; } nav{
+        input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
+            input().wasKeyPressed(SDL_SCANCODE_KP_ENTER),
+        input().wasMousePressed(SDL_BUTTON_LEFT) && hoverRow >= 0};
+    if (m_machineUiSel != before) audio().play("click", kUiVolume);
+
+    const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
+    const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
+    bool clickConsumed = false;
+
+    const int cell = circleHit(L, mx, my);
+    const auto outItems = itemsOf(core.output);
+
+    // --- Drag pickup: from the inventory grid, a pedestal, the catalyst cell,
+    // or the OUT strip. LMB takes the stack, RMB takes one. ---
+    if (!m_drag.active() && (lmb || rmb)) {
+        int ci;
+        if (cell >= 0) {
+            const auto pit = m_machines.find(AlchemyCircle::slotPos(m_machineUiPos, cell));
+            if (pit != m_machines.end()) {
+                const auto held = itemsOf(pit->second.input);
+                if (!held.empty()) {
+                    const auto [id, cnt] = held.front();
+                    const int take = lmb ? cnt : 1;
+                    pit->second.input.remove(id, take);
+                    m_drag = {Drag::Source::PedestalIn, id, take, cell};
+                    clickConsumed = true;
+                }
+            }
+        } else if (cell == -1) {
+            const auto held = itemsOf(core.input);
+            if (!held.empty()) {
+                const auto [id, cnt] = held.front();
+                const int take = lmb ? cnt : 1;
+                core.input.remove(id, take);
+                m_drag = {Drag::Source::MachineIn, id, take};
+                clickConsumed = true;
+            }
+        } else if ((ci = hitCell(mx, my, L.px + 16.0f, L.invY,
+                                 static_cast<int>(invItems.size()),
+                                 PanelLayout::InvCols)) >= 0) {
+            const auto [id, cnt] = invItems[ci];
+            const int take = lmb ? cnt : 1;
+            m_inventory.remove(id, take);
+            m_drag = {Drag::Source::PlayerInv, id, take};
+            clickConsumed = true;
+        } else if ((ci = hitCell(mx, my, L.px + 64.0f, L.outY + 6.0f,
+                                 static_cast<int>(outItems.size()), 99)) >= 0) {
+            const auto [id, cnt] = outItems[ci];
+            const int take = lmb ? cnt : 1;
+            core.output.remove(id, take);
+            m_drag = {Drag::Source::MachineOut, id, take};
+            clickConsumed = true;
+        }
+        if (clickConsumed) audio().play("click", kUiVolume);
+    }
+
+    // --- Drag drop. A pedestal is a one-item-TYPE holder, so a drop that
+    // would mix two items is refused and the payload goes home. ---
+    if (m_drag.active() && (input().wasMouseReleased(SDL_BUTTON_LEFT) ||
+                            input().wasMouseReleased(SDL_BUTTON_RIGHT))) {
+        const bool overInv = mx >= L.px && mx <= L.px + L.panelW && my >= L.invY &&
+                             my < L.invY + L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
+        bool placed = false;
+        if (cell >= 0) {
+            const auto pit = m_machines.find(AlchemyCircle::slotPos(m_machineUiPos, cell));
+            if (pit != m_machines.end()) {
+                Inventory& buf = pit->second.input;
+                const bool empty = itemsOf(buf).empty();
+                if ((empty || buf.count(m_drag.id) > 0) &&
+                    buf.count(m_drag.id) + m_drag.count <= kPedestalCap) {
+                    buf.add(m_drag.id, m_drag.count);
+                    m_drag = Drag{};
+                    placed = true;
+                    core.selectedRecipe = -1; // hand-laid: match whatever it spells
+                }
+            }
+        } else if (cell == -1 && MachineSystem::machineAccepts(core, m_drag.id)) {
+            core.input.add(m_drag.id, m_drag.count);
+            m_drag = Drag{};
+            placed = true;
+            core.selectedRecipe = -1;
+        } else if (overInv && m_drag.source != Drag::Source::PlayerInv) {
+            m_inventory.add(m_drag.id, m_drag.count);
+            m_drag = Drag{};
+            placed = true;
+        }
+        if (!placed) cancelDrag();
+        audio().play("click", kUiVolume);
+        updateTitle();
+        clickConsumed = true;
+    }
+
+    // --- Row activation: a blueprint row AUTO-ARRANGES its pattern onto the
+    // pedestals; the last row empties the core's output. ---
+    if (!m_drag.active() && (nav.enter || (nav.clickedRows && !clickConsumed))) {
+        if (m_machineUiSel < static_cast<int>(blueprints.size())) {
+            layBlueprint(blueprints[static_cast<std::size_t>(m_machineUiSel)]);
+        } else {
+            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                const int c = core.output.count(id);
+                if (c > 0) { core.output.remove(id, c); m_inventory.add(id, c); }
+            }
+            audio().play("click", kUiVolume);
+        }
+        updateTitle();
+    }
+
     if (input().wasKeyPressed(SDL_SCANCODE_E) || (rmb && !clickConsumed && !m_drag.active())) {
         cancelDrag();
         closeMachineUi();

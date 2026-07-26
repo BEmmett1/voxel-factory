@@ -457,12 +457,15 @@ see ROADMAP):
   progress bar draws over the target (`drawHud`). Progress resets when the aim
   leaves the cell or the button releases. A pure weapon (the Copper Sword)
   swings on press and never mines; anything else mines at its tool/hand speed.
-- **Tool gating** — `BlockInfo` gained `hardness` (seconds to break with the
-  correct tool), `tool` (`ToolType` class), and `requiresTool`. `ItemInfo`
-  gained `tool` + `miningSpeed`. `breakSeconds` divides hardness by the tool's
-  speed when it matches, else multiplies by `kHandBreakPenalty` (the wrong/no
-  tool is slower); `yieldsDrop` forfeits the drop entirely for a `requiresTool`
-  block broken without its class. Copper **Pickaxe** (stone/ore/crystal/
+- **Tool gating** — `BlockInfo` gained `hardness` (seconds to break BY HAND),
+  `tool` (`ToolType` class), and `toolTier`. `ItemInfo` gained `tool` +
+  `miningSpeed`. `breakSeconds` divides hardness by the tool's speed when the
+  class AND tier match, else returns the full by-hand time — so the wrong/no
+  tool is slower only in the sense that it forgoes the speed-up; there is no
+  extra multiplier (an earlier `kHandBreakPenalty` knob no longer exists, and
+  whether wrong-tool mining should cost extra time is an open tuning question).
+  `yieldsDrop` forfeits the drop entirely for a gated block (`toolTier > 0`)
+  broken without its class at that tier. Copper **Pickaxe** (stone/ore/crystal/
   essence/resonant/voidstone), **Axe** (logs), and **Shovel** (dirt/grass/sand,
   ungated — just faster) are hand-crafted from Copper Plate + Wood. Your own
   placed machines/sources stay retrievable by hand (soft, ungated). Both wood
@@ -488,7 +491,7 @@ see ROADMAP):
 - Overworld drops are saved (v16 append; older saves load with an empty list);
   the arena is transient so its drops are never written. Knobs live in the
   `// ---- Mining & tools ----` and `// ---- Drops ----` blocks of
-  VoxelGameInternal.h (`kHandBreakPenalty`, `kPickupRadius`, `kPickupVertical`,
+  VoxelGameInternal.h (`kPickupRadius`, `kPickupVertical`,
   `kDropRenderDist`, `kDeathDropPickupDelay`) plus DropSystem.cpp's own physics
   constants.
 
@@ -546,6 +549,52 @@ The shared parts tier (crafting depth — the Alchemy Circle's foundation):
 - Known-by-design: with five recipes, an AUTO Press fed mixed inputs makes
   whichever recipe it can first. Lock a MAKE row, or dedicate a Press per part —
   that division of labour is the intended logistics pressure.
+
+The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world):
+- **The multiblock** — `BlockId::RuneCore` + `BlockId::Pedestal`, two new
+  `MachineKind`s. The eight ring cells sit at radius 2 in the compass
+  directions (`AlchemyCircle::kRingOffsets`, clockwise from north; the four
+  CARDINALS are the EVEN indices) — a 5×5 footprint, roomy enough for belts to
+  reach the pedestals from outside. Pedestal count is the tier: the 4 cardinals
+  = **Lesser** (runs UNPOWERED, `kLesserCircleSlowdown`× slow), all 8 =
+  **Greater** (draws power, full speed, unlocks the 8-slot patterns).
+- **Geometry/matching is `AlchemyCircle`** (AlchemyCircle.h/.cpp): free
+  functions over `(World&, MachineMap&, corePos)` — the MachineSystem/WorldEdit
+  precedent. `tierAt` / `ringContents` / `findMatch` / `craftSeconds` /
+  `consume`. A ring cell counts only when it is a Pedestal BLOCK *and* has a
+  Machine entity (the two disagree for a frame mid-edit).
+- **Recipes are NECKLACES** (`CircleRecipe` in Recipes.h): a `ring` of 4 slots
+  (the cardinals) or 8 (Greater only), clockwise, plus an optional centre
+  catalyst held in the core's own buffer. `{None, 0}` means the slot must be
+  EMPTY — the strongest discriminator. Matching is **rotation-invariant**, so
+  where you start laying never matters while per-slot COUNT does: Conduit is two
+  plates on ONE pedestal, the Wrench is one plate on each of two OPPOSITE ones;
+  same for Copper Pickaxe (wood opposite) vs Axe (wood beside). Slots match on
+  "holds at least this many" so belts can top a pattern up — which means one
+  pattern can be a superset of another, so **table order matters** (the more
+  demanding variant first) exactly like the Press's five recipes.
+- **The tick** — `tickRuneCore` in MachineSystem runs BEFORE the power gate, so
+  a Lesser circle works on a dead network. Pedestals are passive holders
+  (`machineAccepts`: empty, or more of the same item, up to `kPedestalCap`), and
+  since they hold items in `input` (not `output`) belts feed them but can never
+  drain a laid pattern. Output lands in the core's `output`, so belts drain that.
+- **The panel** (`updateCircleUi`/`drawCircleUi`/`circleLayout`) draws the eight
+  pedestals at their true compass bearings around the catalyst socket; missing
+  pedestals draw as `+` ghosts. RMB on ANY part of the circle opens it —
+  `openMachineUi` walks the ring offsets backwards from a pedestal to find its
+  core. Blueprint rows list only patterns the pack can lay and `layBlueprint`
+  auto-arranges one (sweeping the ring back into the pack first, then locking
+  `selectedRecipe`); hand-dragging a slot resets it to −1 (match whatever it
+  spells). The row list is **windowed to the window height** (`circleRows`) —
+  the hand menu's overflow trap, avoided properly since `UiRenderer` has no
+  scissor primitive.
+- **The hand menu is now a survival tier**: 13 rows (tool ramp, Stone, Ingot,
+  Glass, Vial, Bucket, Scaffold + the circle's own two parts, which MUST stay
+  hand-craftable or the tree deadlocks). 26 recipes moved to the Circle.
+- Append-only blocks/items and generic machine save records mean **no save
+  version bump**. `--selftest` covers tier detection, arrangement disambiguation,
+  rotation invariance, the Greater power gate, `consume`, and the
+  registry-vs-world disagreement case.
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —

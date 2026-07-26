@@ -7,6 +7,7 @@
 #include "game/MachineSystem.h"
 
 #include "VoxelGameInternal.h"
+#include "game/AlchemyCircle.h"
 #include "game/Recipes.h"
 #include "game/World.h"
 
@@ -114,6 +115,36 @@ namespace {
         }
     }
 
+    // The Rune Core reads the ring of Pedestals around it and runs whichever
+    // CircleRecipe the necklace spells. A Lesser (4-pedestal) circle ignores
+    // power entirely and runs slowly -- that unpowered path is what lets a
+    // circle build your first Generator. Power only buys speed and the
+    // eight-slot patterns.
+    void tickRuneCore(World& world, MachineMap& machines, const glm::ivec3& pos,
+                      Machine& core, bool energized) {
+        const AlchemyCircle::Tier tier = AlchemyCircle::tierAt(world, machines, pos);
+        if (tier == AlchemyCircle::Tier::None) {
+            core.progress = 0.0f;
+            return;
+        }
+        const auto ring = AlchemyCircle::ringContents(world, machines, pos);
+        const AlchemyCircle::Match match =
+            AlchemyCircle::findMatch(ring, core.input, tier, energized, core.selectedRecipe);
+        if (!match) {
+            core.progress = 0.0f;
+            return;
+        }
+
+        core.crafting = true;
+        core.craftTime = AlchemyCircle::craftSeconds(*match.recipe, tier, energized);
+        core.progress += kTickSeconds;
+        if (core.progress >= core.craftTime) {
+            AlchemyCircle::consume(world, machines, pos, match, core.input);
+            core.output.add(match.recipe->output.id, match.recipe->output.count);
+            core.progress = 0.0f;
+        }
+    }
+
 } // namespace
 
 bool machineAccepts(const Machine& mac, ItemId item) {
@@ -123,6 +154,24 @@ bool machineAccepts(const Machine& mac, ItemId item) {
         case MachineKind::Collector: return false; // the environment fills it
         case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
                                      // raws are filters (not consumed)
+        case MachineKind::RuneCore: {
+            // The core's own buffer holds the CENTRE catalyst only; ring
+            // ingredients belong on the pedestals.
+            for (const CircleRecipe& r : circleRecipes()) {
+                if (r.center.id == item) return true;
+            }
+            return false;
+        }
+        case MachineKind::Pedestal: {
+            // A one-item-TYPE holder: it takes anything while empty, then only
+            // more of the same, up to the cap. Belts can therefore keep a
+            // pattern topped up but can never contaminate a laid slot.
+            if (mac.input.count(item) > 0) return mac.input.count(item) < kPedestalCap;
+            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+                if (mac.input.count(static_cast<ItemId>(i)) > 0) return false;
+            }
+            return true;
+        }
         case MachineKind::Processor: break;
     }
     const auto recipes = recipesForMachine(mac.type);
@@ -172,6 +221,16 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power) {
         if (traits.kind == MachineKind::Generator ||
             traits.kind == MachineKind::Collector) continue;
         m.crafting = false;
+
+        // The Rune Core runs BEFORE the power gate: a Lesser circle is
+        // deliberately allowed to work on a dead network (slowly), so the
+        // Circle can bootstrap the Generator that would power it.
+        if (traits.kind == MachineKind::RuneCore) {
+            tickRuneCore(world, machines, pos, m, power.energized(pos.x, pos.y, pos.z));
+            continue;
+        }
+        if (traits.kind == MachineKind::Pedestal) continue; // a passive holder
+
         if (traits.demand > 0 && !power.energized(pos.x, pos.y, pos.z)) continue;
 
         if (traits.kind == MachineKind::Miner) {

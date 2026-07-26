@@ -139,6 +139,12 @@ namespace {
         {.id = I::EtchedPlate, .name = "Etched Plate", .atlasTile = 115},
         // The Press machine (forms the parts tier + assembles the frame).
         {.id = I::PressItem, .name = "Press", .placeable = true, .placesBlock = B::Press},
+        // The Alchemy Circle multiblock (placeables borrow their block's side
+        // tile for the icon, so these need no atlasTile of their own).
+        {.id = I::RuneCoreItem, .name = "Rune Core", .placeable = true,
+         .placesBlock = B::RuneCore},
+        {.id = I::PedestalItem, .name = "Pedestal", .placeable = true,
+         .placesBlock = B::Pedestal},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

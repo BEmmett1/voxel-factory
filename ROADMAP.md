@@ -61,28 +61,33 @@ the pillar slips to post-launch.
   tiers), multi-item / powered belts, machine output auto-eject, and richer
   logistics (splitters/filters, buffered storage, maybe fluids). Each tier
   should add a gating dependency so the tech tree deepens rather than widens.
-- **Crafting overhaul — the Alchemy Circle (user vision):** hand-crafting is a
-  flat ~40-row menu that is instant, free, and needs no world state — it
-  undercuts the factory it is supposed to bootstrap. Move it into the world.
-  The E menu shrinks to a survival tier (sticks/pebbles, the wood → stone tool
-  ramp, Bucket, Scaffold, and the circle's own parts); everything else moves
-  onto the **Alchemy Circle**, a multiblock: a **Rune Core** with **Pedestal**
-  blocks on the eight ring cells at radius 2 — a 5×5 footprint, deliberately
-  roomy so belts can reach the pedestals from outside and the thing occupies
-  real factory floor. A recipe is a *ring pattern with
-  per-slot counts* plus a center catalyst, matched rotation-invariantly — an
-  eight-slot necklace, not a Minecraft 3×3 bitmap, so quantities carry meaning
-  and orientation never punishes you. RMB the core opens a radial panel drawing
-  the eight pedestals in their true world positions; drag from the inventory
-  grid into ring cells with the existing dupe-safe `m_drag` machinery, or
-  activate a known-blueprint row to auto-arrange (the machine panel's MAKE-row
-  idiom). The 4-pedestal **Lesser Circle** runs UNPOWERED and slow, so the
-  Generator keeps a bootstrap path; the 8-pedestal **Greater Circle** draws
-  power, runs faster, and unlocks the eight-slot patterns — pedestal count is
-  the tier. Pedestals are `Machine` entities with a one-item buffer, so belts
-  feed them and the whole circle AUTOMATES: gearing up stays an automation
-  problem. New `MachineKind`s + enum-tail blocks/items ride the existing
-  machine save records, so **no save-format break**.
+- [x] **Crafting overhaul — the Alchemy Circle** (July 2026, user vision): the
+  flat ~40-row hand menu that was instant, free, and needed no world state is
+  gone. The E menu is now a **13-row survival tier** (sticks/pebbles, the wood →
+  stone tool ramp, Stone, Copper Ingot, Glass, Vial, Bucket, Scaffold, and the
+  circle's own two parts); the other **26 recipes moved onto the Alchemy
+  Circle**, a multiblock of a **Rune Core** with **Pedestal**s on the eight ring
+  cells at radius 2 (a 5×5 footprint, roomy enough that belts reach the
+  pedestals from outside). A recipe is a *ring pattern with per-slot counts*
+  plus a centre catalyst, matched **rotation-invariantly** — an eight-slot
+  necklace, not a 3×3 bitmap — so quantities carry meaning and orientation never
+  punishes you. It earns its keep immediately: Conduit and the Wrench cost the
+  same two plates and are told apart by arrangement alone (both on one pedestal
+  vs. one on each of two opposite ones), as do the Copper Pickaxe and Axe.
+  RMB any part of the circle (pedestal included) opens a radial panel drawing
+  the eight pedestals at their true compass bearings; drag from the inventory
+  grid into ring cells with the dupe-safe `m_drag` machinery, or activate a
+  blueprint row to auto-arrange. The 4-cardinal **Lesser Circle** runs
+  UNPOWERED at `kLesserCircleSlowdown` speed — that is the bootstrap path, since
+  it can build your first Generator — and the 8-pedestal **Greater Circle**
+  draws power, runs at full speed, and unlocks the eight-slot patterns (the boss
+  keys). Pedestals are `Machine` entities with a one-item-TYPE buffer, so belts
+  feed them and the whole circle AUTOMATES. Two new `MachineKind`s + enum-tail
+  blocks/items ride the existing machine save records: **no save-format break**.
+  The panel's blueprint list is filtered to what the pack can lay AND windowed
+  to the window height, so unlike the hand menu it cannot outgrow the screen.
+  Matching/tier/consume are covered by the headless `--selftest`.
+  Costs and the necklace arrangements want a play-tuning pass.
 - [x] **Deeper machine chains** (July 2026): the shared parts tier landed. A new
   **Press** (`MachineKind::Processor`, hand-crafted from Ingot ×2 + Plate ×2 +
   Stone ×4) forms Copper Rod (Ingot → Rod ×2), Gear (Rod ×2), Machine Casing
@@ -233,10 +238,11 @@ Kept here so they don't get lost — none are architectural dead-ends:
   feedback when a save/load fails, and no telemetry
 - Logging to a rotating file + crash dumps landed July 2026; no telemetry
 - World hard-capped at 6×6 chunks, held fully in memory and saved wholesale
-- The hand-craft menu is one unscrolled list whose panel height grows with the
-  recipe count (`craftLayout`), so it already overflows short windows —
-  `UiRenderer` has no scissor/clipping primitive. The Alchemy Circle above
-  removes most rows; a scrolling list would otherwise be needed first
+- `UiRenderer` still has no scissor/clipping primitive. The hand-craft menu's
+  `craftLayout` panel height still grows with the recipe count, but the Alchemy
+  Circle cut it to 13 rows so it no longer overflows; the circle panel avoids
+  the trap properly, by windowing its row list to the window height
+  (`circleRows`). Any future long list should copy the circle, not the menu
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)

@@ -38,6 +38,8 @@ enum class MachineKind : std::uint8_t {
     Generator, // burns fuel into network power; progress = burn seconds left
     Collector, // fills its output from the environment; runs unpowered
     Miner,     // harvests nearby resource nodes, gated on network power
+    RuneCore,  // reads the ring of Pedestals around it and runs CircleRecipes
+    Pedestal,  // passive one-item-type holder; a ring slot for the Rune Core
 };
 
 // Static per-machine-type properties: one registry row per machine block,
@@ -73,6 +75,13 @@ inline constexpr MachineTraits kMachineTraits[] = {
     {.block = BlockId::Composter}, // Processor: composts plant matter into Dirt
     {.block = BlockId::Forge},     // Processor: forges weapons/armor
     {.block = BlockId::Press},     // Processor: forms the shared parts tier
+    // The Alchemy Circle. The Core is a normal power node: a Lesser (4-pedestal)
+    // circle runs unpowered because its TICK ignores power, not because it is
+    // off-network, so an isolated circle bootstraps you a Generator. Pedestals
+    // draw nothing and so are not power nodes at all -- the ring never conducts,
+    // which keeps a 5x5 footprint from silently bridging two networks.
+    {.block = BlockId::RuneCore, .kind = MachineKind::RuneCore, .demand = 8},
+    {.block = BlockId::Pedestal, .kind = MachineKind::Pedestal, .demand = 0},
 };
 
 static_assert([] {

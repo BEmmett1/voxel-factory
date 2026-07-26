@@ -122,6 +122,8 @@ LEAVES = (46, 128, 41)
 COMPOST = (92, 64, 36)   # composter housing
 FORGE = (77, 56, 61)     # forge housing (dark metal)
 PRESS = (107, 112, 133)  # press housing (blued steel)
+RUNESTONE = (74, 62, 99)  # rune core (dark carved stone)
+PEDESTAL = (146, 141, 158)  # pedestal (pale dressed stone)
 
 HERB = (51, 140, 56)
 CRYSTAL = (140, 115, 217)
@@ -502,6 +504,42 @@ def machines():
     t.hline(13, 3, 12, shade(PRESS, 0.5))            # bed
     t.px(7, 11, shade(COPPER, 1.2))                  # a bright worked edge
     t.px(8, 11, shade(COPPER, 1.2))
+
+    t = paint(41)                                    # rune core top: lit sigil
+    plate(t, RUNESTONE)
+    t.ring(8, 8, 6, shade(RUNESTONE, 0.55))          # the graven circle
+    t.ring(8, 8, 3, shade(CRYSTAL, 1.35))            # inner ring, glowing
+    for dx, dy in ((0, -6), (6, 0), (0, 6), (-6, 0)):  # the four cardinal marks
+        t.px(8 + dx, 8 + dy, shade(CRYSTAL, 1.5))
+    t.hline(8, 6, 9, shade(CRYSTAL, 1.2))
+    t.vline(8, 6, 9, shade(CRYSTAL, 1.2))
+    t.px(8, 8, (255, 240, 255))                      # the spark in the middle
+
+    t = paint(42)                                    # rune core side: carved column
+    plate(t, RUNESTONE)
+    t.rect(2, 2, 13, 13, shade(RUNESTONE, 0.92))
+    t.hline(2, 2, 13, shade(RUNESTONE, 1.3))         # lit top edge
+    t.hline(13, 2, 13, shade(RUNESTONE, 0.55))
+    for y in (5, 8, 11):                             # stacked glyph bands
+        t.hline(y, 4, 11, shade(CRYSTAL, 1.15))
+        t.px(4, y, shade(CRYSTAL, 1.45))
+        t.px(11, y, shade(CRYSTAL, 1.45))
+
+    t = paint(43)                                    # pedestal top: the open socket
+    plate(t, PEDESTAL)
+    t.rect(3, 3, 12, 12, shade(PEDESTAL, 1.15))      # the tray
+    t.rect(5, 5, 10, 10, shade(PEDESTAL, 0.45))      # recessed dish
+    t.rect(6, 6, 9, 9, shade(PEDESTAL, 0.3))
+    t.hline(3, 3, 12, shade(PEDESTAL, 1.45))
+
+    t = paint(44)                                    # pedestal side: tapered stand
+    plate(t, PEDESTAL)
+    t.rect(2, 1, 13, 3, shade(PEDESTAL, 1.3))        # wide lip
+    t.rect(5, 4, 10, 11, shade(PEDESTAL, 0.95))      # narrow shaft
+    t.vline(5, 4, 11, shade(PEDESTAL, 1.25))
+    t.vline(10, 4, 11, shade(PEDESTAL, 0.6))
+    t.rect(3, 12, 12, 14, shade(PEDESTAL, 1.1))      # foot
+    t.hline(14, 3, 12, shade(PEDESTAL, 0.5))
 
 
 def nodes_and_sources():

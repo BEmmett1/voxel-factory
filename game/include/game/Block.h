@@ -68,6 +68,11 @@ enum class BlockId : std::uint8_t {
     // etched plates) and assembles them into the Machine Frame every other
     // machine is built from.
     Press,
+    // The Alchemy Circle multiblock: a Rune Core reading the Pedestals on the
+    // eight ring cells at radius 2. Crafting that used to be a free menu click
+    // now occupies factory floor and can be belt-fed. See AlchemyCircle.h.
+    RuneCore,
+    Pedestal,
     Count
 };
 

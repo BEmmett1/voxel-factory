@@ -122,6 +122,11 @@ enum class ItemId : std::uint8_t {
     MachineCasing,
     EtchedPlate,
     PressItem,
+    // The Alchemy Circle's own two parts. These stay hand-craftable on
+    // purpose: the Circle is what most hand recipes moved ONTO, so it must be
+    // reachable from the survival tier or the tech tree deadlocks.
+    RuneCoreItem,
+    PedestalItem,
     Count
 };
 

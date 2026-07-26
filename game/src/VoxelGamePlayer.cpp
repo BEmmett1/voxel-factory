@@ -115,6 +115,10 @@ void VoxelGame::onUpdate(float dt) {
     // All assigned onto the hotbar so they are usable at once (the default
     // hotbar is full; the last slots are sacrificed).
     if (input().wasKeyPressed(SDL_SCANCODE_F6)) {
+        // The kit wants more items than there are hotbar slots, so the
+        // fallback index is CLAMPED: an out-of-range slot would otherwise be
+        // an out-of-bounds write the moment the kit grew past kHotbarSlots.
+        // Items that miss out still land in the pack, assignable via Tab.
         auto give = [&](ItemId id, int count, int fallbackSlot) {
             m_inventory.add(id, count);
             for (ItemId s : m_hotbar) {
@@ -123,10 +127,15 @@ void VoxelGame::onUpdate(float dt) {
             for (ItemId& s : m_hotbar) {
                 if (s == ItemId::None) { s = id; return; }
             }
-            m_hotbar[fallbackSlot] = id;
+            if (fallbackSlot >= 0 && fallbackSlot < kHotbarSlots) {
+                m_hotbar[static_cast<std::size_t>(fallbackSlot)] = id;
+            }
         };
-        give(ItemId::CrystalSourceItem, 4, kHotbarSlots - 6);
-        give(ItemId::EssenceSourceItem, 4, kHotbarSlots - 5);
+        // The fusion source blocks stay in the pack only -- the Alchemy Circle
+        // parts below want those two slots more, and fusion is a two-click
+        // test you can set up from the Tab overlay.
+        m_inventory.add(ItemId::CrystalSourceItem, 4);
+        m_inventory.add(ItemId::EssenceSourceItem, 4);
         give(ItemId::TeleportKey, 1, kHotbarSlots - 4);
         give(ItemId::StormKey, 1, kHotbarSlots - 3);
         give(ItemId::CopperSword, 1, kHotbarSlots - 2);
@@ -149,12 +158,24 @@ void VoxelGame::onUpdate(float dt) {
         // plate, all three -> frame) is testable from any link without
         // grinding the whole ladder first.
         give(ItemId::PressItem, 1, kHotbarSlots - 10);
+        // The Alchemy Circle: a core plus the full eight pedestals, so both
+        // tiers (4 cardinals = Lesser, all 8 = Greater) are testable at once.
+        give(ItemId::RuneCoreItem, 1, kHotbarSlots - 6);
+        give(ItemId::PedestalItem, 8, kHotbarSlots - 5);
         m_inventory.add(ItemId::CopperIngot, 16);
         m_inventory.add(ItemId::CrystalDust, 12);
         m_inventory.add(ItemId::CopperRod, 8);
         m_inventory.add(ItemId::Gear, 4);
         m_inventory.add(ItemId::MachineCasing, 2);
         m_inventory.add(ItemId::EtchedPlate, 2);
+        // Raw stock so the Circle's blueprint rows actually light up -- the
+        // panel only lists patterns the pack can lay.
+        m_inventory.add(ItemId::Wood, 32);
+        m_inventory.add(ItemId::Stone, 32);
+        m_inventory.add(ItemId::Stick, 16);
+        m_inventory.add(ItemId::Crystal, 12);
+        m_inventory.add(ItemId::Glass, 12);
+        m_inventory.add(ItemId::Essence, 12);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }

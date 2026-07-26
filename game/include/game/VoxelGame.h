@@ -92,6 +92,16 @@ private:
     void closeMachineUi();
     void updateMachineUi();      // keyboard + mouse interaction with the panel
     void drawMachineUi();
+    // The Alchemy Circle's own panel: the eight pedestals drawn in their true
+    // compass positions around the core, plus auto-arranging blueprint rows.
+    // Reached through the machine panel's open/close plumbing (a Rune Core
+    // dispatches here) so Esc, the cursor grab, and the drag all behave.
+    void updateCircleUi();
+    void drawCircleUi();
+    // Auto-arrange: sweep the ring back into the pack, then lay circleRecipes()
+    // [index] onto the pedestals (and its catalyst into the core) and lock the
+    // core to it. The panel's answer to "I know the recipe, just set it up".
+    void layBlueprint(int index);
     void openInventoryUi();      // Tab: full inventory + hotbar assignment
     void closeInventoryUi();
     void updateInventoryUi();    // drag items onto hotbar / armor slots
@@ -262,10 +272,13 @@ private:
     // its source at pickup and returned there on cancel/close (or to the
     // player if the source machine vanished), so items can't duplicate.
     struct Drag {
-        enum class Source { None, PlayerInv, MachineIn, MachineOut };
+        enum class Source { None, PlayerInv, MachineIn, MachineOut, PedestalIn };
         Source source = Source::None;
         ItemId id     = ItemId::None;
         int    count  = 0;
+        // PedestalIn only: which ring slot (0..7) of the open Rune Core the
+        // payload came from, so a cancel puts it back on the right pedestal.
+        int    slot   = -1;
         bool active() const { return source != Source::None && count > 0; }
     };
     Drag m_drag;

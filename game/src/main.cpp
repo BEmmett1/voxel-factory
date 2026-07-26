@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 
 #include "game/VoxelGame.h"
+#include "game/AlchemyCircle.h"
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
 #include "game/World.h"
@@ -294,6 +295,92 @@ int runSelfTest() {
 
     fs::remove(cfg, ec);
     fs::remove(cfg + ".bak", ec);
+
+    // ---- The Alchemy Circle (headless: no window, no GL) ----------------
+    // Worth testing here rather than by hand: the necklace matcher is the one
+    // piece of this game whose bugs are silent (a pattern quietly matching the
+    // wrong recipe), and building a 5x5 multiblock in-game to check it is slow.
+    {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        const glm::ivec3 core{40, 20, 40};
+        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
+        cm[core].type = BlockId::RuneCore;
+
+        // No pedestals yet: an inert core.
+        SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) == AlchemyCircle::Tier::None);
+
+        auto placePedestal = [&](int slot) {
+            const glm::ivec3 p = AlchemyCircle::slotPos(core, slot);
+            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
+            cm[p].type = BlockId::Pedestal;
+        };
+        auto layOn = [&](int slot, ItemId id, int n) {
+            cm[AlchemyCircle::slotPos(core, slot)].input.add(id, n);
+        };
+
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; sl += 2) placePedestal(sl);
+        SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) == AlchemyCircle::Tier::Lesser);
+
+        // Conduit is "two plates on ONE pedestal"; the Wrench is "one plate on
+        // each of two OPPOSITE pedestals". Same ingredients, told apart by
+        // arrangement alone -- the whole reason the ring is a necklace.
+        Inventory noCatalyst;
+        layOn(0, ItemId::CopperPlate, 2);
+        auto ring = AlchemyCircle::ringContents(cw, cm, core);
+        auto m = AlchemyCircle::findMatch(ring, noCatalyst, AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(m && m.recipe->output.id == ItemId::Conduit);
+
+        cm[AlchemyCircle::slotPos(core, 0)].input.remove(ItemId::CopperPlate, 1);
+        layOn(4, ItemId::CopperPlate, 1); // now 1 north + 1 south
+        ring = AlchemyCircle::ringContents(cw, cm, core);
+        m = AlchemyCircle::findMatch(ring, noCatalyst, AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(m && m.recipe->output.id == ItemId::Wrench);
+
+        // Rotation invariance: the same necklace laid starting at EAST must
+        // match the same recipe, or orientation would punish the builder.
+        cm[AlchemyCircle::slotPos(core, 0)].input.remove(ItemId::CopperPlate, 1);
+        cm[AlchemyCircle::slotPos(core, 4)].input.remove(ItemId::CopperPlate, 1);
+        layOn(2, ItemId::CopperPlate, 1);
+        layOn(6, ItemId::CopperPlate, 1);
+        ring = AlchemyCircle::ringContents(cw, cm, core);
+        m = AlchemyCircle::findMatch(ring, noCatalyst, AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(m && m.recipe->output.id == ItemId::Wrench);
+
+        // A Lesser circle must NOT reach an eight-slot pattern, and the same
+        // pattern must run once the full ring exists AND it is powered.
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
+        }
+        Inventory catalyst;
+        catalyst.add(ItemId::VoidCatalyst, 1);
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            if (sl % 2 == 0) placePedestal(sl);
+            layOn(sl, sl % 2 == 0 ? ItemId::Crystal : ItemId::SpringWater, 1);
+        }
+        for (int sl = 1; sl < AlchemyCircle::kRingSlots; sl += 2) placePedestal(sl);
+        SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) == AlchemyCircle::Tier::Greater);
+        ring = AlchemyCircle::ringContents(cw, cm, core);
+        SELFTEST_CHECK(!AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Lesser, true));
+        SELFTEST_CHECK(!AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Greater, false));
+        m = AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Greater, true);
+        SELFTEST_CHECK(m && m.recipe->output.id == ItemId::StormKey);
+
+        // Consuming a match empties exactly the pattern, catalyst included.
+        AlchemyCircle::consume(cw, cm, core, m, catalyst);
+        SELFTEST_CHECK(catalyst.count(ItemId::VoidCatalyst) == 0);
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            SELFTEST_CHECK(cm[AlchemyCircle::slotPos(core, sl)].input.count(ItemId::Crystal) == 0);
+            SELFTEST_CHECK(cm[AlchemyCircle::slotPos(core, sl)].input.count(ItemId::SpringWater) == 0);
+        }
+
+        // A pedestal that is a Machine but no longer a Pedestal BLOCK must not
+        // contribute -- registry and world can disagree for a frame mid-edit.
+        const glm::ivec3 north = AlchemyCircle::slotPos(core, 0);
+        cw.setBlock(north.x, north.y, north.z, BlockId::Air);
+        SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
+    }
+
     std::printf("selftest OK\n");
     return 0;
 }

@@ -119,6 +119,16 @@ namespace {
         // tiles (39 top, 40 side).
         {.id = B::Press, .name = "Press", .color = {0.42f, 0.44f, 0.52f},
          .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f},
+        // The Alchemy Circle. Both halves are machines so they get a Machine
+        // entity (buffers + progress) and ride the existing save records; the
+        // Core glows faintly so a built circle reads as alive at night. Uses
+        // spare machine atlas tiles (41/42 core, 43/44 pedestal).
+        {.id = B::RuneCore, .name = "Rune Core", .color = {0.34f, 0.28f, 0.46f},
+         .emissive = 0.25f, .machine = true, .drop = {I::RuneCoreItem, 1},
+         .tiles = {41, 42, 42}, .hardness = 0.5f},
+        {.id = B::Pedestal, .name = "Pedestal", .color = {0.58f, 0.56f, 0.62f},
+         .machine = true, .drop = {I::PedestalItem, 1}, .tiles = {43, 44, 44},
+         .hardness = 0.5f},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),
