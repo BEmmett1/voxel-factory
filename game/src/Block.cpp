@@ -38,8 +38,14 @@ namespace {
          .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f},
         {.id = B::Grinder, .name = "Grinder", .color = {0.45f, 0.45f, 0.48f},
          .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f},
-        {.id = B::Cauldron, .name = "Cauldron", .color = {0.18f, 0.18f, 0.22f},
-         .machine = true, .drop = {I::CauldronItem, 1}, .tiles = {23, 24, 24}, .hardness = 0.5f},
+        // The first shaped block: a real 3D model rather than a painted cube,
+        // so it no longer fills its cell (does not occlude, does not keep rain
+        // out) and you collide with the basin and legs instead of the whole
+        // block. Its tiles stay for the item icon and the fallback atlas.
+        {.id = B::Cauldron, .name = "Cauldron", .fullCube = false,
+         .color = {0.18f, 0.18f, 0.22f},
+         .machine = true, .drop = {I::CauldronItem, 1}, .tiles = {23, 24, 24},
+         .hardness = 0.5f, .shape = ShapeId::BrewingCauldron},
         {.id = B::Infuser, .name = "Infuser", .color = {0.40f, 0.62f, 0.60f},
          .machine = true, .drop = {I::InfuserItem, 1}, .tiles = {25, 26, 26}, .hardness = 0.5f},
         {.id = B::Alembic, .name = "Alembic", .color = {0.72f, 0.58f, 0.28f},

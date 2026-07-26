@@ -272,6 +272,24 @@ def load_model(path):
     if not model.quads:
         raise ValueError(f"{name}: nothing to bake")
 
+    # Geometry must stay inside its own cell. The engine's collision and ray
+    # queries iterate the cells an AABB overlaps and test only THAT cell's
+    # boxes (see Collision.h), so a box hanging into a neighbour would render
+    # correctly and then be silently missed by physics -- the worst kind of
+    # bug to chase. Minecraft allows from/to outside 0..16, so this is a real
+    # thing a model can do, not a theoretical one.
+    outside = [(lo, hi) for lo, hi in model.boxes
+               if any(lo[i] < -1e-6 or hi[i] > 1.0 + 1e-6 for i in range(3))]
+    if outside:
+        lo, hi = outside[0]
+        raise ValueError(
+            f"{name}: {len(outside)} box(es) reach outside the 0..16 cell, "
+            f"e.g. {tuple(round(v * MODEL_UNITS, 2) for v in lo)}..."
+            f"{tuple(round(v * MODEL_UNITS, 2) for v in hi)}\n"
+            "    Collision only tests a cell's own boxes, so overhanging\n"
+            "    geometry would draw but not collide. Keep the model inside\n"
+            "    the cell, or make it a multiblock.")
+
     model.raw_quads = len(model.quads)
 
     # Crop to the used UV region, in texture pixels, snapped outward.

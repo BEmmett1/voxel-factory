@@ -73,7 +73,21 @@ namespace Collision {
                 for (int x = x0; x <= x1; ++x) {
                     const glm::vec3 cell(static_cast<float>(x), static_cast<float>(y),
                                          static_cast<float>(z));
-                    for (const ShapeAabb& b : blockBoxes(world.getBlock(x, y, z))) {
+                    const BlockShape& shape = blockShape(world.getBlock(x, y, z));
+                    // Broad phase, but only where it can pay: a detailed model
+                    // is dozens of boxes, and most cells the player's box
+                    // touches miss all of them. A full cube's single box IS
+                    // its bounds, so testing both there would be pure cost.
+                    if (shape.boxes.size() > 1) {
+                        const glm::vec3 slo = cell + shape.bounds.lo;
+                        const glm::vec3 shi = cell + shape.bounds.hi;
+                        if (!(lo.x < shi.x && hi.x > slo.x &&
+                              lo.y < shi.y && hi.y > slo.y &&
+                              lo.z < shi.z && hi.z > slo.z)) {
+                            continue;
+                        }
+                    }
+                    for (const ShapeAabb& b : shape.boxes) {
                         const glm::vec3 blo = cell + b.lo;
                         const glm::vec3 bhi = cell + b.hi;
                         // Strict: touching a surface is not overlapping it, so
