@@ -6,6 +6,7 @@
 // namespace instead. Not part of the public game headers.
 
 #include "game/Block.h"
+#include "game/Collision.h"
 #include "game/Item.h"
 #include "game/Machine.h"
 #include "game/Recipes.h"
@@ -271,23 +272,14 @@ namespace vg {
     }
 
     // Does an AABB (feet at `feet`, half width halfW, height h) overlap any
-    // solid block? Shared by player and entity move-and-slide.
+    // block geometry? Shared by player and entity move-and-slide. The cell
+    // walk lives in Collision now, so this tests a belt's actual slab rather
+    // than the whole cell it sits in.
     inline bool boxCollides(const World& w, const glm::vec3& feet, float halfW,
                             float height) {
-        const int x0 = static_cast<int>(std::floor(feet.x - halfW));
-        const int x1 = static_cast<int>(std::floor(feet.x + halfW));
-        const int y0 = static_cast<int>(std::floor(feet.y));
-        const int y1 = static_cast<int>(std::floor(feet.y + height));
-        const int z0 = static_cast<int>(std::floor(feet.z - halfW));
-        const int z1 = static_cast<int>(std::floor(feet.z + halfW));
-        for (int y = y0; y <= y1; ++y) {
-            for (int z = z0; z <= z1; ++z) {
-                for (int x = x0; x <= x1; ++x) {
-                    if (isSolid(w.getBlock(x, y, z))) return true;
-                }
-            }
-        }
-        return false;
+        return Collision::boxOverlapsWorld(
+            w, {feet.x - halfW, feet.y, feet.z - halfW},
+            {feet.x + halfW, feet.y + height, feet.z + halfW});
     }
 
     // Milliseconds between two SDL performance-counter readings.

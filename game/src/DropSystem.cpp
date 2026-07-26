@@ -1,5 +1,7 @@
 #include "game/DropSystem.h"
 
+#include "game/Collision.h"
+
 #include "game/World.h"
 #include "game/Block.h"
 
@@ -21,9 +23,12 @@ namespace {
         return d.x * d.x + d.y * d.y + d.z * d.z;
     }
 
-    bool solidAt(const World& world, float x, int y, float z) {
-        return isSolid(world.getBlock(static_cast<int>(std::floor(x)), y,
-                                      static_cast<int>(std::floor(z))));
+    // The surface a drop would rest on in this cell, or -infinity if the cell
+    // holds nothing. Shape-aware: an item landing on a slab sits on the slab,
+    // not on the cell boundary above it.
+    float surfaceAt(const World& world, float x, int y, float z) {
+        return Collision::surfaceTopAt(world, static_cast<int>(std::floor(x)), y,
+                                       static_cast<int>(std::floor(z)));
     }
 
     // Coalesce settled same-item, same-dimension drops that came to rest near
@@ -94,7 +99,7 @@ void tick(std::vector<DroppedItem>& drops, const World& world, float dt,
             // A resting drop costs only this support re-check: if the block
             // beneath it was mined away, wake it up so it falls this tick.
             const int supY = static_cast<int>(std::floor(d.pos.y - kDropHalf - 0.05f));
-            if (solidAt(world, d.pos.x, supY, d.pos.z)) continue;
+            if (std::isfinite(surfaceAt(world, d.pos.x, supY, d.pos.z))) continue;
             d.settled = false;
         }
 
@@ -102,9 +107,10 @@ void tick(std::vector<DroppedItem>& drops, const World& world, float dt,
         const glm::vec3 np = d.pos + d.vel * dt;
 
         const int belowY = static_cast<int>(std::floor(np.y - kDropHalf));
-        if (solidAt(world, np.x, belowY, np.z)) {
+        const float surface = surfaceAt(world, np.x, belowY, np.z);
+        if (std::isfinite(surface)) {
             // Rest on top of that block's surface.
-            d.pos = {np.x, static_cast<float>(belowY + 1) + kDropHalf, np.z};
+            d.pos = {np.x, surface + kDropHalf, np.z};
             d.vel = glm::vec3(0.0f);
             d.settled = true;
         } else if (np.y < kDropFreezeY) {

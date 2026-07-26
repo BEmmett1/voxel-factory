@@ -9,6 +9,7 @@
 #include "VoxelGameInternal.h"
 #include "game/ChunkMesher.h"
 #include "game/Atlas.h"
+#include "game/BlockShape.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -316,8 +317,13 @@ void VoxelGame::onRender() {
 
     // Target outline: flat wireframe cube around the aimed block.
     if (m_hasTarget) {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(m_targetBlock) + glm::vec3(0.5f));
-        model = glm::scale(model, glm::vec3(1.01f));
+        // Wrap the block's actual bounds, not an assumed unit cube, so the
+        // outline hugs a sub-cube shape instead of floating around its cell.
+        const ShapeAabb& b = blockBounds(m_world->getBlock(
+            m_targetBlock.x, m_targetBlock.y, m_targetBlock.z));
+        glm::mat4 model = glm::translate(
+            glm::mat4(1.0f), glm::vec3(m_targetBlock) + (b.lo + b.hi) * 0.5f);
+        model = glm::scale(model, (b.hi - b.lo) * 1.01f);
         m_shader.setMat4("uModel", model);
         m_shader.setInt("uUseFlatColor", 1);
         m_shader.setVec3("uFlatColor", glm::vec3(0.04f));

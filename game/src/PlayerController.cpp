@@ -1,5 +1,7 @@
 #include "game/PlayerController.h"
 
+#include "game/Collision.h"
+
 #include "VoxelGameInternal.h"
 #include "game/Settings.h"
 #include "game/World.h"
@@ -106,7 +108,13 @@ PlayerController::MoveResult PlayerController::move(
     if (stuck || !playerCollides(world, next)) {
         feet.y = next.y;
     } else if (m_velY <= 0.0f) {
-        feet.y = std::floor(next.y) + 1.0f; // land: snap feet onto the block top
+        // Land on the surface we actually hit, which with sub-cube shapes is
+        // a box top and rarely a cell boundary. Falling back to the cell top
+        // keeps the old behaviour if the search somehow comes up empty.
+        const float surface = Collision::landingSurface(
+            world, feet.x - kPlayerHalfW, feet.x + kPlayerHalfW,
+            feet.z - kPlayerHalfW, feet.z + kPlayerHalfW, next.y, feet.y);
+        feet.y = std::isfinite(surface) ? surface : std::floor(next.y) + 1.0f;
         // Hard landings hurt: damage scales with impact speed beyond the
         // safe threshold (~a 3-block drop).
         const float impact = -m_velY;

@@ -7,6 +7,7 @@
 #include "game/CreatureSystem.h"
 
 #include "VoxelGameInternal.h"
+#include "game/Collision.h"
 #include "game/Raycast.h"
 #include "game/World.h"
 #include "engine/Audio.h"
@@ -76,25 +77,8 @@ namespace {
         return a - 180.0f;
     }
 
-    // Ray vs AABB slab test; on hit, tOut is the entry distance (>= 0).
-    bool rayAabb(const glm::vec3& o, const glm::vec3& d, const glm::vec3& lo,
-                 const glm::vec3& hi, float& tOut) {
-        float tMin = 0.0f, tMax = std::numeric_limits<float>::max();
-        for (int i = 0; i < 3; ++i) {
-            if (std::abs(d[i]) < 1e-8f) {
-                if (o[i] < lo[i] || o[i] > hi[i]) return false;
-                continue;
-            }
-            float t0 = (lo[i] - o[i]) / d[i];
-            float t1 = (hi[i] - o[i]) / d[i];
-            if (t0 > t1) std::swap(t0, t1);
-            tMin = std::max(tMin, t0);
-            tMax = std::min(tMax, t1);
-            if (tMin > tMax) return false;
-        }
-        tOut = tMin;
-        return true;
-    }
+    // (The ray/AABB slab test moved to Collision.h — the world raycast needs
+    // the same maths now that a cell holds boxes rather than one cube.)
 
 } // namespace
 
@@ -143,8 +127,9 @@ void CreatureSystem::spawn(SpeciesId species, DimensionId dim, const World& worl
     const int x = static_cast<int>(std::floor(feet.x));
     const int z = static_cast<int>(std::floor(feet.z));
     for (int y = static_cast<int>(std::floor(feet.y)) + 8; y >= 0; --y) {
-        if (isSolid(world.getBlock(x, y, z))) {
-            feet.y = static_cast<float>(y + 1);
+        const float top = Collision::surfaceTopAt(world, x, y, z);
+        if (std::isfinite(top)) {
+            feet.y = top; // stand on the surface, not the cell above it
             Creature c;
             c.species = species;
             c.dim = dim;
@@ -168,15 +153,11 @@ void CreatureSystem::clearDimension(DimensionId dim) {
 int CreatureSystem::rayPickCreature(const World& world, const glm::vec3& origin,
                                     const glm::vec3& dir, DimensionId active,
                                     float reach) const {
-    // A wall between us and the creature blocks the shot/swing.
-    float tBlock = reach;
+    // A wall between us and the creature blocks the shot/swing. The raycast
+    // hands back its own hit distance now, so this no longer re-derives one
+    // against an assumed unit cube (which was wrong for any shaped block).
     const RaycastHit aim = raycastVoxel(world, origin, dir, reach);
-    if (aim.hit) {
-        float t = reach;
-        if (rayAabb(origin, dir, glm::vec3(aim.block), glm::vec3(aim.block) + 1.0f, t)) {
-            tBlock = t;
-        }
-    }
+    const float tBlock = aim.hit ? aim.t : reach;
 
     int   best = -1;
     float bestT = tBlock;
@@ -187,7 +168,7 @@ int CreatureSystem::rayPickCreature(const World& world, const glm::vec3& origin,
         const glm::vec3 lo = c.pos - glm::vec3(sp.halfW, 0.0f, sp.halfW);
         const glm::vec3 hi = c.pos + glm::vec3(sp.halfW, sp.height, sp.halfW);
         float t = 0.0f;
-        if (rayAabb(origin, dir, lo, hi, t) && t <= reach && t < bestT) {
+        if (Collision::rayAabb(origin, dir, lo, hi, t) && t <= reach && t < bestT) {
             bestT = t;
             best = i;
         }
@@ -365,7 +346,12 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
         if (!boxCollides(world, next, sp.halfW, sp.height)) {
             c.pos.y = next.y;
         } else if (c.vel.y <= 0.0f) {
-            c.pos.y = std::floor(next.y) + 1.0f; // land on the block top
+            // Land on the surface hit, not the cell boundary (see the
+            // player's identical snap in PlayerController).
+            const float surface = Collision::landingSurface(
+                world, c.pos.x - sp.halfW, c.pos.x + sp.halfW,
+                c.pos.z - sp.halfW, c.pos.z + sp.halfW, next.y, c.pos.y);
+            c.pos.y = std::isfinite(surface) ? surface : std::floor(next.y) + 1.0f;
             c.vel.y = 0.0f;
             c.grounded = true;
         } else {

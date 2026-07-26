@@ -8,6 +8,7 @@ add_executable(voxel-factory
     src/Atlas.cpp
     src/ChunkMesher.cpp
     src/Raycast.cpp
+    src/Collision.cpp
     src/PowerSystem.cpp
     src/SaveSystem.cpp
     src/Settings.cpp

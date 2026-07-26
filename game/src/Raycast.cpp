@@ -2,6 +2,8 @@
 
 #include "game/World.h"
 #include "game/Block.h"
+#include "game/BlockShape.h"
+#include "game/Collision.h"
 
 #include <cmath>
 #include <limits>
@@ -45,11 +47,35 @@ RaycastHit raycastVoxel(const World& world, const glm::vec3& origin,
     float t = 0.0f;
 
     while (t <= maxDistance) {
-        if (isSolid(world.getBlock(x, y, z))) {
-            result.hit = true;
-            result.block = {x, y, z};
-            result.normal = normal;
-            return result;
+        // Entering the cell only makes it a CANDIDATE. Test the ray against
+        // the block's actual boxes and take the nearest entry; a miss falls
+        // through to the step below and the ray carries on, which is what
+        // lets it thread the gaps in a sub-cube shape.
+        const auto boxes = blockBoxes(world.getBlock(x, y, z));
+        if (!boxes.empty()) {
+            const glm::vec3 cell(static_cast<float>(x), static_cast<float>(y),
+                                 static_cast<float>(z));
+            float      bestT = inf;
+            glm::ivec3 bestNormal{0};
+            for (const ShapeAabb& b : boxes) {
+                float      bt = 0.0f;
+                glm::ivec3 bn{0};
+                if (Collision::rayAabb(origin, d, cell + b.lo, cell + b.hi, bt, bn) &&
+                    bt <= maxDistance && bt < bestT) {
+                    bestT = bt;
+                    bestNormal = bn;
+                }
+            }
+            if (bestT < inf) {
+                result.hit = true;
+                result.block = {x, y, z};
+                // A ray starting inside the box has no entry face; fall back
+                // to the cell face the traversal came through.
+                result.normal = bestNormal != glm::ivec3(0) ? bestNormal : normal;
+                result.t = bestT;
+                result.point = origin + d * bestT;
+                return result;
+            }
         }
 
         // Advance into the next voxel along the nearest boundary.
