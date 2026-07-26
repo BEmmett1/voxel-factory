@@ -166,40 +166,31 @@ the pillar slips to post-launch.
 - The final boss drops the **Flight Stone** (late-game earned flight — the
   vision piece): flight is earned by mastering both halves of the game, the
   factory that arms you and the fight itself
-- **3D detailed blocks (sub-cube geometry, authored in Blockbench):** deferred
-  here from Q4 — the combat pillar and the crafting overhaul already fill that
-  quarter, and this is a renderer refactor with no gameplay dependency on
-  either. Every block is a full 1×1×1 cube today, so a wire is a wall and a
-  conveyor is a slab of paint. The real work is splitting `isSolid()`, which
-  currently means four things at once — gets meshed, occludes neighbours,
-  blocks movement, stops rays. Split it into `solid` (participates in
-  physics/rays) plus `fullCube` (occludes neighbours, keeps the fast paths),
-  and add a `blockBox(id)` returning boxes in cell-local 0..1 space, backed by
-  a `shape` field on `BlockInfo` indexing a `kBlockShapes` table of small box
-  lists with per-face atlas tiles. Six call sites thread it: the mesher's
-  unit-cube `kFaces[].corners` and its `isSolid(nb)` occlusion test,
-  `vg::boxCollides` (walk over a belt, not into it) plus the `floor(y)+1`
-  landing snap, the raycast DDA (refine inside the cell and keep stepping on a
-  miss, instead of "entered the cell = hit"), `CreatureSystem`'s hard-coded
-  unit-cube `rayAabb` occlusion test, and the highlight wireframe's fixed 1.01
-  unit cube. While there, give `RaycastHit` a `t`/hit point so the melee test
-  stops re-deriving it, and promote the existing private `rayAabb` helper into
-  a shared header. Shapes may be picked per cell from neighbour state — that is
-  how wires connect and belts corner — and the mesher already takes the belt
-  map to stamp the top-face arrow, so the out-of-band-state hook exists. Pure
-  presentation: **no save change**. Authoring: `.bbmodel` cuboid elements ARE
-  box lists with per-face UVs, and `BbModel::vertexData` is already
-  byte-identical to the chunk vertex layout (`{3,3,2,1}`), so add
-  `tools/bbmodel_to_shape.py` (sibling of `make_atlas.py`) to bake a Blockbench
-  model into the generated shape table at build time — the one real task is
-  blitting the model texture into a reserved atlas region and remapping its UVs
-  into that sub-rect (free tiles at 39-47 and 112-127, see `assets/ATLAS.md`).
-  Blocks stay in the chunk mesh: one draw call, zero per-block cost, and the
-  existing dirty-chunk invalidation keeps working. Runtime `engine::BbModel`
-  remains the ENTITY path; animated block props (a spinning gear) would need a
-  per-instance draw and are deliberately deferred
-- **Belts become tubes:** the first customer of block shapes, so it lands with
-  them. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
+- [x] **3D detailed blocks (sub-cube geometry, authored in Blockbench)**
+  (July 2026, landed early): shipped in five commits, each one buildable and
+  the first three provably inert. `isSolid()` split into `solid` +
+  `fullCube`; `BlockShape.h` holds `kBlockShapes` (quads to draw, boxes to
+  collide with) indexed by a `shape` field on `BlockInfo`;
+  `tools/bbmodel_to_shape.py` bakes Blockbench `java_block` models into
+  generated data plus `assets/shapes.png`; the mesher draws shaped blocks as a
+  second per-chunk pass; and `Collision.h` retired `floor(y)+1` and taught the
+  raycast to refine inside a cell. `BlockId::Cauldron` is the first shaped
+  block. Pure presentation, **no save change**, as predicted. See CLAUDE.md for
+  the full shape of it. Four things the plan above got wrong or missed, worth
+  keeping because the same traps are waiting for the next model:
+  the texture could NOT be blitted into a spare atlas tile (a real model's
+  texture is 128px, not 16px, and may be an animated strip — shapes live in
+  their own sheet, which also means a second draw call per chunk, not one);
+  box-UV projects write **descending** uv rects for mirrored faces, so rects
+  must be carried with their sign and never sorted; the corner
+  parameterization (`kShapeFaceAxes`) is emitted INTO the generated data so a
+  handedness fix is one sign in the bake with no second copy to drift; and two
+  call sites the "six call sites" list missed — DropSystem's landing and the
+  creature spawn ground-scan — carried the same `floor()` assumption. Still
+  open: only frame 0 of an animated texture is sampled, and mirroring is
+  unproven until an asymmetric model exists
+- **Belts become tubes:** the first real customer of block shapes, now
+  unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
   pipe, corners look like corners, and it is thin enough to walk over. Two
   follow-ons the current code makes obvious: `Belt` has no sub-cell progress,
@@ -243,6 +234,13 @@ Kept here so they don't get lost — none are architectural dead-ends:
   Circle cut it to 13 rows so it no longer overflows; the circle panel avoids
   the trap properly, by windowing its row list to the window height
   (`circleRows`). Any future long list should copy the circle, not the menu
+- Block shapes ship with two loose ends (July 2026): an animated block texture
+  is baked whole into `shapes.png` with its `vStride`, but only **frame 0** is
+  sampled — finishing it is a per-vertex bank flag plus a shader uniform, and
+  never a remesh; and face **mirroring is unproven**, since the only shaped
+  block so far is a rotationally symmetric cauldron on which a sign error is
+  invisible. A detailed block also costs ~45 KB of chunk mesh (~30× a plain
+  block), so shapes belong on machines, not on anything placed in bulk
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)

@@ -70,6 +70,7 @@ camera → view/projection matrices), `Shader` / `Mesh` (RAII GL program / VAO+V
 ### Game layer (`game/`, global namespace)
 
 `VoxelGame` subclasses `Application`. Voxels: `Block` (id enum + property registry),
+`BlockShape` (sub-cube geometry per block — what to draw and what to collide with),
 `Chunk` (16³ block array + dirty flag), `ChunkMesher` (hidden-face-removal meshing →
 interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 
@@ -110,6 +111,10 @@ stay in their file's anonymous namespace.
   tick; `beltStep` advances conduits. Machine input policy (`machineAccepts`,
   `minerFilter`) lives there too. Power re-solve + chunk dirtying + hum-loop
   audio stay VoxelGame glue (`solvePowerAndMarkDirty`/`updateHums`).
+- Geometry queries against the world are **`Collision`** (Collision.h/.cpp),
+  the same free-function shape: `rayAabb` / `boxOverlapsWorld` /
+  `surfaceTopAt` / `landingSurface`. Nothing may assume a block is a unit
+  cube — walk `blockBoxes(id)` instead (see **3D detailed blocks** below).
 - Private members prefixed `m_`; ownership via `std::unique_ptr`, no raw `delete`.
 - Headers in `include/`, implementations in `src/`.
 - All movement/logic scaled by `dt`; simulation logic belongs in `onTick()`.
@@ -275,7 +280,76 @@ Textures:
   atlasTile`); placeables borrow their block's side tile (`iconTile()`). Repaint the
   PNG in any pixel editor and rebuild (an always-run CMake target copies assets), or
   regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
-  overwrites hand edits!).
+  overwrites hand edits!). A SECOND sheet, `assets/shapes.png`, carries the 3D
+  detailed blocks' textures as arbitrary regions rather than 16px tiles — it is
+  generated, never hand-painted (see below).
+
+3D detailed blocks (sub-cube geometry, authored in Blockbench — July 2026):
+- **`isSolid` came apart first.** It used to mean four things at once (gets
+  meshed / occludes neighbours / blocks movement / stops rays), which a
+  sub-cube shape breaks. `BlockInfo` now carries `solid` (participates in
+  physics + raycasts) and **`fullCube`** (fills its cell, so something may be
+  hidden behind it); `fullCube` implies `solid`, static_asserted. Three sites
+  wanted occlusion rather than solidity: the mesher's neighbour test,
+  `skyVisible` (it takes a ROOF to stop rain), and grass spread.
+- **`BlockShape.h`** owns the geometry: `ShapeQuad` (one textured face of one
+  box), `ShapeAabb`, `ShapeAnim`, and `kBlockShapes` in the kBlocks discipline
+  (one row per `ShapeId`, static_asserted into enum order). A block names a
+  `shape` on its kBlocks row — declared LAST in `BlockInfo` so a row can append
+  it. `ShapeId` is **not** a save encoding (pure presentation), so unlike
+  BlockId/ItemId it may be reordered freely. Air gets `ShapeId::Empty`, which
+  buys the invariant everything else leans on: *a cell contributes exactly its
+  shape's boxes*. `FullCube` deliberately carries no quads — plain blocks keep
+  the mesher's `kFaces` fast path.
+- **`tools/bbmodel_to_shape.py`** bakes Blockbench `java_block` models into
+  `game/include/game/generated/BlockShapes.inl` (data only) + `game/assets/
+  shapes.png`, a sibling of make_atlas.py (pure stdlib, hand-rolled PNG I/O).
+  Three non-obvious things it handles: box-UV projects write **descending** uv
+  rects for mirrored faces (65 of the cauldron's 213 quads), so rects are
+  carried with their sign and never sorted — a min/max normalize would silently
+  un-mirror a third of a model; sub-texel rects are routine (a half-unit-tall
+  box has a half-pixel-tall side face) so the half-texel inset is clamped to a
+  quarter of the rect; and a texture N×`uv_height` tall is a Minecraft
+  **animation strip**, stacked in the sheet with a `vStride` emitted. It also
+  drops faces sealed inside the model and REJECTS, loudly, rotated elements
+  (not an AABB, and this table backs collision), face-level UV rotation,
+  non-cube mesh elements, and geometry outside the 0..16 cell.
+  `kShapeFaceAxes` — the corner parameterization — is emitted INTO the
+  generated data so a mirrored/upside-down model is fixed by one sign in the
+  BAKE, with no second copy in the mesher to drift (the `geoToWorld`
+  precedent).
+- **Rendering is a second pass per chunk.** `appendChunk` fills two buffers:
+  plain blocks into the atlas mesh, shaped blocks into `m_chunkShapeMeshes`,
+  which binds `shapes.png` instead. Same vertex layout; they are split because
+  they sample different sheets, which beats a per-vertex sheet selector across
+  the whole world — and it is the pass transparency will need anyway when the
+  Conduit becomes a glass tube. A world with no shaped blocks never binds the
+  second sheet. `shapes.png` has no generated fallback: missing = shaped blocks
+  don't draw, said once in the log.
+- **Physics/rays are `Collision.h`/.cpp** (free functions over `(World&, ...)`,
+  the MachineSystem/WorldEdit precedent): `rayAabb` (also reporting the face
+  entered), `boxOverlapsWorld` (with a bounds broad phase for multi-box
+  shapes), `surfaceTopAt`, `landingSurface`. `landingSurface` is what replaced
+  `floor(y) + 1` in BOTH landing snaps — what you land on is a box top, rarely
+  a cell boundary. The raycast no longer treats entering a cell as a hit: it
+  tests that cell's boxes and, on a miss, KEEPS STEPPING, so a ray threads the
+  gaps in a shape. `RaycastHit` carries `t`/`point`, so `CreatureSystem` reads
+  the distance instead of re-deriving it against an assumed unit cube.
+  DropSystem and the creature spawn scan rest on surfaces; the target
+  highlight wraps `blockBounds()`.
+- **Load-bearing assumption:** every query iterates the cells an AABB overlaps
+  and tests only THAT cell's boxes, so shape geometry must stay inside its own
+  cell. The bake enforces it with a hard error.
+- **`BlockId::Cauldron` is the first shaped block** — it no longer occludes or
+  keeps rain out, and you collide with its basin and legs. Its atlas tiles stay
+  for the item icon and the generated-atlas fallback.
+- Known gaps: only frame 0 of an animated texture is sampled (the sheet holds
+  all frames and `vStride` is emitted; finishing it is a per-vertex bank flag
+  plus a uniform, never a remesh), and **mirroring is unproven** — a
+  rotationally symmetric cauldron cannot reveal a sign error, so the first
+  asymmetric model settles it. ~45 KB of chunk mesh per placed cauldron
+  (~30× a plain block) argues for keeping detailed shapes to machines rather
+  than anything placed in bulk.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,

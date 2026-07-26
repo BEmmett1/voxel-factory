@@ -102,3 +102,16 @@ All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63, and
 116-127) are free for new blocks/items. Claim a tile here, add a painter to
 `make_atlas.py`, and point the code at it (the `tiles` field on the kBlocks row
 for blocks, `atlasTile` on the kItems row for material items).
+
+## shapes.png — the other sheet
+
+**Not this file, and not on this grid.** `shapes.png` holds the textures of 3D
+detailed blocks (`BlockShape.h`), packed as arbitrary REGIONS rather than 16px
+tiles, because a Blockbench model's texture is typically 128px and may be an
+animated strip. It is generated wholesale by
+`python tools/bbmodel_to_shape.py models/<model>.bbmodel` alongside the shape
+data — never hand-edited, and never repainted here.
+
+A shaped block still keeps its `tiles` row above: those supply the item icon
+and the fallback when `atlas.png` is missing. `BlockId::Cauldron` is the
+first, and tiles 23/24 are still its.
