@@ -85,7 +85,9 @@ namespace ChunkMesher {
                         } else {
                             nb = BlockId::Air; // ungenerated space
                         }
-                        if (isSolid(nb)) continue;
+                        // Only a neighbor that FILLS its cell can hide this
+                        // face; a sub-cube shape leaves gaps to see through.
+                        if (isFullCube(nb)) continue;
 
                         // Blocks can wear a different tile per face
                         // (grass top vs. side, log rings vs. bark, ...).

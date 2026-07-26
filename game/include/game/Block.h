@@ -99,7 +99,14 @@ struct BlockTiles {
 struct BlockInfo {
     BlockId     id;                 // must equal the row's position (static_asserted)
     const char* name = "?";         // human-readable, e.g. for UI / window title
-    bool        solid = true;       // does it occlude neighbors / get meshed?
+    // `solid` and `fullCube` were one flag until sub-cube block shapes needed
+    // them apart: a tube or a slab still stops rays and blocks movement while
+    // occluding nothing. `solid` = participates in physics and raycasts (and
+    // gets meshed); `fullCube` = fills its cell, which is what lets the mesher
+    // drop a hidden face and a roof keep the rain out. fullCube implies solid
+    // (static_asserted in Block.cpp). Every block is a full cube today.
+    bool        solid = true;
+    bool        fullCube = true;
     glm::vec3   color {0.0f};       // flat base color (pre-lighting)
     float       emissive = 0.0f;    // constant self-illumination (sources glow)
     bool        machine = false;    // processing machine (has a Machine entity)
@@ -123,6 +130,7 @@ const BlockInfo& blockInfo(BlockId id);
 
 inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
 inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }
+inline bool isFullCube(BlockId id)         { return blockInfo(id).fullCube; }
 inline bool isMachine(BlockId id)          { return blockInfo(id).machine; }
 inline bool isSource(BlockId id)           { return blockInfo(id).source; }
 inline bool isResourceNode(BlockId id)     { return blockInfo(id).node; }

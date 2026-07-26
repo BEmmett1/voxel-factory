@@ -260,11 +260,12 @@ namespace vg {
     // (Machine input policy — machineAccepts / minerFilter — lives with the
     // machine simulation now: MachineSystem.h.)
 
-    // Can this cell see the sky? (No solid block between it and the world
-    // top.) Shared by the rain collector, the held bucket, and the rain mesh.
+    // Can this cell see the sky? (No roof between it and the world top.)
+    // Shared by the rain collector, the held bucket, and the rain mesh. It
+    // takes a FULL cube to keep rain out — rain falls past a tube or a slab.
     inline bool skyVisible(const World& w, int wx, int wy, int wz) {
         for (int y = wy + 1; y <= kSkyTopY; ++y) {
-            if (isSolid(w.getBlock(wx, y, wz))) return false;
+            if (isFullCube(w.getBlock(wx, y, wz))) return false;
         }
         return true;
     }

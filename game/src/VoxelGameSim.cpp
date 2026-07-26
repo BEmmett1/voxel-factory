@@ -95,7 +95,9 @@ void VoxelGame::updateGrassSpread() {
         for (int y = kPlateauY + 6; y >= kSurfaceY - 8; --y) {
             const BlockId b = w.getBlock(wx, y, wz);
             if (b == BlockId::Air) continue;
-            if (b == BlockId::Dirt && !isSolid(w.getBlock(wx, y + 1, wz)) &&
+            // Uncovered dirt greens over; a sub-cube block sitting on it
+            // (a tube, a slab) doesn't smother it, only a full cube does.
+            if (b == BlockId::Dirt && !isFullCube(w.getBlock(wx, y + 1, wz)) &&
                 (w.getBlock(wx + 1, y, wz) == BlockId::Grass ||
                  w.getBlock(wx - 1, y, wz) == BlockId::Grass ||
                  w.getBlock(wx, y, wz + 1) == BlockId::Grass ||

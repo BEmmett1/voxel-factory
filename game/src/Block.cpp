@@ -17,7 +17,7 @@ namespace {
     // drift from the enum. Omitted fields take BlockInfo's defaults (solid,
     // not a machine/source/node, no glow, no drop).
     constexpr BlockInfo kBlocks[] = {
-        {.id = B::Air, .name = "Air", .solid = false},
+        {.id = B::Air, .name = "Air", .solid = false, .fullCube = false},
         {.id = B::Grass, .name = "Grass", .color = {0.30f, 0.62f, 0.26f},
          .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel},
         {.id = B::Dirt, .name = "Dirt", .color = {0.45f, 0.31f, 0.18f},
@@ -141,6 +141,16 @@ namespace {
         return true;
     }
     static_assert(blocksInEnumOrder(), "kBlocks rows must be in BlockId enum order");
+
+    // A block that fills its cell must be solid: `fullCube` decides what the
+    // mesher may hide behind it, so a non-solid one would occlude a face the
+    // player can walk and shoot straight through.
+    static_assert([] {
+        for (const BlockInfo& b : kBlocks) {
+            if (b.fullCube && !b.solid) return false;
+        }
+        return true;
+    }(), "fullCube implies solid");
 
     // The machine traits registry (Machine.h) and the machine flags here must
     // name exactly the same blocks — a machine without a traits row (or a
