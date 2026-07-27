@@ -20,21 +20,29 @@
 // encoding -- shapes are pure presentation, so this enum may be reordered and
 // rows may be removed freely.
 
-// One textured face of one box. Positions are cell-local (0..1); the mesher
-// adds the block's world origin. `face` indexes ChunkMesher's kFaces
-// (+X,-X,+Y,-Y,+Z,-Z). `cull` marks a face flush with a cell wall -- the only
-// faces the mesher may drop against a fullCube neighbour. `uv` is
-// {u0,v0,u1,v1} in absolute sheet UV, and u0 > u1 (or v0 > v1) means the face
-// is MIRRORED: interpolate with mix() and the sign takes care of itself. Do
-// not sort the rect.
+// One textured face, fully resolved by the bake. Corners are cell-local
+// (0..1) and wound COUNTER-CLOCKWISE seen from outside; the mesher adds the
+// block's world origin and copies them. Everything that used to be
+// reconstructed at runtime -- the face axis mapping, UV mirroring, element
+// rotation -- is already folded in here, which is what lets a 45°-rotated
+// element (an alembic's spout) exist at all: a rotated face is not
+// axis-aligned, so there is nothing a lo/hi pair could describe.
+//
+// `face` survives only to say which neighbour `cull` consults. `cull` marks a
+// face flush with a cell wall -- the only faces the mesher may drop against a
+// fullCube neighbour, and never a rotated one.
 struct ShapeQuad {
-    glm::vec3    lo, hi;
+    glm::vec3    pos[4];
+    glm::vec2    uv[4];
+    glm::vec3    normal {0.0f};
     std::uint8_t face = 0;
     bool         cull = false;
-    glm::vec4    uv {0.0f};
 };
 
-// A cell-local AABB (0..1), for collision and raycasts.
+// A cell-local AABB (0..1), for collision and raycasts. For a ROTATED element
+// this is the bounding box of the rotated geometry, so collision is a little
+// generous where the drawn shape is exact -- the deliberate split that lets
+// rendering carry detail physics does not need.
 struct ShapeAabb {
     glm::vec3 lo {0.0f};
     glm::vec3 hi {1.0f};
@@ -55,6 +63,7 @@ enum class ShapeId : std::uint8_t {
     FullCube = 0,   // the implicit unit cube: no quads, the mesher's fast path
     Empty,          // occupies nothing (Air): no quads, no collision boxes
     BrewingCauldron,
+    AlchemicalAlembic,
     Count
 };
 
@@ -82,6 +91,11 @@ inline constexpr BlockShape kBlockShapes[] = {
      .boxes = kShapeBoxesBrewingCauldron,
      .bounds = kShapeBoundsBrewingCauldron,
      .anim = kShapeAnimBrewingCauldron},
+    {.id = ShapeId::AlchemicalAlembic,
+     .quads = kShapeQuadsAlchemicalAlembic,
+     .boxes = kShapeBoxesAlchemicalAlembic,
+     .bounds = kShapeBoundsAlchemicalAlembic,
+     .anim = kShapeAnimAlchemicalAlembic},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),

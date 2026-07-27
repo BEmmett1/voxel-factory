@@ -311,13 +311,23 @@ Textures:
   box has a half-pixel-tall side face) so the half-texel inset is clamped to a
   quarter of the rect; and a texture N×`uv_height` tall is a Minecraft
   **animation strip**, stacked in the sheet with a `vStride` emitted. It also
-  drops faces sealed inside the model and REJECTS, loudly, rotated elements
-  (not an AABB, and this table backs collision), face-level UV rotation,
-  non-cube mesh elements, and geometry outside the 0..16 cell.
-  `kShapeFaceAxes` — the corner parameterization — is emitted INTO the
-  generated data so a mirrored/upside-down model is fixed by one sign in the
-  BAKE, with no second copy in the mesher to drift (the `geoToWorld`
+  drops faces sealed inside the model, and REJECTS non-cube (mesh) elements,
+  face-level UV rotation, textures past the first, and geometry reaching more
+  than `CELL_OVERHANG_TOLERANCE` outside its own cell.
+- **Quads are fully resolved by the bake** — four corner positions, four UVs,
+  and a normal, wound CCW seen from outside. The face-axis mapping, UV
+  mirroring, and element rotation are all folded in, so the mesher copies
+  vertices and never reconstructs geometry, and a mirrored/upside-down model is
+  fixed by one sign in the BAKE with no second copy to drift (the `geoToWorld`
   precedent).
+- **Rotated elements** (Blockbench's ±22.5°/±45°) are supported, which the
+  Alembic needs — its octagonal cucurbit is 45° yaw and its spout is 45° roll.
+  Since a rotated box is not an AABB and this table also backs collision, the
+  two split: **geometry is exact, collision uses the rotated box's bounding
+  box**. That is why `quads` and `boxes` are separate arrays. Rotation also
+  inflates a box's reach by arithmetic (a 10-wide element sweeps a 14.14-wide
+  diagonal), so a small out-of-cell overhang is CLAMPED with a warning rather
+  than rejected; only a model designed to span cells fails.
 - **Rendering is a second pass per chunk.** `appendChunk` fills two buffers:
   plain blocks into the atlas mesh, shaped blocks into `m_chunkShapeMeshes`,
   which binds `shapes.png` instead. Same vertex layout; they are split because
@@ -340,14 +350,14 @@ Textures:
 - **Load-bearing assumption:** every query iterates the cells an AABB overlaps
   and tests only THAT cell's boxes, so shape geometry must stay inside its own
   cell. The bake enforces it with a hard error.
-- **`BlockId::Cauldron` is the first shaped block** — it no longer occludes or
-  keeps rain out, and you collide with its basin and legs. Its atlas tiles stay
-  for the item icon and the generated-atlas fallback.
-- Known gaps: only frame 0 of an animated texture is sampled (the sheet holds
+- **Shaped blocks so far: `Cauldron` and `Alembic`.** They no longer occlude or
+  keep rain out, and you collide with the model rather than the cell. Their
+  atlas tiles stay for the item icon and the generated-atlas fallback. Adding
+  the next one is: bake, append a `ShapeId` row + a `kBlockShapes` row, then set
+  `fullCube = false` and `shape` on the kBlocks row.
+- Known gap: only frame 0 of an animated texture is sampled (the sheet holds
   all frames and `vStride` is emitted; finishing it is a per-vertex bank flag
-  plus a uniform, never a remesh), and **mirroring is unproven** — a
-  rotationally symmetric cauldron cannot reveal a sign error, so the first
-  asymmetric model settles it. ~45 KB of chunk mesh per placed cauldron
+  plus a uniform, never a remesh). ~45 KB of chunk mesh per placed shaped block
   (~30× a plain block) argues for keeping detailed shapes to machines rather
   than anything placed in bulk.
 

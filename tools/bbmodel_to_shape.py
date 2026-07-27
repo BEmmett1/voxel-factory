@@ -24,10 +24,14 @@ half the faces in a box-UV model have descending rects and a min/max normalize
 would silently un-mirror them), embedded base64 textures, and Minecraft
 animated-texture strips (a texture N*uv_height tall is N frames).
 
-What it rejects, loudly: rotated elements. A rotated box is not an AABB, and
-the shape table backs collision and raycasts as well as the mesh -- supporting
-it means splitting render geometry from collision geometry, which is a design
-decision, not a script fix.
+Rotated elements are supported by baking the rotation into the quad corners.
+A rotated box is not an AABB, and the shape table backs collision as well as
+the mesh, so the two split: geometry is EXACT, collision uses the rotated
+box's bounding box. Slightly generous to walk into, and the reason quads and
+boxes are separate arrays.
+
+What it still rejects, loudly: non-cube (mesh) elements, geometry reaching
+outside its own cell, and textures past the first.
 """
 
 import argparse
@@ -53,8 +57,19 @@ MODEL_UNITS = 16.0
 # those instead of nudging them.
 TEXEL_INSET = 0.5
 
+# How far, in model units, geometry may poke out of its own cell before the
+# bake refuses it. Rotation inflates a box's reach by arithmetic, so a strict
+# zero would reject perfectly ordinary 45-degree elements; a whole unit is
+# still far below "this model was designed to span two cells".
+CELL_OVERHANG_TOLERANCE = 1.0
+
 # Face order matches ChunkMesher's kFaces: +X, -X, +Y, -Y, +Z, -Z.
 FACE_ORDER = ["east", "west", "up", "down", "south", "north"]
+
+# The four corners of every quad, as (s, t) parameters into the face's u/v
+# axes. This order is COUNTER-CLOCKWISE seen from outside the box, so the
+# mesher emits (0,1,2) + (0,2,3) with no winding fix of its own.
+CORNER_ST = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
 
 # How each face's UV rect parameterizes its quad, as (axis, direction) pairs for
 # the u and v texture axes; axis 0/1/2 = X/Y/Z. This is Minecraft's convention:
@@ -64,8 +79,8 @@ FACE_ORDER = ["east", "west", "up", "down", "south", "north"]
 # ---- This table is the handedness knob. ----
 # If a baked model comes out mirrored or upside down on one axis, the fix is a
 # sign here, not in the mesher -- exactly like BbModel.cpp funnelling all unit
-# conversion through geoToWorld. It is emitted into the .inl so the C++ mesher
-# reads the same numbers rather than keeping a second copy.
+# conversion through geoToWorld. Corner positions are baked THROUGH it, so the
+# runtime never sees it and there is no second copy to drift.
 FACE_AXES = {
     #          u-axis, u-dir, v-axis, v-dir
     "east":  (2, -1, 1, -1),
@@ -160,15 +175,38 @@ def blit(dst, dw, dst_x, dst_y, src, sw, sx, sy, w, h):
 
 # --- model loading -----------------------------------------------------------
 
-class Quad:
-    """One textured face of one box, in cell-local space."""
+def rotation_matrix(axis, degrees):
+    """Rotation about one axis, as a 3x3 row-major tuple."""
+    c = math.cos(math.radians(degrees))
+    s = math.sin(math.radians(degrees))
+    if axis == 0:
+        return ((1, 0, 0), (0, c, -s), (0, s, c))
+    if axis == 1:
+        return ((c, 0, s), (0, 1, 0), (-s, 0, c))
+    return ((c, -s, 0), (s, c, 0), (0, 0, 1))
 
-    def __init__(self, lo, hi, face, uv, cull):
-        self.lo = lo          # (x, y, z) in 0..1
-        self.hi = hi
-        self.face = face      # index into FACE_ORDER
+
+def apply3(m, v):
+    return tuple(m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2] for i in range(3))
+
+
+class Quad:
+    """One textured face of one box, in cell-local space.
+
+    Corners are BAKED, not derived at runtime: an element may be rotated, and a
+    rotated face is not axis-aligned, so there is nothing for a lo/hi pair to
+    describe. The mesher just copies these.
+    """
+
+    def __init__(self, pos, normal, face, uv, cull, blo, bhi, rotated):
+        self.pos = pos        # 4 corners in 0..1, CCW seen from outside
+        self.normal = normal  # rotated face normal
+        self.face = face      # index into FACE_ORDER -- which neighbour `cull` consults
         self.uv = uv          # [u0, v0, u1, v1] in model uv-space px, sign kept
-        self.cull = cull      # face is flush with a cell wall
+        self.cull = cull      # face is flush with a cell wall (never when rotated)
+        self.blo = blo        # owning box's AABB, for the interior-face cull
+        self.bhi = bhi
+        self.rotated = rotated
 
 
 class Model:
@@ -176,6 +214,7 @@ class Model:
         self.name = name
         self.quads = []
         self.boxes = []       # cell-local AABBs, for collision/rays
+        self.box_rotated = []  # parallel: was the box's element rotated?
         self.frames = 1
         self.frame_time = 0
         self.tex = None       # (w, h, rgba) cropped, frames stacked
@@ -217,13 +256,10 @@ def load_model(path):
     model.frames = frames
     model.frame_time = tex.get("frame_time", 0)
 
-    rotated, meshes, blank = [], 0, 0
+    meshes, blank, nrot = 0, 0, 0
     for el in doc.get("elements", []):
         if el.get("type", "cube") != "cube":
             meshes += 1
-            continue
-        if el.get("rotation"):
-            rotated.append(el.get("name", "?"))
             continue
         if el.get("visible") is False:
             continue
@@ -237,9 +273,41 @@ def load_model(path):
             blank += 1
             continue
 
-        lo_c = tuple(v / MODEL_UNITS for v in lo)
-        hi_c = tuple(v / MODEL_UNITS for v in hi)
-        model.boxes.append((lo_c, hi_c))
+        # Element rotation. Minecraft allows one axis at a time; Blockbench
+        # writes all three, so take the non-zero one and say so if there are
+        # several (composing them would be an order the format does not define).
+        rot = [float(v) for v in (el.get("rotation") or (0, 0, 0))]
+        nonzero = [i for i in range(3) if abs(rot[i]) > 1e-6]
+        rmat, rorigin = None, None
+        if nonzero:
+            if len(nonzero) > 1:
+                print(f"  ! {name}: '{el.get('name')}' rotates on "
+                      f"{len(nonzero)} axes; only the first is applied")
+            if el.get("rescale"):
+                print(f"  ! {name}: '{el.get('name')}' has rescale set "
+                      "(ignored -- it only matters for MC's own renderer)")
+            rmat = rotation_matrix(nonzero[0], rot[nonzero[0]])
+            rorigin = [float(v) for v in el.get("origin", (8, 8, 8))]
+            nrot += 1
+
+        def place(p):
+            """Model-space point -> cell-local, through the element rotation."""
+            if rmat is not None:
+                d = [p[i] - rorigin[i] for i in range(3)]
+                r = apply3(rmat, d)
+                p = [rorigin[i] + r[i] for i in range(3)]
+            return tuple(v / MODEL_UNITS for v in p)
+
+        # Collision stays axis-aligned: the AABB of the (possibly rotated) box.
+        # Rendering is exact, collision is conservative -- a deliberate split,
+        # and the reason quads and boxes are separate arrays.
+        corners8 = [place((lo[0] if i & 1 else hi[0],
+                           lo[1] if i & 2 else hi[1],
+                           lo[2] if i & 4 else hi[2])) for i in range(8)]
+        blo = tuple(min(c[a] for c in corners8) for a in range(3))
+        bhi = tuple(max(c[a] for c in corners8) for a in range(3))
+        model.boxes.append((blo, bhi))
+        model.box_rotated.append(rmat is not None)
 
         for fi, fname in enumerate(FACE_ORDER):
             face = el.get("faces", {}).get(fname)
@@ -253,18 +321,35 @@ def load_model(path):
                 # Face-level UV rotation needs a corner permutation, not a rect.
                 print(f"  ! {name}: face rotation on '{el.get('name')}'.{fname} "
                       "ignored (author without face UV rotation)")
+
             axis = fi // 2
             outward_hi = (fi % 2) == 0
-            wall = hi[axis] >= MODEL_UNITS - 1e-4 if outward_hi else lo[axis] <= 1e-4
-            model.quads.append(Quad(lo_c, hi_c, fi, uv, wall))
+            fixed = hi[axis] if outward_hi else lo[axis]
+            uA, uD, vA, vD = FACE_AXES[fname]
 
-    if rotated:
-        raise ValueError(
-            f"{name}: {len(rotated)} rotated element(s) -- {', '.join(rotated[:4])}"
-            f"{' ...' if len(rotated) > 4 else ''}\n"
-            "    A rotated box is not an AABB, and this table also backs collision\n"
-            "    and raycasts. Either un-rotate them in Blockbench, or decide to\n"
-            "    split render geometry from collision geometry first.")
+            pos = []
+            for s, t in CORNER_ST:
+                p = [0.0, 0.0, 0.0]
+                p[axis] = fixed
+                p[uA] = lo[uA] + (hi[uA] - lo[uA]) * (s if uD > 0 else 1.0 - s)
+                p[vA] = lo[vA] + (hi[vA] - lo[vA]) * (t if vD > 0 else 1.0 - t)
+                pos.append(place(p))
+
+            normal = [0.0, 0.0, 0.0]
+            normal[axis] = 1.0 if outward_hi else -1.0
+            if rmat is not None:
+                normal = list(apply3(rmat, normal))
+
+            # A rotated face is never flush with a cell wall, so it can never
+            # be hidden by a neighbour.
+            wall = (rmat is None and
+                    (hi[axis] >= MODEL_UNITS - 1e-4 if outward_hi else lo[axis] <= 1e-4))
+            model.quads.append(
+                Quad(pos, normal, fi, uv, wall, blo, bhi, rmat is not None))
+
+    if nrot:
+        print(f"  {nrot} rotated element(s): geometry exact, collision uses "
+              "their bounding boxes")
     if meshes:
         print(f"  ! {name}: skipped {meshes} non-cube (mesh) element(s)")
     if blank:
@@ -278,17 +363,34 @@ def load_model(path):
     # correctly and then be silently missed by physics -- the worst kind of
     # bug to chase. Minecraft allows from/to outside 0..16, so this is a real
     # thing a model can do, not a theoretical one.
-    outside = [(lo, hi) for lo, hi in model.boxes
-               if any(lo[i] < -1e-6 or hi[i] > 1.0 + 1e-6 for i in range(3))]
-    if outside:
-        lo, hi = outside[0]
+    #
+    # A SMALL overhang is tolerated and clamped, because 45-degree rotation
+    # produces it by arithmetic rather than by intent: a 10-wide element spun
+    # about its centre sweeps a 14.14-wide diagonal, and a corner can clear the
+    # cell by a fraction of a unit without the author ever meaning to leave it.
+    # Clamping costs a sliver of collision no player can feel. A model designed
+    # to span cells overshoots by whole units and still fails.
+    tol = CELL_OVERHANG_TOLERANCE / MODEL_UNITS
+    over = [max(max(-lo[i], hi[i] - 1.0) for i in range(3)) for lo, hi in model.boxes]
+    worst = max(over) if over else 0.0
+    if worst > tol:
+        i = over.index(worst)
+        lo, hi = model.boxes[i]
         raise ValueError(
-            f"{name}: {len(outside)} box(es) reach outside the 0..16 cell, "
-            f"e.g. {tuple(round(v * MODEL_UNITS, 2) for v in lo)}..."
-            f"{tuple(round(v * MODEL_UNITS, 2) for v in hi)}\n"
+            f"{name}: geometry reaches {worst * MODEL_UNITS:.2f} units outside "
+            f"the 0..16 cell, e.g. {tuple(round(v * MODEL_UNITS, 2) for v in lo)}"
+            f"...{tuple(round(v * MODEL_UNITS, 2) for v in hi)}\n"
             "    Collision only tests a cell's own boxes, so overhanging\n"
             "    geometry would draw but not collide. Keep the model inside\n"
             "    the cell, or make it a multiblock.")
+
+    nclamped = sum(1 for o in over if o > 1e-6)
+    if nclamped:
+        model.boxes = [(tuple(min(max(v, 0.0), 1.0) for v in lo),
+                        tuple(min(max(v, 0.0), 1.0) for v in hi))
+                       for lo, hi in model.boxes]
+        print(f"  {nclamped} collision box(es) clamped to the cell "
+              f"(max {worst * MODEL_UNITS:.2f} units over, from rotation)")
 
     model.raw_quads = len(model.quads)
 
@@ -323,16 +425,22 @@ def cull_interior(model, eps=1e-6):
     mesher cannot help here (nothing is flush with a cell wall), so this is the
     only place the cost comes off.
     """
+    # Rotated boxes sit out: their faces are not axis-aligned, so neither the
+    # coplanarity test nor the coverage test means anything for them.
     def covered(q):
+        if q.rotated:
+            return False
         axis = q.face // 2
         outward_hi = (q.face % 2) == 0
-        plane = q.hi[axis] if outward_hi else q.lo[axis]
+        plane = q.bhi[axis] if outward_hi else q.blo[axis]
         others = [a for a in (0, 1, 2) if a != axis]
-        for lo, hi in model.boxes:
+        for i, (lo, hi) in enumerate(model.boxes):
+            if model.box_rotated[i]:
+                continue
             touch = lo[axis] if outward_hi else hi[axis]
             if abs(touch - plane) > eps:
                 continue
-            if all(lo[a] <= q.lo[a] + eps and hi[a] >= q.hi[a] - eps for a in others):
+            if all(lo[a] <= q.blo[a] + eps and hi[a] >= q.bhi[a] - eps for a in others):
                 return True
         return False
 
@@ -403,26 +511,19 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
     L.append("// Texture: game/assets/shapes.png "
              f"({sheet_w}x{sheet_h}), sampled like the atlas.")
     L.append("//")
-    L.append("// `uv` is {u0,v0,u1,v1} in absolute sheet UV, and u0 > u1 (or")
-    L.append("// v0 > v1) means the face is MIRRORED -- interpolate with mix()")
-    L.append("// and the sign takes care of itself; do not sort the rect.")
+    L.append("// Each quad carries its four corners already in world-ish cell")
+    L.append("// space (0..1), COUNTER-CLOCKWISE seen from outside, with the")
+    L.append("// matching uv per corner. Everything -- the face axis mapping,")
+    L.append("// UV mirroring, element rotation -- is resolved HERE, so the")
+    L.append("// mesher copies vertices and never reconstructs geometry. If a")
+    L.append("// model comes out mirrored or upside down, the fix is a sign in")
+    L.append("// the BAKE; there is no second copy in the C++ to drift.")
     L.append("//")
-    L.append("// kShapeFaceAxes is the corner parameterization the bake used --")
-    L.append("// for face f, position along axis uAxis runs with parameter s")
-    L.append("// (reversed when uDir < 0) and vAxis with t, while uv runs")
-    L.append("// mix(u0,u1,s), mix(v0,v1,t). Read it here rather than keeping a")
-    L.append("// second copy in the mesher: if a baked model comes out mirrored")
-    L.append("// or upside down, the fix is a sign in the BAKE, not in the C++.")
+    L.append("// `face` survives only to say which neighbour `cull` consults.")
+    L.append("// Rotated faces are never flush with a cell wall, so they are")
+    L.append("// never culled.")
     L.append("")
     L.append("// clang-format off")
-    L.append("")
-    L.append("// { uAxis, uDir, vAxis, vDir } per face, in kFaces order "
-             "(+X,-X,+Y,-Y,+Z,-Z).")
-    L.append("inline constexpr int kShapeFaceAxes[6][4] = {")
-    for fname in FACE_ORDER:
-        ua, ud, va, vd = FACE_AXES[fname]
-        L.append(f"    {{ {ua}, {ud:+d}, {va}, {vd:+d} }},   // {fname}")
-    L.append("};")
     L.append("")
 
     for m in models:
@@ -435,11 +536,16 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
         L.append(f"inline constexpr ShapeQuad kShapeQuads{ident}[] = {{")
         for q in m.quads:
             u0, v0, u1, v1 = fmt_uv(q, m, sheet_w, sheet_h)
+            pos = ", ".join(f"{{{p[0]:.6f}f, {p[1]:.6f}f, {p[2]:.6f}f}}"
+                            for p in q.pos)
+            uvs = ", ".join(
+                f"{{{u0 + (u1 - u0) * s:.6f}f, {v0 + (v1 - v0) * t:.6f}f}}"
+                for s, t in CORNER_ST)
+            n = q.normal
             L.append(
-                f"    {{ {{{q.lo[0]:.6f}f, {q.lo[1]:.6f}f, {q.lo[2]:.6f}f}},"
-                f" {{{q.hi[0]:.6f}f, {q.hi[1]:.6f}f, {q.hi[2]:.6f}f}},"
-                f" {q.face}, {'true ' if q.cull else 'false'},"
-                f" {{{u0:.6f}f, {v0:.6f}f, {u1:.6f}f, {v1:.6f}f}} }},")
+                f"    {{ {{{pos}}}, {{{uvs}}},"
+                f" {{{n[0]:.6f}f, {n[1]:.6f}f, {n[2]:.6f}f}},"
+                f" {q.face}, {'true ' if q.cull else 'false'} }},")
         L.append("};")
         L.append(f"inline constexpr ShapeAabb kShapeBoxes{ident}[] = {{")
         for lo, hi in m.boxes:

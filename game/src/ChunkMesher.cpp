@@ -48,46 +48,14 @@ namespace {
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
 
-            const glm::vec3 lo = base + q.lo;
-            const glm::vec3 hi = base + q.hi;
+            // Corners arrive baked and correctly wound; nothing to reconstruct.
+            pushVertex(out, base + q.pos[0], q.normal, q.uv[0], emissive);
+            pushVertex(out, base + q.pos[1], q.normal, q.uv[1], emissive);
+            pushVertex(out, base + q.pos[2], q.normal, q.uv[2], emissive);
 
-            // The quad lies on `axis` at whichever side it faces; the other
-            // two axes are swept by the texture's u and v parameters. The
-            // mapping comes from the bake (kShapeFaceAxes) so a mirrored or
-            // upside-down model is fixed by one sign there, not here.
-            const int axis = q.face >> 1;
-            const float fixed = (q.face & 1) == 0 ? hi[axis] : lo[axis];
-            const int uA = kShapeFaceAxes[q.face][0], uD = kShapeFaceAxes[q.face][1];
-            const int vA = kShapeFaceAxes[q.face][2], vD = kShapeFaceAxes[q.face][3];
-
-            const auto corner = [&](float s, float t) {
-                glm::vec3 p{0.0f};
-                p[axis] = fixed;
-                p[uA] = uD > 0 ? glm::mix(lo[uA], hi[uA], s) : glm::mix(hi[uA], lo[uA], s);
-                p[vA] = vD > 0 ? glm::mix(lo[vA], hi[vA], t) : glm::mix(hi[vA], lo[vA], t);
-                return p;
-            };
-            // u0 > u1 (or v0 > v1) means a mirrored face: mix() carries the
-            // sign, so the rect is used exactly as baked and never sorted.
-            const auto texel = [&](float s, float t) {
-                return glm::vec2(glm::mix(q.uv.x, q.uv.z, s),
-                                 glm::mix(q.uv.y, q.uv.w, t));
-            };
-
-            const glm::vec3& n = kFaces[q.face].normal;
-            const glm::vec3 p00 = corner(0, 0), p10 = corner(1, 0);
-            const glm::vec3 p11 = corner(1, 1), p01 = corner(0, 1);
-
-            // Reverse winding: sweeping (s,t) with the bake's axis mapping
-            // walks each face CLOCKWISE seen from outside. Cosmetic today
-            // (GL_CULL_FACE is off) but wrong to leave for whenever it isn't.
-            pushVertex(out, p00, n, texel(0, 0), emissive);
-            pushVertex(out, p11, n, texel(1, 1), emissive);
-            pushVertex(out, p10, n, texel(1, 0), emissive);
-
-            pushVertex(out, p00, n, texel(0, 0), emissive);
-            pushVertex(out, p01, n, texel(0, 1), emissive);
-            pushVertex(out, p11, n, texel(1, 1), emissive);
+            pushVertex(out, base + q.pos[0], q.normal, q.uv[0], emissive);
+            pushVertex(out, base + q.pos[2], q.normal, q.uv[2], emissive);
+            pushVertex(out, base + q.pos[3], q.normal, q.uv[3], emissive);
         }
     }
 

@@ -186,9 +186,11 @@ the pillar slips to post-launch.
   parameterization (`kShapeFaceAxes`) is emitted INTO the generated data so a
   handedness fix is one sign in the bake with no second copy to drift; and two
   call sites the "six call sites" list missed — DropSystem's landing and the
-  creature spawn ground-scan — carried the same `floor()` assumption. Still
-  open: only frame 0 of an animated texture is sampled, and mirroring is
-  unproven until an asymmetric model exists
+  creature spawn ground-scan — carried the same `floor()` assumption. A second
+  model (the **Alembic**, `BlockId::Alembic`) then forced rotated-element
+  support: quads became fully baked corners, and rotated geometry draws exactly
+  while colliding as its bounding box. Still open: only frame 0 of an animated
+  texture is sampled
 - **Belts become tubes:** the first real customer of block shapes, now
   unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
@@ -234,13 +236,14 @@ Kept here so they don't get lost — none are architectural dead-ends:
   Circle cut it to 13 rows so it no longer overflows; the circle panel avoids
   the trap properly, by windowing its row list to the window height
   (`circleRows`). Any future long list should copy the circle, not the menu
-- Block shapes ship with two loose ends (July 2026): an animated block texture
+- Block shapes ship with one loose end (July 2026): an animated block texture
   is baked whole into `shapes.png` with its `vStride`, but only **frame 0** is
   sampled — finishing it is a per-vertex bank flag plus a shader uniform, and
-  never a remesh; and face **mirroring is unproven**, since the only shaped
-  block so far is a rotationally symmetric cauldron on which a sign error is
-  invisible. A detailed block also costs ~45 KB of chunk mesh (~30× a plain
-  block), so shapes belong on machines, not on anything placed in bulk
+  never a remesh. A detailed block also costs ~45 KB of chunk mesh (~30× a
+  plain block), so shapes belong on machines, not on anything placed in bulk.
+  Collision on a ROTATED element is its bounding box, not its exact geometry —
+  a little generous to walk into, and fine until something is both rotated and
+  something you stand on
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space)
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
