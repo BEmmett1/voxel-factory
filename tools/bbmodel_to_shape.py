@@ -38,6 +38,7 @@ import argparse
 import base64
 import json
 import math
+import re
 import struct
 import sys
 import zlib
@@ -256,7 +257,7 @@ def load_model(path):
     model.frames = frames
     model.frame_time = tex.get("frame_time", 0)
 
-    meshes, blank, nrot = 0, 0, 0
+    meshes, blank, nrot, thin = 0, 0, 0, 0
     for el in doc.get("elements", []):
         if el.get("type", "cube") != "cube":
             meshes += 1
@@ -314,9 +315,16 @@ def load_model(path):
             if not face or face.get("texture") is None:
                 continue
             uv = [float(v) for v in face["uv"]]
+            # A face whose uv rect is degenerate on one axis is NOT dropped:
+            # box-UV floors a box's dimensions to whole texels, so every
+            # element thinner than 1 unit (trim rings, banding, rims) gets
+            # zero-height side rects while its geometry is perfectly real.
+            # Dropping them punches holes in exactly the fine detail these
+            # models are for. A collapsed rect samples a single texel line,
+            # which is what Blockbench and Minecraft draw; the inset clamp
+            # already leaves a zero-extent rect alone.
             if uv[0] == uv[2] or uv[1] == uv[3]:
-                blank += 1
-                continue
+                thin += 1
             if face.get("rotation"):
                 # Face-level UV rotation needs a corner permutation, not a rect.
                 print(f"  ! {name}: face rotation on '{el.get('name')}'.{fname} "
@@ -353,7 +361,10 @@ def load_model(path):
     if meshes:
         print(f"  ! {name}: skipped {meshes} non-cube (mesh) element(s)")
     if blank:
-        print(f"  ! {name}: skipped {blank} zero-area box/face(s)")
+        print(f"  ! {name}: skipped {blank} zero-area box(es)")
+    if thin:
+        print(f"  {thin} face(s) on sub-unit-thick elements sample a single "
+              "texel line (box-UV floors box size)")
     if not model.quads:
         raise ValueError(f"{name}: nothing to bake")
 
@@ -480,6 +491,20 @@ def pack(models, max_width=1024, pad=1):
 
 # --- emit --------------------------------------------------------------------
 
+def cpp_ident(name):
+    """File stem -> CamelCase C++ identifier.
+
+    Anything that is not alphanumeric becomes a word break, because model files
+    arrive from a browser as `alchemical_alembic (1).bbmodel` and a stem pasted
+    straight into a symbol name would emit code that does not compile.
+    """
+    words = [w for w in re.split(r"[^0-9A-Za-z]+", name) if w]
+    ident = "".join(w[:1].upper() + w[1:] for w in words)
+    if not ident or ident[0].isdigit():
+        ident = "Shape" + ident
+    return ident
+
+
 def fmt_uv(q, m, sheet_w, sheet_h):
     cx0, cy0, cw, ch, sx, sy = m.crop
     rx, ry = m.region
@@ -529,7 +554,7 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
     for m in models:
         cw, chf, _ = m.tex
         ch = chf // m.frames
-        ident = "".join(p.capitalize() for p in m.name.replace("-", "_").split("_"))
+        ident = cpp_ident(m.name)
         L.append(f"// ---- {m.name} "
                  f"({len(m.boxes)} boxes, {len(m.quads)} quads, "
                  f"{m.frames} frame{'s' if m.frames != 1 else ''}) ----")
