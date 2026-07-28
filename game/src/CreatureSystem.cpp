@@ -40,7 +40,13 @@ namespace {
          .hp = kBossHealth, .walkSpeed = kBossWalkSpeed,
          .aggroRadius = kBossAggroRadius, .strikeRange = kBossStrikeRange,
          .damage = kBossDamage, .strikeCooldown = kBossStrikeCooldown,
-         .drop = ItemId::VoidCatalyst},
+         .drop = ItemId::VoidCatalyst,
+         .lungeCooldown = kBossLungeCooldown, .lungeWindup = kBossLungeWindup,
+         .lungeSpeed = kBossLungeSpeed, .lungeDuration = kBossLungeDuration,
+         .lungeMinRange = kBossLungeMinRange, .lungeMaxRange = kBossLungeMaxRange,
+         .lungeDamageMult = kBossLungeDamageMult,
+         .enrageAt = kBossEnrageAt, .enrageSpeedMult = kBossEnrageSpeedMult,
+         .enrageRateMult = kBossEnrageRateMult},
         {.id = SpeciesId::Tempest, .model = kTempestModel,
          .kind = CreatureKind::Boss, .name = "THE TEMPEST",
          .scale = kTempestScale, .halfW = kTempestHalfW, .height = kTempestHeight,
@@ -270,29 +276,82 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
 
         // --- Intent: wander or hunt. ---
         glm::vec3 wishVel(0.0f);
+        // A dash overrides the walk entirely; faceDir carries the turn target
+        // out of the branches, since a winding-up boss turns without walking.
+        glm::vec3 lungeVel(0.0f), faceDir(0.0f);
+        float chaseSpeedMult = 1.0f;
         if (sp.kind == CreatureKind::Boss) {
             c.strikeTimer = std::max(0.0f, c.strikeTimer - dt);
+            c.lungeTimer = std::max(0.0f, c.lungeTimer - dt);
             glm::vec3 toPlayer = playerFeet - c.pos;
             const float distXZ = glm::length(glm::vec2(toPlayer.x, toPlayer.z));
             const float dist = glm::length(toPlayer);
+
+            // Enrage scales the whole kit at once: below the threshold it
+            // moves faster and every cooldown shrinks.
+            const bool enraged = sp.enrageAt > 0.0f && sp.hp > 0.0f &&
+                                 (c.hp / sp.hp) <= sp.enrageAt;
+            const float speedMult = enraged ? sp.enrageSpeedMult : 1.0f;
+            const float rateMult  = enraged ? sp.enrageRateMult : 1.0f;
+
+            // Flat XZ direction to the player, reused by the strike shove and
+            // the lunge commit.
+            glm::vec3 flat = toPlayer;
+            flat.y = 0.0f;
+            flat = (glm::dot(flat, flat) > 1e-6f) ? glm::normalize(flat)
+                                                  : glm::vec3(0.0f, 0.0f, 1.0f);
+
             if (dist <= sp.strikeRange && c.strikeTimer <= 0.0f) {
                 // Contact strike: damage plus a shove away from the warden,
                 // so the fight has a hit-and-close rhythm instead of a hug.
-                c.strikeTimer = sp.strikeCooldown;
-                ev.damageToPlayer += sp.damage;
-                glm::vec3 away = toPlayer;
-                away.y = 0.0f;
-                away = (glm::dot(away, away) > 1e-6f) ? glm::normalize(away)
-                                                      : glm::vec3(0.0f, 0.0f, 1.0f);
-                ev.playerKnock += away * kBossKnockback +
-                                  glm::vec3(0.0f, kBossKnockUp, 0.0f);
+                // A strike that lands mid-dash is the lunge connecting.
+                c.strikeTimer = sp.strikeCooldown * rateMult;
+                ev.damageToPlayer +=
+                    sp.damage * (c.lungeLeft > 0.0f ? sp.lungeDamageMult : 1.0f);
+                // The vertical pop is rolled per strike (same hash-counter
+                // scheme the wander decisions use, so it stays deterministic
+                // and needs no RNG state of its own). Rolled as a HEIGHT and
+                // converted here, so the knobs stay in blocks.
+                const float popH = kBossKnockUpMinH +
+                                   roll01(c.wanderRolls, 53u) *
+                                       (kBossKnockUpMaxH - kBossKnockUpMinH);
+                const float up = std::sqrt(2.0f * kGravity * popH);
+                ev.playerKnock += flat * kBossKnockback + glm::vec3(0.0f, up, 0.0f);
+                c.lungeLeft = 0.0f; // the dash spends itself on the hit
             }
-            if (dist <= sp.aggroRadius) {
-                c.walking = distXZ > sp.strikeRange * 0.6f; // don't jitter inside the hit box
+
+            if (c.lungeLeft > 0.0f) {
+                // Dashing: committed direction, no steering. Overrides the
+                // walk below, so a lunge can overshoot -- that is the counter.
+                c.lungeLeft -= dt;
+                c.walking = false;
+                lungeVel = c.lungeDir * sp.lungeSpeed;
+                faceDir = c.lungeDir;
+            } else if (c.windupLeft > 0.0f) {
+                // Telegraph: planted and turning to face you. Standing still
+                // IS the tell, so it reads without any new art.
+                c.windupLeft -= dt;
+                c.walking = false;
+                c.target = playerFeet;
+                faceDir = flat; // tracks you right up to the commit
+                if (c.windupLeft <= 0.0f) {
+                    c.lungeLeft = sp.lungeDuration;
+                    c.lungeDir = flat; // committed here, not tracked
+                }
+            } else if (dist <= sp.aggroRadius) {
+                if (sp.lungeCooldown > 0.0f && c.lungeTimer <= 0.0f &&
+                    dist >= sp.lungeMinRange && dist <= sp.lungeMaxRange) {
+                    c.windupLeft = sp.lungeWindup;
+                    c.lungeTimer = sp.lungeCooldown * rateMult;
+                    c.walking = false;
+                } else {
+                    c.walking = distXZ > sp.strikeRange * 0.6f; // don't jitter inside the hit box
+                }
                 c.target = playerFeet;
             } else {
                 c.walking = false; // out of sight: the warden waits
             }
+            chaseSpeedMult = speedMult;
         } else if (!c.walking) {
             c.idleTimer -= dt;
             if (c.idleTimer <= 0.0f) {
@@ -315,13 +374,22 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
                 }
             } else {
                 d = glm::normalize(d);
-                wishVel = d * sp.walkSpeed;
-                // Face the way we walk (model faces -Z at yaw 0).
-                const float desired = glm::degrees(std::atan2(-d.x, -d.z));
-                const float delta = wrapDeg(desired - c.yaw);
-                const float maxStep = kCreatureTurnRate * dt;
-                c.yaw += glm::clamp(delta, -maxStep, maxStep);
+                wishVel = d * sp.walkSpeed * chaseSpeedMult;
+                faceDir = d;
             }
+        }
+
+        // A committed dash replaces the walk velocity outright -- no steering
+        // mid-lunge, which is what makes sidestepping it work.
+        if (glm::dot(lungeVel, lungeVel) > 0.0f) wishVel = lungeVel;
+
+        // Face the way we move (model faces -Z at yaw 0). Driven by faceDir
+        // rather than the walk, so a planted boss still turns to track you.
+        if (glm::dot(faceDir, faceDir) > 1e-6f) {
+            const float desired = glm::degrees(std::atan2(-faceDir.x, -faceDir.z));
+            const float delta = wrapDeg(desired - c.yaw);
+            const float maxStep = kCreatureTurnRate * dt;
+            c.yaw += glm::clamp(delta, -maxStep, maxStep);
         }
 
         // --- Physics: gravity + the player's axis-separated move-and-slide.

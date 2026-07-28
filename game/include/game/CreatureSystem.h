@@ -53,6 +53,21 @@ struct CreatureSpecies {
     float  damage = 0.0f;        // hearts per strike
     float  strikeCooldown = 0.0f;
     ItemId drop = ItemId::None;  // awarded on the killing blow
+    // Lunge: a telegraphed charge that closes distance a walk can't. Zero
+    // cooldown disables it, so a species opts in by filling these five.
+    // The windup is the fairness: the boss visibly STOPS before it fires.
+    float lungeCooldown = 0.0f;  // 0 = no lunge
+    float lungeWindup = 0.0f;    // frozen telegraph before the dash
+    float lungeSpeed = 0.0f;     // dash speed (set above player sprint to bite)
+    float lungeDuration = 0.0f;  // how long the dash lasts
+    float lungeMinRange = 0.0f;  // too close to bother
+    float lungeMaxRange = 0.0f;  // too far to commit
+    float lungeDamageMult = 1.0f; // strike damage scale while dashing
+    // Enrage: below this fraction of max HP the boss speeds up and its
+    // cooldowns shrink, so finishing it is the dangerous part. 0 = never.
+    float enrageAt = 0.0f;
+    float enrageSpeedMult = 1.0f;
+    float enrageRateMult = 1.0f; // multiplies cooldowns (<1 = more often)
 };
 
 // The entity layer: every live creature across every dimension, plus the
@@ -129,6 +144,11 @@ private:
         glm::vec3 knock{0.0f};              // decaying shove from being hit
         float     hurtFlash = 0.0f;         // 0..1 red tint, fades per frame
         float     strikeTimer = 0.0f;       // Boss: seconds until the next hit
+        // Lunge state machine: cooling down -> winding up -> dashing.
+        float     lungeTimer = 0.0f;        // until the next lunge is allowed
+        float     windupLeft = 0.0f;        // >0: frozen, telegraphing
+        float     lungeLeft = 0.0f;         // >0: dashing along lungeDir
+        glm::vec3 lungeDir{0.0f};           // committed at windup end (XZ, unit)
     };
 
     struct SpeciesAssets {

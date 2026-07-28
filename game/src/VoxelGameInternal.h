@@ -187,18 +187,44 @@ namespace vg {
     inline constexpr const char* kBossModel = "assets/models/boss.bbmodel";
     inline constexpr int   kArenaRadius        = 12;    // voidstone disc radius (blocks)
     inline constexpr int   kArenaY             = 20;    // arena ground height
-    inline constexpr float kBossHealth         = 20.0f; // ~10 sword hits
-    inline constexpr float kBossWalkSpeed      = 3.4f;  // blocks/s; sprint outruns it
+    inline constexpr float kBossHealth         = 30.0f; // ~15 sword hits
+    // Deliberately just UNDER kWalkSpeed: backing away still works, which is
+    // what makes the lunge below the warden's real weapon rather than a
+    // flourish. Raising this past 4.5 would make the lunge redundant.
+    inline constexpr float kBossWalkSpeed      = 4.2f;  // blocks/s; a walk barely escapes
     inline constexpr float kBossAggroRadius    = 22.0f; // notices the player from here
     inline constexpr float kBossStrikeRange    = 2.1f;  // center distance for a hit
     inline constexpr float kBossDamage         = 1.5f;  // hearts per hit
     inline constexpr float kBossStrikeCooldown = 1.5f;  // seconds between hits
     inline constexpr float kBossKnockback      = 9.0f;  // player shove per hit, blocks/s
-    inline constexpr float kBossKnockUp        = 5.0f;  // vertical pop per hit
+    // Vertical pop per hit, rolled per strike so no two hits feel alike.
+    // Expressed as HEIGHT IN BLOCKS and converted to a launch velocity at the
+    // strike site (v = sqrt(2*g*h)) -- the feel is "how high does it throw
+    // me", not a velocity, and tuning in blocks keeps it that way.
+    // Note the top of this range lands ABOVE kFallSafeSpeed: anything past
+    // ~3.4 blocks hurts on the way down (and armor never mitigates fall
+    // damage), so a high roll costs the strike plus up to ~1.5 more hearts.
+    inline constexpr float kBossKnockUpMinH    = 1.0f;  // blocks of height
+    inline constexpr float kBossKnockUpMaxH    = 5.0f;
     inline constexpr float kBossScale          = 2.0f;  // render + reach scale
     inline constexpr float kBossHalfW          = 0.85f; // collision half width
     inline constexpr float kBossHeight         = 2.3f;
     inline constexpr float kVictorySeconds     = 3.0f;  // linger before the ride home
+    // The warden's kit. Kiting used to be free (it walks slower than you), so
+    // the LUNGE is the answer to distance: a visible freeze, then a dash
+    // faster than a sprint. The windup is what keeps it fair -- the tell is
+    // the boss standing still, which needs no new art to read.
+    inline constexpr float kBossLungeCooldown   = 5.0f;  // seconds between lunges
+    inline constexpr float kBossLungeWindup     = 0.55f; // frozen telegraph
+    inline constexpr float kBossLungeSpeed      = 12.0f; // > sprint (kWalkSpeed*kSprintMult)
+    inline constexpr float kBossLungeDuration   = 0.45f; // ~5 blocks of travel
+    inline constexpr float kBossLungeMinRange   = 3.0f;  // already on you: just swing
+    inline constexpr float kBossLungeMaxRange   = 14.0f; // beyond this it walks instead
+    inline constexpr float kBossLungeDamageMult = 1.6f;  // a connecting dash hurts more
+    // Enrage: the last 40% is the dangerous part, not a formality.
+    inline constexpr float kBossEnrageAt        = 0.40f; // hp fraction
+    inline constexpr float kBossEnrageSpeedMult = 1.30f;
+    inline constexpr float kBossEnrageRateMult  = 0.60f; // cooldowns shrink
 
     // THE TEMPEST (boss #2): faster than a walking player (sprint or die),
     // harder hits, more health. Its storm arena is a tighter ring.
