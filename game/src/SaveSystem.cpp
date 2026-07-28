@@ -5,6 +5,7 @@
 #include "game/Block.h"
 #include "game/Item.h"
 
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>

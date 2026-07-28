@@ -35,7 +35,19 @@ shaders run unchanged on it). miniaudio's CoreAudio frameworks are linked in
 engine/CMakeLists.txt; `bin/` is relocatable via an `@loader_path` rpath (the same
 zero-prerequisite-folder story as Windows). Retina is deliberately off
 (`SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI point→pixel pass first — see ROADMAP).
-CI builds/selftests both platforms on every push.
+
+**Linux (x86_64, glibc)**: `cmake --preset linux-release && cmake --build --preset
+linux-release`. The only extra step is distro dev packages — SDL3 is built from source
+and detects X11/Wayland/GL from headers present at configure time, so a machine without
+them builds fine and then dies at `SDL_CreateWindow` with only the dummy driver. The
+root CMakeLists checks for `X11/Xlib.h` / `wayland-client.h` up front and fails with the
+apt/dnf/pacman line rather than letting that happen. Audio needs nothing installed:
+miniaudio `dlopen`s ALSA/PulseAudio at runtime, so the engine links only
+`Threads`/`dl`/`m` there. `bin/` is relocatable via an `$ORIGIN` rpath (the same
+zero-prerequisite-folder story as Windows and macOS), and the exe links `-rdynamic`
+(`ENABLE_EXPORTS`) so CrashHandler's `backtrace_symbols_fd` prints names, not hex.
+
+CI builds/selftests all three platforms on every push.
 
 The first configure compiles SDL3 from source (several minutes); later builds are fast.
 Run `out/build/<preset>/bin/voxel-factory.exe`. CMake copies `shaders/`, `assets/`, and

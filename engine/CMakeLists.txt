@@ -32,6 +32,15 @@ if(APPLE)
         "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox")
 endif()
 
+# On Linux miniaudio dlopen()s ALSA/PulseAudio at runtime rather than linking
+# them, so there are no audio dev packages to install -- but it does need the
+# loader, threads, and libm spelled out. A machine with neither backend present
+# simply fails to open a device, which Audio already degrades to silence.
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(engine PUBLIC Threads::Threads ${CMAKE_DL_LIBS} m)
+endif()
+
 # CrashHandler writes minidumps via DbgHelp on Windows.
 if(WIN32)
     target_link_libraries(engine PUBLIC dbghelp)

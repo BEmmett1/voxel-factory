@@ -8,8 +8,16 @@ calendar quarters counted from July 2026.
 
 - [x] Release build presets (`CMakePresets.json`) + product version
       (`VOXEL_FACTORY_VERSION`, shown in title/F3)
-- [x] CI: Windows Release build + headless save selftest + artifact zip on
-      every push (`.github/workflows/build.yml`)
+- [x] CI: Windows / macOS / Linux Release builds + headless save selftest +
+      artifact per platform on every push (`.github/workflows/build.yml`)
+- [x] Linux support (July 2026): `linux-debug`/`linux-release` presets, an
+      `$ORIGIN` rpath so `bin/` stays a movable zero-prerequisite folder, and
+      `-rdynamic` so the existing POSIX crash handler's backtrace has names.
+      Nearly free — the macOS port had already split every `_WIN32` path — so
+      the real work was a configure-time check for the X11/Wayland dev headers
+      (SDL3 silently drops undetected video backends, which would otherwise
+      build green and die at `SDL_CreateWindow`) plus `<cstdint>` includes that
+      MSVC and libc++ supply transitively and libstdc++ 13 no longer does
 - [x] Atomic saves with a `.bak` generation; load falls back to `.bak`
 - [x] Save dir off the dev username (`BennyThompson` placeholder org, with
       legacy migration — rename is free later)
@@ -245,7 +253,18 @@ Kept here so they don't get lost — none are architectural dead-ends:
   a little generous to walk into, and fine until something is both rotated and
   something you stand on
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
-  point→pixel coordinate pass first (UI draws + hit-tests in one space)
+  point→pixel coordinate pass first (UI draws + hit-tests in one space). A
+  Wayland desktop on fractional scaling is the same gap wearing a different
+  hat, so that one pass fixes both
+- Linux ships as a tarball of `bin/`, not a Flatpak/AppImage or a Steam runtime
+  container, and is built + tested only on glibc x86_64. The POSIX crash
+  handler uses `execinfo.h`, which musl (Alpine) does not have — it would need
+  an `#ifdef __GLIBC__` before that ever matters. Packaging is the Q1 2027
+  packaging item's problem
+- CI proves the Linux build compiles and passes the headless selftest, but
+  nothing there opens a window or a GL context — the same blind spot as the
+  other two platforms, since `--selftest` is deliberately headless. Every
+  platform's window/GL/input path is still verified only by playing it
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
 - **Multiplayer: explicitly deferred (decided July 2026).** Nothing in the
   architecture anticipates it — the sim is a single-process 20 Hz tick with

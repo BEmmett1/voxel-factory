@@ -21,6 +21,31 @@ endif()
 
 include(FetchContent)
 
+# On Linux SDL3 detects its video backends from headers that are present at
+# configure time and silently drops the ones that aren't -- with neither X11
+# nor Wayland it still builds, then dies at SDL_CreateWindow with only the
+# "dummy" driver. Catch that here, before the multi-minute SDL build, and name
+# the packages instead.
+if(UNIX AND NOT APPLE)
+    find_path(VF_X11_HEADER X11/Xlib.h)
+    find_path(VF_WAYLAND_HEADER wayland-client.h)
+    if(NOT VF_X11_HEADER AND NOT VF_WAYLAND_HEADER)
+        message(FATAL_ERROR
+            "No X11 or Wayland development headers found -- SDL3 would build "
+            "with no usable video driver.\n"
+            "  Debian/Ubuntu: sudo apt install libx11-dev libxext-dev "
+            "libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev "
+            "libxkbcommon-dev libwayland-dev wayland-protocols "
+            "libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev\n"
+            "  Fedora: sudo dnf install libX11-devel libXext-devel "
+            "libXrandr-devel libXcursor-devel libXi-devel libXfixes-devel "
+            "libxkbcommon-devel wayland-devel mesa-libGL-devel "
+            "mesa-libEGL-devel dbus-devel systemd-devel\n"
+            "  Arch: sudo pacman -S libx11 libxext libxrandr libxcursor libxi "
+            "libxfixes libxkbcommon wayland wayland-protocols mesa")
+    endif()
+endif()
+
 # --- SDL3: window, OpenGL context, input, events ---
 FetchContent_Declare(
     SDL3

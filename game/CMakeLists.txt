@@ -77,3 +77,13 @@ endif()
 if(APPLE)
     set_target_properties(voxel-factory PROPERTIES BUILD_RPATH "@loader_path")
 endif()
+
+# Linux is the same story with the ELF spelling: libSDL3.so.0 already lands in
+# bin/, and $ORIGIN resolves against the executable's own directory so the
+# folder stays movable. ENABLE_EXPORTS adds -rdynamic, which is what gives
+# CrashHandler's backtrace_symbols_fd() real function names instead of hex.
+if(UNIX AND NOT APPLE)
+    set_target_properties(voxel-factory PROPERTIES
+        BUILD_RPATH "$ORIGIN"
+        ENABLE_EXPORTS ON)
+endif()

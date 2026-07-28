@@ -81,3 +81,59 @@ jobs:
         with:
           name: voxel-factory-mac
           path: voxel-factory-mac.tar.gz
+
+  linux-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # SDL3 is built from source, so it needs the windowing/input/GL headers
+      # at configure time — it silently drops whichever backend it can't find.
+      # Audio dev packages are NOT needed by us (miniaudio dlopen()s ALSA and
+      # PulseAudio at runtime); they are here so SDL's own audio backends
+      # build too, keeping the artifact's capabilities the same as a distro
+      # build's.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libgl1-mesa-dev libegl1-mesa-dev \
+            libdbus-1-dev libudev-dev \
+            libasound2-dev libpulse-dev
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v6
+        with:
+          path: out/build/linux-Release/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake --preset linux-release
+
+      - name: Build
+        run: cmake --build --preset linux-release
+
+      - name: Selftest (save round-trip, headless)
+        run: out/build/linux-Release/bin/voxel-factory --selftest
+
+      # $ORIGIN must be on the exe's RUNPATH or the shipped libSDL3.so.0 next
+      # to it won't be found once the folder moves off this runner.
+      - name: Assert relocatable rpath
+        run: |
+          readelf -d out/build/linux-Release/bin/voxel-factory | grep -E 'RPATH|RUNPATH'
+          readelf -d out/build/linux-Release/bin/voxel-factory | grep -q '$ORIGIN'
+
+      # Tar first: upload-artifact's zip strips the executable bit, a tarball
+      # keeps the bin folder runnable straight after download + untar.
+      - name: Pack build
+        run: tar -czf voxel-factory-linux.tar.gz -C out/build/linux-Release bin
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: voxel-factory-linux
+          path: voxel-factory-linux.tar.gz

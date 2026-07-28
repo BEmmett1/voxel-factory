@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>

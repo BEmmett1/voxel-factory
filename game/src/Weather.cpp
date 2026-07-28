@@ -4,6 +4,8 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 using namespace vg;
 
 // Rain comes and goes on seeded random phases. Gameplay gates on the boolean;

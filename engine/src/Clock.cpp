@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdint>
+
 namespace engine {
 
     Clock::Clock() : m_last(SDL_GetPerformanceCounter()) {}
