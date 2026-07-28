@@ -374,16 +374,20 @@ Textures:
 - **Load-bearing assumption:** every query iterates the cells an AABB overlaps
   and tests only THAT cell's boxes, so shape geometry must stay inside its own
   cell. The bake enforces it with a hard error.
-- **Shaped blocks so far: `Cauldron` and `Alembic`.** They no longer occlude or
-  keep rain out, and you collide with the model rather than the cell. Their
-  atlas tiles stay for the item icon and the generated-atlas fallback. Adding
-  the next one is: bake, append a `ShapeId` row + a `kBlockShapes` row, then set
-  `fullCube = false` and `shape` on the kBlocks row.
+- **Shaped blocks so far: `Cauldron`, `Alembic`, `Miner`, and `Infuser`.** They
+  no longer occlude or keep rain out, and you collide with the model rather than
+  the cell. Their atlas tiles stay for the item icon and the generated-atlas
+  fallback. Adding the next one is: bake, append a `ShapeId` row + a
+  `kBlockShapes` row, then set `fullCube = false` and `shape` on the kBlocks row.
+  The bake packs ONE sheet, so rerun it over every model at once (the .inl's
+  header comment carries the last full command line) — baking one model alone
+  drops the others out of `shapes.png`.
 - Known gap: only frame 0 of an animated texture is sampled (the sheet holds
   all frames and `vStride` is emitted; finishing it is a per-vertex bank flag
-  plus a uniform, never a remesh). ~45 KB of chunk mesh per placed shaped block
-  (~30× a plain block) argues for keeping detailed shapes to machines rather
-  than anything placed in bulk.
+  plus a uniform, never a remesh). 29-77 KB of chunk mesh per placed shaped
+  block (the Infuser's 367 quads are the current ceiling, ~50× a plain block)
+  argues for keeping detailed shapes to machines rather than anything placed in
+  bulk.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,

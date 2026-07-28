@@ -64,6 +64,8 @@ enum class ShapeId : std::uint8_t {
     Empty,          // occupies nothing (Air): no quads, no collision boxes
     BrewingCauldron,
     AlchemicalAlembic,
+    AugerMiningRig,
+    ArcaneInfuser,
     Count
 };
 
@@ -96,6 +98,16 @@ inline constexpr BlockShape kBlockShapes[] = {
      .boxes = kShapeBoxesAlchemicalAlembic,
      .bounds = kShapeBoundsAlchemicalAlembic,
      .anim = kShapeAnimAlchemicalAlembic},
+    {.id = ShapeId::AugerMiningRig,
+     .quads = kShapeQuadsAugerMiningRig,
+     .boxes = kShapeBoxesAugerMiningRig,
+     .bounds = kShapeBoundsAugerMiningRig,
+     .anim = kShapeAnimAugerMiningRig},
+    {.id = ShapeId::ArcaneInfuser,
+     .quads = kShapeQuadsArcaneInfuser,
+     .boxes = kShapeBoxesArcaneInfuser,
+     .bounds = kShapeBoundsArcaneInfuser,
+     .anim = kShapeAnimArcaneInfuser},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
