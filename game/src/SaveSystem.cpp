@@ -13,7 +13,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 18;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 19;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -23,8 +23,14 @@ namespace {
     // (Composter block + stick/pebble/tool items) — no layout change, so old
     // saves still load. v18 appended the three equipped-armor slot ids at the
     // tail (older saves default to unarmored) and GREW the enums (Forge block +
-    // armor/Forge items). Any REORDERING or non-tail change must drop this
-    // compatibility and require an exact version match again.
+    // armor/Forge items). v19 is the one entry here that is NOT a tail append:
+    // Ingot -> Copper Plate moved off the Grinder onto the Press, so the
+    // Grinder lost a row and the Press gained one ahead of its existing rows.
+    // The file layout is untouched, so v18 saves still parse -- but
+    // Machine::selectedRecipe is an index into those lists, so a v<19 Grinder
+    // or Press with a locked MAKE row is REMAPPED on load (see below) instead
+    // of silently making the wrong thing. Any REORDERING or non-tail change
+    // must drop this compatibility or carry a migration like that one.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -280,6 +286,16 @@ bool load(const std::string& path, SaveData& d) {
         m.type = static_cast<BlockId>(type);
         std::int32_t sel = -1;
         if (!readPod(in, sel)) return false;
+        // v19 moved Ingot -> Copper Plate from the Grinder to the Press, which
+        // shifted BOTH machines' recipe lists, so a pre-v19 lock on either
+        // points at the wrong row. The Grinder lost its row 0: rows 1..3 shift
+        // down, and the plate lock itself has nowhere to go, so it falls back
+        // to AUTO rather than quietly becoming "grind herb". The Press gained
+        // a new row 0: everything it had shifts up one.
+        if (version < 19 && sel >= 0) {
+            if (m.type == BlockId::Grinder) sel = sel > 0 ? sel - 1 : -1;
+            else if (m.type == BlockId::Press) sel += 1;
+        }
         m.selectedRecipe = sel;
         if (!readPod(in, m.progress)) return false;
         if (!readInventory(in, m.input) || !readInventory(in, m.output)) return false;

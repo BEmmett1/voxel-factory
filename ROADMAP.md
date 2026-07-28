@@ -104,19 +104,25 @@ the pillar slips to post-launch.
   Matching/tier/consume are covered by the headless `--selftest`.
   Costs and the necklace arrangements want a play-tuning pass.
 - [x] **Deeper machine chains** (July 2026): the shared parts tier landed. A new
-  **Press** (`MachineKind::Processor`, hand-crafted from Ingot ×2 + Plate ×2 +
-  Stone ×4) forms Copper Rod (Ingot → Rod ×2), Gear (Rod ×2), Machine Casing
-  (Plate ×4) and Etched Plate (Plate + Crystal Dust ×2), then assembles all
-  three into the **Machine Frame** — which is no longer hand-craftable at all.
+  **Press** (`MachineKind::Processor`, laid on the Alchemy Circle from Ingot ×4
+  + Stone ×4) presses Copper Plate (Ingot → Plate) and forms Copper Rod (Ingot →
+  Rod ×2), Gear (Rod ×2), Machine Casing (Plate ×4) and Etched Plate (Plate +
+  Crystal Dust ×2), then assembles all three into the **Machine Frame** — which
+  is no longer hand-craftable at all.
   Every machine now sits four machine steps behind raw ore instead of one
   hand-craft (a frame went from 6 ore + 1 crystal to 14 ore + 2 crystals), and
   the craft menu lost a row rather than gaining any. Pure data: one traits row,
-  one block, five items, no new `MachineKind`, **no save bump** (enum tail
-  growth only, the v17 precedent) — the Press recipes are appended at the table
-  tail because `Machine::selectedRecipe` is a saved index into
-  `recipesForMachine()` order (SCALABILITY.md). With five recipes on one Press,
-  AUTO picks the first recipe it has inputs for, so dedicating Presses per part
-  is the intended logistics pressure. Tune costs in play.
+  one block, five items, no new `MachineKind`.
+  A later pass moved `Ingot → Plate` off the Grinder onto the Press (a press
+  presses), which made the Press the bootstrap machine — so its own circle
+  pattern is deliberately plate-free, and `--selftest` pins that no future
+  shuffle can deadlock the tree behind a Press you cannot build. That move
+  reordered two recipe lists, and `Machine::selectedRecipe` is a saved index
+  into `recipesForMachine()` order (SCALABILITY.md), so **save v19 migrates the
+  affected locks on read** instead of discarding the file. With six recipes on
+  one Press, AUTO picks the first recipe it has inputs for (Plate is listed
+  first for the bootstrap's sake), so dedicating Presses per part is the
+  intended logistics pressure. Tune costs in play.
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned

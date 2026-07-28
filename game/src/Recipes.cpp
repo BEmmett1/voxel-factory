@@ -4,9 +4,9 @@ namespace {
     using I = ItemId;
 
     // The equipment hand-craft chain (v2: machine-made plates). Index order is
-    // stable (the menu relies on it). Only the Generator and Grinder can be
-    // built without Copper Plates -- plates come from a powered, fueled
-    // Grinder, so the tech tree bootstraps through automation.
+    // stable (the menu relies on it). Nothing here costs a Copper Plate --
+    // plates come from a powered, fueled Press, so the tech tree bootstraps
+    // through automation.
     // Hand-crafting is now a SURVIVAL TIER only. It is instant, free, and needs
     // no world state, which is exactly why it must not be able to build the
     // factory: everything past this list moved onto the Alchemy Circle
@@ -52,10 +52,10 @@ namespace {
     // The reagent chain. Each machine type runs whichever of its recipes it has
     // the inputs for.
     const std::vector<MachineRecipe> kMachineRecipes = {
-        // Grinder: presses plates (the machine-made part every later machine
-        // needs) and grinds raws to powder. Also crushes Stone back into Sand,
+        // Grinder: grinds raws to powder. Also crushes Stone back into Sand,
         // so Sand is renewable from Stone (which is renewable from dirt+sand).
-        {B::Grinder,  {{I::CopperIngot, 1}},                       {I::CopperPlate, 1},     3.0f},
+        // Plates moved to the Press, where the verb belongs -- see the note at
+        // the Press rows below for what that costs in bootstrapping.
         {B::Grinder,  {{I::Herb, 1}},                              {I::GroundHerb, 1},      2.0f},
         {B::Grinder,  {{I::Crystal, 1}},                           {I::CrystalDust, 1},     2.0f},
         {B::Grinder,  {{I::Stone, 1}},                             {I::Sand, 2},            2.0f},
@@ -85,10 +85,19 @@ namespace {
         {B::Forge, {{I::MachineFrame, 1}, {I::StormCore, 1}},         {I::AegisBoots, 1},  8.0f},
         // Press: the shared parts tier. Every machine now reaches the Machine
         // Frame through four machine steps instead of one hand-craft, so the
-        // factory has to exist before the tech tree opens up. APPENDED at the
-        // table tail -- Machine::selectedRecipe is a saved index into
-        // recipesForMachine() order, so splitting an existing machine's run
-        // would silently repoint saved selections.
+        // factory has to exist before the tech tree opens up.
+        //
+        // Plate is FIRST on purpose. The Press is now the only plate source and
+        // therefore the first machine a new game builds, and AUTO runs the
+        // first recipe whose inputs are present -- so with plate second, a
+        // fresh Press fed the one raw the player has (ingots) would quietly
+        // make Copper Rods forever. Rod costs the same single ingot and loses
+        // that tie by design: plates feed casings, etched plates, tools and
+        // armor, rods feed only gears. Lock the MAKE ROD row to get rods on a
+        // shared Press -- the same bargain the other four rows already make.
+        // (Ordering this run repointed saved Press locks, which is what the
+        // v19 save migration exists for.)
+        {B::Press, {{I::CopperIngot, 1}},                             {I::CopperPlate, 1},   3.0f},
         {B::Press, {{I::CopperIngot, 1}},                             {I::CopperRod, 2},     2.0f},
         {B::Press, {{I::CopperRod, 2}},                               {I::Gear, 1},          3.0f},
         {B::Press, {{I::CopperPlate, 4}},                             {I::MachineCasing, 1}, 5.0f},
@@ -121,12 +130,19 @@ namespace {
         {{}, {{I::Wood, 6}, {}, {I::Stick, 4}, {}},        {I::ComposterItem, 1}, 5.0f},
         {{}, {{I::Wood, 6}, {}, {I::Bucket, 1}, {}},       {I::RainBarrelItem, 1}, 5.0f},
         {{}, {{I::CopperIngot, 1}, {}, {}, {}},            {I::WireItem, 2},      2.0f},
+        // The Press makes the plates, so it belongs to THIS tier and must cost
+        // none: ingots opposite ingots, stone opposite stone. The same raw
+        // price as the old ingot+plate pattern, laid out so nothing else can
+        // match it -- the Grinder and Generator both require an empty west
+        // pedestal, and this one fills it. Left at its original table index on
+        // purpose: circleRecipes() order is a saved index on a locked Rune Core,
+        // and since the pattern is unambiguous its position buys nothing.
+        {{}, {{I::CopperIngot, 2}, {I::Stone, 2}, {I::CopperIngot, 2}, {I::Stone, 2}},
+                                                           {I::PressItem, 1},     8.0f},
         // -- Plate tier. Conduit and the Wrench cost the same two plates and
         // are told apart by ARRANGEMENT alone: both plates on one pedestal
         // versus one plate on each of two opposite pedestals. That is the
         // necklace earning its keep.
-        {{}, {{I::CopperIngot, 2}, {I::CopperPlate, 2}, {I::Stone, 4}, {}},
-                                                           {I::PressItem, 1},     8.0f},
         // Pickaxe and Axe cost exactly the same; only the arrangement differs
         // (wood OPPOSITE the plates vs. wood BESIDE them).
         {{}, {{I::CopperPlate, 3}, {I::Wood, 2}, {}, {}},  {I::CopperAxe, 1},     4.0f},

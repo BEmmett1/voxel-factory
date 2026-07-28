@@ -458,10 +458,10 @@ Weather & the water economy:
   power once per tick. No fuel = dark network.
 
 Economy v2 (difficulty by design; hand table in `Recipes.cpp`):
-- **Machine-made plates** — Copper Plate is a Grinder recipe (Ingot → Plate); only
-  the Generator and Grinder hand-craft without plates (from ingots + stone/wood),
-  so the tech tree bootstraps: chop the starting tree → ingots → Generator +
-  Grinder → fueled Grinder presses plates → frames → everything else.
+- **Machine-made plates** — Copper Plate is a **Press** recipe (Ingot → Plate;
+  it was a Grinder recipe until July 2026). Nothing hand-craftable costs a
+  plate, so the tech tree bootstraps: chop the starting tree → ingots → circle
+  → Generator + Press → fueled Press presses plates → frames → everything else.
 - Deeper recipes (Machine Frame = Plate ×3 + Crystal + Wood ×2; each alchemy
   machine = Frame + extras), a lean starting kit (exactly the bootstrap pair plus
   slack), logs drop Wood ×2, and sources scatter beyond `kSourceMinRadius` so the
@@ -634,12 +634,13 @@ combat jobs):
   only blocks/items; the F6 dev kit grants a Forge + mats + a ready Aegis set.
 
 The shared parts tier (crafting depth — the Alchemy Circle's foundation):
-- **The Press** — a `MachineKind::Processor` (`BlockId::Press`, hand-crafted
-  from `CopperIngot ×2 + CopperPlate ×2 + Stone ×4`), so the sim tick, power
-  solve, `machineAccepts`, and panel UI all dispatch on it unchanged. It forms
-  the four shared parts — **Copper Rod** (Ingot → Rod ×2), **Gear** (Rod ×2),
-  **Machine Casing** (Plate ×4), **Etched Plate** (Plate + Crystal Dust ×2) —
-  and assembles `Casing + Gear ×2 + Etched Plate` into the **Machine Frame**.
+- **The Press** — a `MachineKind::Processor` (`BlockId::Press`, built on the
+  Alchemy Circle from `CopperIngot ×4 + Stone ×4`), so the sim tick, power
+  solve, `machineAccepts`, and panel UI all dispatch on it unchanged. It presses
+  **Copper Plate** (Ingot → Plate) and forms the four shared parts — **Copper
+  Rod** (Ingot → Rod ×2), **Gear** (Rod ×2), **Machine Casing** (Plate ×4),
+  **Etched Plate** (Plate + Crystal Dust ×2) — and assembles `Casing + Gear ×2
+  + Etched Plate` into the **Machine Frame**.
 - **MachineFrame is no longer hand-craftable.** Its `kRecipes` row is gone, so
   every machine now sits four machine stages behind raw ore instead of one menu
   click (6 ore + 1 crystal → 14 ore + 2 crystals). Intermediates coming out of
@@ -647,16 +648,27 @@ The shared parts tier (crafting depth — the Alchemy Circle's foundation):
   applied to the tech tree itself; it also shrinks the craft menu, which
   overflows short windows (`craftLayout` grows with the recipe count and
   `UiRenderer` has no scissor primitive).
-- The Grinder keeps `Ingot → Plate` — it is the bootstrap machine, and moving
-  plates onto the Press would deadlock (the Press costs plates). Ladder:
-  hand Ingot → Grinder + Generator → Plates → Press → parts → Frame.
-- Append-only blocks/items and Press recipes appended at the `kMachineRecipes`
-  tail (`Machine::selectedRecipe` is a saved index into `recipesForMachine()`
-  order), so **no save version bump** — v18 saves load unchanged. Atlas tiles
-  39/40 (block) and 112-115 (icons). F6 grants a Press plus stock at every link.
-- Known-by-design: with five recipes, an AUTO Press fed mixed inputs makes
+- **`Ingot → Plate` lives on the Press** (moved off the Grinder, July 2026 — a
+  press presses). That makes the Press the BOOTSTRAP machine, so its own circle
+  pattern must never cost a plate or the tree deadlocks behind a Press you
+  cannot build; the pattern is ingots opposite ingots, stone opposite stone (the
+  only fully-occupied 4-slot necklace, so it can collide with nothing), and
+  `--selftest` pins the no-plate invariant structurally. Ladder: hand Ingot →
+  circle → Press + Generator → Plates → parts → Frame. The Grinder stays on the
+  critical path via Crystal → Crystal Dust → Etched Plate.
+- Atlas tiles 39/40 (block) and 112-115 (icons). F6 grants a Press plus stock at
+  every link.
+- **Save v19** is the one non-append change in the file's history: the move
+  shifted the Grinder's and Press's recipe lists, and `Machine::selectedRecipe`
+  is a saved index into `recipesForMachine()` order, so `SaveSystem::load`
+  REMAPS a pre-v19 lock on either machine (Grinder −1, its plate lock → AUTO;
+  Press +1) rather than silently making the wrong thing. v18 and older still
+  load — the layout never changed.
+- Known-by-design: with six recipes, an AUTO Press fed mixed inputs makes
   whichever recipe it can first. Lock a MAKE row, or dedicate a Press per part —
-  that division of labour is the intended logistics pressure.
+  that division of labour is the intended logistics pressure. Plate is listed
+  FIRST so a fresh Press fed the player's only raw makes plates, not rods (both
+  cost one ingot; rods lose the tie deliberately).
 
 The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world):
 - **The multiblock** — `BlockId::RuneCore` + `BlockId::Pedestal`, two new
@@ -722,7 +734,10 @@ Persistence:
   APPENDS trailing fields may keep older versions loadable (`kOldestLoadable`; the
   caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar,
   v14→v15 for playtime, and v15→v16 for ground drops — any enum/layout change must
-  drop that compatibility.
+  drop that compatibility. The other way to keep it is to MIGRATE on read, which
+  v18→v19 does: moving `Ingot → Plate` between machines reordered two recipe
+  lists without touching the layout, so `load` rewrites the affected
+  `selectedRecipe` indices instead of discarding the file.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /

@@ -148,11 +148,11 @@ its count.
 
 ## 5. Hand-crafting the bootstrap pair (E)
 
-Economy v2: **Copper Plates are machine-made** (a Grinder recipe), and only the
-Generator and Grinder can be hand-crafted without plates. The tech tree bootstraps:
-tree → wood + starting ore → Generator + Grinder → fueled Grinder presses plates →
-everything else. You start with a lean kit of raws (ore, stone, sand, crystal, herb,
-essence) — exactly enough slack for this.
+Economy v2: **Copper Plates are machine-made** (a **Press** recipe — it was a
+Grinder recipe before July 2026), and nothing you can craft by hand costs a plate.
+The tech tree bootstraps: tree → wood + starting ore → Generator + Press → fueled
+Press presses plates → everything else. You start with a lean kit of raws (ore,
+stone, sand, crystal, herb, essence) — exactly enough slack for this.
 
 - Press **E**. **Expect:** the world dims, the cursor is released, and a `CRAFTING`
   panel lists recipes, each with its inputs, an affordability color (white = you have
@@ -200,12 +200,15 @@ essence) — exactly enough slack for this.
   RMB-drag moves a single item. Dragging a cell *out* of `IN:`/`OUT:` onto the
   inventory grid returns it to you. Releasing anywhere else (or Esc) returns the
   payload where it came from — items are never lost.
-- Click the `MAKE COPPER PLATE ( COPPER INGOT )` row. **Expect:** the `>` marker moves
-  to it (the machine locks to that recipe and refuses belt deliveries of other
-  ingredients), your ingots move into `IN:`, the bar fills (~3 s per plate), and
-  `OUT: COPPER PLATE xN` grows. Activate `TAKE OUTPUTS` to collect. **Plates now
-  unlock the rest of the table**: Conduit, Wrench, Copper Sword, Machine Frame, and
-  every alchemy machine. (An unpowered machine loads but does not run.)
+- Open a powered **Press** and click the `MAKE COPPER PLATE ( COPPER INGOT )` row.
+  **Expect:** the `>` marker moves to it (the machine locks to that recipe and refuses
+  belt deliveries of other ingredients), your ingots move into `IN:`, the bar fills
+  (~3 s per plate), and `OUT: COPPER PLATE xN` grows. Activate `TAKE OUTPUTS` to
+  collect. **Plates now unlock the rest of the table**: Conduit, Wrench, Copper Sword,
+  Machine Frame, and every alchemy machine. (An unpowered machine loads but does not
+  run.) On `AUTO` a Press fed plain ingots also makes plates — plate is the first row,
+  ahead of `COPPER ROD`, which costs the same single ingot; lock `MAKE COPPER ROD` when
+  you want rods.
 
 ## 9. Conduits — auto-transport
 

@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/Recipes.h"
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
 #include "game/World.h"
@@ -348,6 +349,22 @@ int runSelfTest() {
         m = AlchemyCircle::findMatch(ring, noCatalyst, AlchemyCircle::Tier::Lesser, false);
         SELFTEST_CHECK(m && m.recipe->output.id == ItemId::Wrench);
 
+        // The Press is the bootstrap machine (it makes the plates), so its
+        // pattern has to be layable on a LESSER circle from hand-craftable
+        // ingots and stone, and must not be shadowed by the Grinder or
+        // Generator patterns it sits next to. It is the only 4-slot necklace
+        // with no empty slot, which is exactly what keeps it unambiguous.
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
+        }
+        layOn(0, ItemId::CopperIngot, 2);
+        layOn(2, ItemId::Stone, 2);
+        layOn(4, ItemId::CopperIngot, 2);
+        layOn(6, ItemId::Stone, 2);
+        ring = AlchemyCircle::ringContents(cw, cm, core);
+        m = AlchemyCircle::findMatch(ring, noCatalyst, AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(m && m.recipe->output.id == ItemId::PressItem);
+
         // A Lesser circle must NOT reach an eight-slot pattern, and the same
         // pattern must run once the full ring exists AND it is powered.
         for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
@@ -386,6 +403,50 @@ int runSelfTest() {
         const glm::ivec3 north = AlchemyCircle::slotPos(core, 0);
         cw.setBlock(north.x, north.y, north.z, BlockId::Air);
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
+    }
+
+    // ---- Tech-tree bootstrap (the plate deadlock) -------------------------
+    // Copper Plate has exactly one producer and that producer's own build
+    // pattern must not cost a plate, or a fresh world can never make the first
+    // one -- a deadlock no amount of play recovers from and nothing else in
+    // the build catches. Checked structurally rather than against the current
+    // answer (the Press) so moving plates again re-checks itself.
+    {
+        BlockId plateMachine = BlockId::Air;
+        int plateSources = 0;
+        for (const MachineRecipe& r : machineRecipes()) {
+            if (r.output.id != ItemId::CopperPlate) continue;
+            ++plateSources;
+            plateMachine = r.machine;
+        }
+        SELFTEST_CHECK(plateSources == 1);
+
+        // The placeable that builds that machine, and the circle pattern that
+        // makes the placeable.
+        ItemId plateMachineItem = ItemId::None;
+        for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+            const ItemId id = static_cast<ItemId>(i);
+            if (itemInfo(id).placesBlock == plateMachine) plateMachineItem = id;
+        }
+        SELFTEST_CHECK(plateMachineItem != ItemId::None);
+
+        int patterns = 0;
+        for (const CircleRecipe& r : circleRecipes()) {
+            if (r.output.id != plateMachineItem) continue;
+            ++patterns;
+            SELFTEST_CHECK(r.center.id != ItemId::CopperPlate);
+            for (const ItemStack& ringSlot : r.ring) {
+                SELFTEST_CHECK(ringSlot.id != ItemId::CopperPlate);
+            }
+        }
+        for (const Recipe& r : handcraftRecipes()) {
+            if (r.output.id != plateMachineItem) continue;
+            ++patterns;
+            for (const ItemStack& in : r.inputs) {
+                SELFTEST_CHECK(in.id != ItemId::CopperPlate);
+            }
+        }
+        SELFTEST_CHECK(patterns > 0); // buildable at all
     }
 
     std::printf("selftest OK\n");
