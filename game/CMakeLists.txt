@@ -34,7 +34,7 @@ target_link_libraries(voxel-factory PRIVATE engine)
 if(MSVC)
     target_compile_options(voxel-factory PRIVATE /W4 /external:anglebrackets /external:W0)
 else()
-    target_compile_options(voxel-factory PRIVATE -Wall -Wextra)
+    target_compile_options(voxel-factory PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 endif()
 
 # Product version (from the root project()) — shown in the title bar and F3 overlay.

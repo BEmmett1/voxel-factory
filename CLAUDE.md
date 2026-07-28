@@ -22,7 +22,12 @@ invocations — chain everything through one `cmd /c`:
 cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul && cmake --preset x64-release && cmake --build --preset x64-release'
 ```
 
-First-party targets compile at `/W4` and are warning-clean — keep them that way.
+First-party targets compile at `/W4` (`-Wall -Wextra` on Clang/GCC) and are
+warning-clean on all three platforms — keep them that way. The one suppression is
+`-Wno-missing-field-initializers`: GCC's `-Wextra` flags every registry row that omits
+a trailing field, which is precisely the kBlocks/kItems/kMachineTraits/kBlockShapes
+convention (absent field = the default), so the warning is noise against a deliberate
+design rather than a finding.
 Third-party code stays quiet via `/external:anglebrackets /external:W0`, which relies
 on a convention: include everything third-party (SDL3/glm/glad and the vendored
 single-header libs) with angle brackets, first-party headers with quotes.

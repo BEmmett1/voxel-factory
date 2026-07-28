@@ -51,8 +51,16 @@ endif()
 # Clang gets the same ratchet; there third-party stays quiet via -isystem
 # (FetchContent marks SDL3/glm SYSTEM, and glad + the single-headers are
 # marked SYSTEM where they're added).
+#
+# -Wno-missing-field-initializers (GCC's -Wextra turns it on; MSVC and Clang
+# stay quiet here) because omitting trailing fields in a designated-initializer
+# registry row is this codebase's convention, not an oversight: kBlocks,
+# kItems, kMachineTraits and kBlockShapes are read as tables where an absent
+# field means "the default", and the omitted members are value-initialized.
+# Spelling every field on every row to satisfy the warning would fight the one
+# property those tables are built for -- adding content is appending a row.
 if(MSVC)
     target_compile_options(engine PRIVATE /W4 /external:anglebrackets /external:W0)
 else()
-    target_compile_options(engine PRIVATE -Wall -Wextra)
+    target_compile_options(engine PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 endif()
