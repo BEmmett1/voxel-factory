@@ -353,8 +353,12 @@ int runSelfTest() {
         for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
             cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
         }
+        // One short of the centre cost: the ring is laid perfectly and the
+        // tier is right, so ONLY the catalyst count may refuse it. Worth
+        // pinning -- a centre cost that silently rounds down to "any amount"
+        // would make the game's most expensive craft free.
         Inventory catalyst;
-        catalyst.add(ItemId::VoidCatalyst, 1);
+        catalyst.add(ItemId::VoidCatalyst, kStormKeyCatalystCost - 1);
         for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
             if (sl % 2 == 0) placePedestal(sl);
             layOn(sl, sl % 2 == 0 ? ItemId::Crystal : ItemId::SpringWater, 1);
@@ -362,6 +366,8 @@ int runSelfTest() {
         for (int sl = 1; sl < AlchemyCircle::kRingSlots; sl += 2) placePedestal(sl);
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) == AlchemyCircle::Tier::Greater);
         ring = AlchemyCircle::ringContents(cw, cm, core);
+        SELFTEST_CHECK(!AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Greater, true));
+        catalyst.add(ItemId::VoidCatalyst, 1); // now exactly the cost
         SELFTEST_CHECK(!AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Lesser, true));
         SELFTEST_CHECK(!AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Greater, false));
         m = AlchemyCircle::findMatch(ring, catalyst, AlchemyCircle::Tier::Greater, true);

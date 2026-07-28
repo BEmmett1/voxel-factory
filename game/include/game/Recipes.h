@@ -48,5 +48,12 @@ struct CircleRecipe {
     float                  seconds;
 };
 
+// The boss keys' centre catalyst costs -- the game's two biggest sinks, named
+// here so the recipe table and --selftest can't drift apart. They gate very
+// differently: the Teleport Key's catalyst is farmable, so its cost is an
+// automation target, while the Storm Key's comes only from Void Warden kills.
+inline constexpr int kTeleportKeyCatalystCost = 100;
+inline constexpr int kStormKeyCatalystCost    = 100;
+
 // Every Alchemy Circle pattern, in stable (saved-index) order.
 const std::vector<CircleRecipe>& circleRecipes();

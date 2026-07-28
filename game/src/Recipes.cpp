@@ -166,11 +166,17 @@ namespace {
         {{}, {{I::Resonance, 1}, {}, {}, {}},              {I::PhilosophersCatalyst, 1}, 5.0f},
         // -- GREATER tier (all eight pedestals, powered): the boss keys. The
         // full ring is the ceremony -- these are the game's biggest crafts.
-        {{I::PhilosophersCatalyst, 1},
+        // The Teleport Key's centre cost is deliberately enormous: 100
+        // catalysts is a full automated Transmuter line's output, so reaching
+        // the boss is an automation problem, not a menu click.
+        {{I::PhilosophersCatalyst, kTeleportKeyCatalystCost},
          {{I::Crystal, 1}, {I::Essence, 1}, {I::Crystal, 1}, {},
           {I::Crystal, 1}, {I::Essence, 1}, {I::Crystal, 1}, {}},
                                                            {I::TeleportKey, 1},   12.0f},
-        {{I::VoidCatalyst, 1},
+        // 100 Void Catalysts means 100 Void Warden kills -- the warden is the
+        // only source. Unlike the Teleport Key's cost this can't be automated
+        // away, so the Storm Key is gated on repetition rather than on scale.
+        {{I::VoidCatalyst, kStormKeyCatalystCost},
          {{I::Crystal, 1}, {I::SpringWater, 1}, {I::Crystal, 1}, {I::SpringWater, 1},
           {I::Crystal, 1}, {I::SpringWater, 1}, {I::Crystal, 1}, {I::SpringWater, 1}},
                                                            {I::StormKey, 1},      12.0f},
