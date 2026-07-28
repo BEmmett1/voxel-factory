@@ -1563,7 +1563,8 @@ void VoxelGame::drawHud() {
             if (dist2 > maxD2) continue;
             glm::vec2 sp;
             if (!projectToScreen(wc, sp)) continue;
-            const float s = glm::clamp(115.0f / std::sqrt(std::max(0.25f, dist2)), 9.0f, 34.0f);
+            const float s = glm::clamp(kDropIconScale / std::sqrt(std::max(0.25f, dist2)),
+                                       kDropIconMin, kDropIconMax);
             glm::vec2 uv0, uv1;
             Atlas::uvForTile(iconTile(d.id), uv0, uv1);
             m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);

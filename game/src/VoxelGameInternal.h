@@ -69,6 +69,16 @@ namespace vg {
     inline constexpr float kPickupVertical      = 1.8f;  // vertical half-band for pickup
     inline constexpr float kDropRenderDist      = 26.0f; // billboards cull beyond this
     inline constexpr float kDeathDropPickupDelay = 0.8f; // grace before re-grabbing a death scatter
+    // Billboard size in PIXELS: kDropIconScale / distance, clamped. Drawn
+    // deliberately larger than belt cargo (150/dist, 10-40 px) -- cargo is
+    // scenery you watch flow past, a ground drop is something you're hunting
+    // for and must read at a glance across a mined-out area.
+    // Keep kDropIconScale near kDropIconMax * 8 or below: much above that and
+    // the cap is reached beyond kDropRenderDist, so every visible drop pins to
+    // the ceiling and the distance falloff stops reading at all.
+    inline constexpr float kDropIconScale = 400.0f; // px * blocks; bigger = bigger
+    inline constexpr float kDropIconMin   = 14.0f;  // px floor, far away
+    inline constexpr float kDropIconMax   = 100.0f; // px cap, up close
 
     // ---- Melee (the sword swings through the aim raycast) ----
     inline constexpr float kSwordDamage    = 2.0f;   // per hit (creature hearts)
