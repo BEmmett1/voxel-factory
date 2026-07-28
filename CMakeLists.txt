@@ -21,11 +21,17 @@ endif()
 
 include(FetchContent)
 
-# On Linux SDL3 detects its video backends from headers that are present at
-# configure time and silently drops the ones that aren't -- with neither X11
-# nor Wayland it still builds, then dies at SDL_CreateWindow with only the
-# "dummy" driver. Catch that here, before the multi-minute SDL build, and name
-# the packages instead.
+# On Linux SDL3 is compiled from source and picks its video backends from the
+# headers present right now. With NEITHER X11 nor Wayland it still configures
+# and builds happily, then dies at SDL_CreateWindow with only the "dummy"
+# driver -- so catch that here, before the multi-minute SDL build.
+#
+# Note this only catches "no video backend at all". A PARTIAL X11 install is
+# SDL's own error to raise and it raises it well: once SDL_X11 turns on, a
+# missing sub-feature is a hard configure error naming the package
+# ("Couldn't find dependency package for XSCRNSAVER"). Don't try to
+# re-implement those checks here -- send people to the script, which installs
+# the full set and is what CI runs.
 if(UNIX AND NOT APPLE)
     find_path(VF_X11_HEADER X11/Xlib.h)
     find_path(VF_WAYLAND_HEADER wayland-client.h)
@@ -33,16 +39,9 @@ if(UNIX AND NOT APPLE)
         message(FATAL_ERROR
             "No X11 or Wayland development headers found -- SDL3 would build "
             "with no usable video driver.\n"
-            "  Debian/Ubuntu: sudo apt install libx11-dev libxext-dev "
-            "libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev "
-            "libxkbcommon-dev libwayland-dev wayland-protocols "
-            "libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev\n"
-            "  Fedora: sudo dnf install libX11-devel libXext-devel "
-            "libXrandr-devel libXcursor-devel libXi-devel libXfixes-devel "
-            "libxkbcommon-devel wayland-devel mesa-libGL-devel "
-            "mesa-libEGL-devel dbus-devel systemd-devel\n"
-            "  Arch: sudo pacman -S libx11 libxext libxrandr libxcursor libxi "
-            "libxfixes libxkbcommon wayland wayland-protocols mesa")
+            "  Run: bash tools/install-linux-deps.sh\n"
+            "(apt / dnf / pacman; it installs SDL3's published Linux "
+            "dependency set plus Wayland and the toolchain.)")
     endif()
 endif()
 

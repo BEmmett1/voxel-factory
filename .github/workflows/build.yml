@@ -87,23 +87,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # SDL3 is built from source, so it needs the windowing/input/GL headers
-      # at configure time — it silently drops whichever backend it can't find.
-      # Audio dev packages are NOT needed by us (miniaudio dlopen()s ALSA and
-      # PulseAudio at runtime); they are here so SDL's own audio backends
-      # build too, keeping the artifact's capabilities the same as a distro
-      # build's.
+      # The same script the docs tell a contributor to run, so the documented
+      # command is the tested one. SDL3 is built from source and hard-errors
+      # on a missing X11 sub-feature (see the script's header), which is
+      # exactly the kind of drift a second, inline package list would hide.
       - name: Install build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxfixes-dev libxkbcommon-dev \
-            libwayland-dev wayland-protocols libdecor-0-dev \
-            libgl1-mesa-dev libegl1-mesa-dev \
-            libdbus-1-dev libudev-dev \
-            libasound2-dev libpulse-dev
+        run: bash tools/install-linux-deps.sh
 
       - name: Cache FetchContent deps
         uses: actions/cache@v6

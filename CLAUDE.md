@@ -36,12 +36,19 @@ engine/CMakeLists.txt; `bin/` is relocatable via an `@loader_path` rpath (the sa
 zero-prerequisite-folder story as Windows). Retina is deliberately off
 (`SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI point→pixel pass first — see ROADMAP).
 
-**Linux (x86_64, glibc)**: `cmake --preset linux-release && cmake --build --preset
-linux-release`. The only extra step is distro dev packages — SDL3 is built from source
-and detects X11/Wayland/GL from headers present at configure time, so a machine without
-them builds fine and then dies at `SDL_CreateWindow` with only the dummy driver. The
-root CMakeLists checks for `X11/Xlib.h` / `wayland-client.h` up front and fails with the
-apt/dnf/pacman line rather than letting that happen. Audio needs nothing installed:
+**Linux (x86_64, glibc)**: `bash tools/install-linux-deps.sh`, then
+`cmake --preset linux-release && cmake --build --preset linux-release`. That script
+(apt/dnf/pacman) is the single source of truth for the dependency list and **CI runs
+it**, so the documented command is the tested one — don't hand-copy a package list
+anywhere else. It has to be complete rather than approximately right, because SDL3 is
+compiled from source and its X11 detection is all-or-nothing per sub-feature: one look
+at `X11/Xlib.h` turns `SDL_X11` on, and from then on a missing sub-feature is a hard
+configure error (`Couldn't find dependency package for XSCRNSAVER`), not a dropped
+feature — so a near-miss list fails late, one package per attempt. The one case SDL
+*doesn't* catch is having no video backend at all: that configures and builds green,
+then dies at `SDL_CreateWindow` with only the dummy driver, so the root CMakeLists
+checks for `X11/Xlib.h` / `wayland-client.h` up front and points at the script. Audio
+needs nothing installed:
 miniaudio `dlopen`s ALSA/PulseAudio at runtime, so the engine links only
 `Threads`/`dl`/`m` there. `bin/` is relocatable via an `$ORIGIN` rpath (the same
 zero-prerequisite-folder story as Windows and macOS), and the exe links `-rdynamic`

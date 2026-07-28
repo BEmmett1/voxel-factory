@@ -14,9 +14,16 @@ calendar quarters counted from July 2026.
       `$ORIGIN` rpath so `bin/` stays a movable zero-prerequisite folder, and
       `-rdynamic` so the existing POSIX crash handler's backtrace has names.
       Nearly free — the macOS port had already split every `_WIN32` path — so
-      the real work was a configure-time check for the X11/Wayland dev headers
-      (SDL3 silently drops undetected video backends, which would otherwise
-      build green and die at `SDL_CreateWindow`) plus `<cstdint>` includes that
+      the platform code needed nothing; the work was all dependencies. SDL3 is
+      compiled from source and behaves two DIFFERENT ways about missing Linux
+      headers, which is the trap worth remembering: no video backend at all
+      configures and builds green, then dies at `SDL_CreateWindow` with the
+      dummy driver (hence the up-front check in the root CMakeLists), but a
+      PARTIAL X11 install hard-errors one package at a time
+      (`Couldn't find dependency package for XSCRNSAVER`). An approximately
+      right package list therefore fails late and repeatedly — so the list
+      lives in `tools/install-linux-deps.sh`, which CI runs, making the
+      documented command the tested one. Also needed `<cstdint>` includes that
       MSVC and libc++ supply transitively and libstdc++ 13 no longer does
 - [x] Atomic saves with a `.bak` generation; load falls back to `.bak`
 - [x] Save dir off the dev username (`BennyThompson` placeholder org, with
