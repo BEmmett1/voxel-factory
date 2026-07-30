@@ -360,6 +360,19 @@ Textures:
   Conduit becomes a glass tube. A world with no shaped blocks never binds the
   second sheet. `shapes.png` has no generated fallback: missing = shaped blocks
   don't draw, said once in the log.
+- **Alpha CUTOUT in `voxel.frag`** — the world pass samples RGBA and
+  `discard`s below `kAlphaCutoff` (0.5). Cutout, deliberately not alpha
+  blending: it is order-independent, so chunks can keep being drawn in
+  hash-map order with no depth sort and no second pass, which blending would
+  force. It is currently INERT — every one of the 53 block-sampled atlas tiles
+  and every packed rect in `shapes.png` is fully opaque (the transparency in
+  atlas.png is all unused grid slots and the item-icon rows, which
+  `UiRenderer`'s own shader draws), so nothing changed appearance. It exists
+  for the textures that will have alpha: a crossed-plane crop (farming) and
+  the glass Conduit/tube. Note `discard` can cost early-Z on some GPUs; if it
+  ever shows in F3, the fix is a separate program for cutout geometry, not a
+  uniform toggle (drivers key off the discard being present in the shader at
+  all, not on whether it executes).
 - **Physics/rays are `Collision.h`/.cpp** (free functions over `(World&, ...)`,
   the MachineSystem/WorldEdit precedent): `rayAabb` (also reporting the face
   entered), `boxOverlapsWorld` (with a bounds broad phase for multi-box

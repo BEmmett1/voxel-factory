@@ -12,13 +12,26 @@ uniform float uRainDim;     // 0..~0.35: storm dimming of the lit color
 uniform int  uUseFlatColor; // 1 = ignore texture/lighting, draw uFlatColor
 uniform vec3 uFlatColor;
 
+// Alpha CUTOUT, not alpha blending: a texel is either drawn or thrown away,
+// never mixed. That is what keeps the world pass order-independent -- no depth
+// sorting, no back-to-front traversal, no second pass -- which matters because
+// chunks are drawn in hash-map order and belts/crops can be seen through each
+// other from any angle. Blending would need all three of those.
+//
+// Every block tile in atlas.png and every packed rect in shapes.png is fully
+// opaque today, so this is inert until a texture is authored WITH alpha (a
+// crossed-plane crop, a glass tube). Nothing existing changes appearance.
+const float kAlphaCutoff = 0.5;
+
 void main() {
     if (uUseFlatColor == 1) {
         FragColor = vec4(uFlatColor, 1.0);
         return;
     }
 
-    vec3 base = texture(uAtlas, vUv).rgb;
+    vec4 texel = texture(uAtlas, vUv);
+    if (texel.a < kAlphaCutoff) discard;
+    vec3 base = texel.rgb;
 
     float diffuse = max(dot(normalize(vNormal), normalize(-uLightDir)), 0.0);
     float shade = 0.35 + 0.65 * diffuse; // ambient + directional
