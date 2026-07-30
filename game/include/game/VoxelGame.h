@@ -57,6 +57,7 @@ private:
     void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
     void returnHome();               // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
+    void updateShapeAnim();      // pick each shape's animation frame (a uniform, not a remesh)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
@@ -154,6 +155,14 @@ private:
     bool               m_shapesReady = false;
     std::unordered_map<glm::ivec3, engine::Mesh, IVec3Hash> m_chunkShapeMeshes;
     std::vector<float> m_shapeScratch;
+    // Animated shape textures: one v-offset per ShapeId, recomputed each frame
+    // from m_animClock and uploaded as a uniform array. Advancing a frame never
+    // touches a mesh, so this is the whole per-frame cost of a bubbling
+    // cauldron. The clock is pause-aware — machines freeze with the sim.
+    // Sized to vg::kMaxShapeBanks on first use, like CreatureSystem's bone
+    // scratch — which keeps the generated shape tables out of this header.
+    float              m_animClock = 0.0f;
+    std::vector<float> m_shapeAnimV;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
     engine::Mesh       m_highlightMesh;

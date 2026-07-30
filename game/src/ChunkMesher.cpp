@@ -42,20 +42,25 @@ namespace {
     // Emit one shaped block's baked quads at `base`. `neighbor(fi)` supplies
     // the block across face fi, consulted only for quads flush with a cell
     // wall -- the only ones a full-cube neighbor can legally hide.
+    //
+    // Shaped vertices carry one extra float the cube path doesn't: `bank`,
+    // which is how the vertex shader finds this block's animation frame offset
+    // in uAnimV[]. It rides the vertex because a chunk's shaped mesh mixes
+    // shapes, and they animate at different rates -- or, unpowered, not at all.
     template <typename NeighborFn>
     void appendShaped(std::vector<float>& out, const BlockShape& shape,
-                      const glm::vec3& base, float emissive, NeighborFn neighbor) {
+                      const glm::vec3& base, float emissive, float bank,
+                      NeighborFn neighbor) {
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
 
             // Corners arrive baked and correctly wound; nothing to reconstruct.
-            pushVertex(out, base + q.pos[0], q.normal, q.uv[0], emissive);
-            pushVertex(out, base + q.pos[1], q.normal, q.uv[1], emissive);
-            pushVertex(out, base + q.pos[2], q.normal, q.uv[2], emissive);
-
-            pushVertex(out, base + q.pos[0], q.normal, q.uv[0], emissive);
-            pushVertex(out, base + q.pos[2], q.normal, q.uv[2], emissive);
-            pushVertex(out, base + q.pos[3], q.normal, q.uv[3], emissive);
+            const auto push = [&](int k) {
+                pushVertex(out, base + q.pos[k], q.normal, q.uv[k], emissive);
+                out.push_back(bank);
+            };
+            push(0); push(1); push(2);
+            push(0); push(2); push(3);
         }
     }
 
@@ -102,10 +107,11 @@ namespace ChunkMesher {
                     const BlockId id = chunk.get(lx, ly, lz);
                     if (!isSolid(id)) continue;
 
+                    const bool energized = power.energized(w.x, w.y, w.z);
+
                     // Powered network glow or the block's own glow (sources).
-                    const float emissive = power.energized(w.x, w.y, w.z)
-                        ? kEnergizedEmissive
-                        : blockInfo(id).emissive;
+                    const float emissive = energized ? kEnergizedEmissive
+                                                     : blockInfo(id).emissive;
 
                     const glm::vec3 base(w);
 
@@ -113,7 +119,17 @@ namespace ChunkMesher {
                     // buffer (different sheet) and skip the unit-cube path.
                     const BlockShape& shape = blockShape(id);
                     if (!shape.quads.empty()) {
-                        appendShaped(shapedOut, shape, base, emissive,
+                        // A dead machine sits still. Gating the animation on
+                        // power costs nothing extra because power is ALREADY a
+                        // mesh input: solvePowerAndMarkDirty dirties exactly
+                        // the chunks whose glow flipped, so a machine losing
+                        // power re-meshes for the glow regardless. Bank 0 is
+                        // ShapeId::FullCube, whose offset is permanently zero,
+                        // so an unpowered machine parks on frame 0.
+                        const float bank = energized
+                            ? static_cast<float>(blockInfo(id).shape)
+                            : 0.0f;
+                        appendShaped(shapedOut, shape, base, emissive, bank,
                                      [&](int fi) { return neighborAt(lx, ly, lz, fi); });
                         continue;
                     }

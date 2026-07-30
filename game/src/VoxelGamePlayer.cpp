@@ -77,6 +77,9 @@ void VoxelGame::onUpdate(float dt) {
     if (!paused()) {
         m_playtime += dt; // active-play seconds for the slot cards (excludes menus)
         m_creatures.frameAdvance(dt);
+        // Animated block textures run off the same pause-aware clock, so a
+        // paused cauldron stops bubbling along with the sim that fills it.
+        m_animClock = std::fmod(m_animClock + dt, kAnimClockWrap);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);

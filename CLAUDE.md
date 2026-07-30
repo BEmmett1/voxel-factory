@@ -382,12 +382,41 @@ Textures:
   The bake packs ONE sheet, so rerun it over every model at once (the .inl's
   header comment carries the last full command line) — baking one model alone
   drops the others out of `shapes.png`.
-- Known gap: only frame 0 of an animated texture is sampled (the sheet holds
-  all frames and `vStride` is emitted; finishing it is a per-vertex bank flag
-  plus a uniform, never a remesh). 29-77 KB of chunk mesh per placed shaped
-  block (the Infuser's 367 quads are the current ceiling, ~50× a plain block)
-  argues for keeping detailed shapes to machines rather than anything placed in
-  bulk.
+- **Animated shape textures play, and only while POWERED** (July 2026). All
+  four models were authored as 8-frame strips and had been rendering frame 0
+  forever; the bake already stacked every frame contiguously into `shapes.png`
+  and emitted `vStride`, so finishing it needed no re-bake and no new art.
+  Shaped vertices carry a 10th float — `aAnimBank` — and `voxel.vert` shifts
+  `vUv.y` by `uAnimV[bank]`, a per-`ShapeId` offset `updateShapeAnim()`
+  recomputes each frame from the pause-aware `m_animClock`. **Never a remesh:**
+  advancing a frame is one uniform upload for the whole world, so a room full
+  of bubbling cauldrons still reads `X0 PER S` on F3. Rates are per shape
+  (Blockbench's `frame_time` is in ticks, and the game ticks at the same
+  20 Hz), which is why the vertex carries a bank index rather than its own
+  stride — the Auger runs 3 ticks/frame while the Cauldron runs 2, and one
+  global counter could not serve both. `kMaxShapeBanks` sizes `uAnimV[]` with
+  headroom exactly like `kMaxEntityBones`, static_asserted against
+  `ShapeId::Count`.
+  The **power gate is free**: the mesher passes bank 0 (`ShapeId::FullCube`,
+  whose offset is permanently zero) for an unpowered block, and power was
+  already a mesh input for the energized glow — `solvePowerAndMarkDirty`
+  dirties exactly the chunks whose glow flipped, so a machine losing power
+  re-meshes regardless. A dead machine parks on frame 0. Gating on *crafting*
+  instead would NOT be free: that flips constantly and would thrash remeshes,
+  so it needs the per-block uniform indirection moving parts will want anyway.
+  Only the plain mesh keeps the 9-float layout — it leaves attribute 4
+  disabled, which reads back as bank 0 too, so the ordinary world pays nothing.
+- Known gap: block parts don't MOVE (no spinning drill, no rocking lid) — the
+  textures animate, the geometry doesn't. The models already carry the rig
+  (named groups with correct pivots: `drill`, `core`, `emitter`, `contents`),
+  but `bbmodel_to_shape.py` reads only `elements` and discards `groups`, and
+  chunk-mesh positions are world-space, so a rotation cannot recover its pivot
+  (`floor(aPos)` is not safe — geometry touching a cell's top face lands in the
+  wrong cell). The fix is a baked per-vertex pivot + part index and a
+  `uPartRot[]` array — the `uBones[32]` pattern again. 29-77 KB of chunk mesh
+  per placed shaped block (the Infuser's 367 quads are the current ceiling,
+  ~50× a plain block) argues for keeping detailed shapes to machines rather
+  than anything placed in bulk.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,

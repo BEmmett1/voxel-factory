@@ -210,8 +210,9 @@ the pillar slips to post-launch.
   creature spawn ground-scan — carried the same `floor()` assumption. A second
   model (the **Alembic**, `BlockId::Alembic`) then forced rotated-element
   support: quads became fully baked corners, and rotated geometry draws exactly
-  while colliding as its bounding box. Still open: only frame 0 of an animated
-  texture is sampled
+  while colliding as its bounding box. The last loose end closed in July 2026:
+  **animated shape textures now play, and only while the machine is powered**
+  (see the next item). Still open: block PARTS don't move
 - **Belts become tubes:** the first real customer of block shapes, now
   unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
@@ -257,10 +258,22 @@ Kept here so they don't get lost — none are architectural dead-ends:
   Circle cut it to 13 rows so it no longer overflows; the circle panel avoids
   the trap properly, by windowing its row list to the window height
   (`circleRows`). Any future long list should copy the circle, not the menu
-- Block shapes ship with one loose end (July 2026): an animated block texture
-  is baked whole into `shapes.png` with its `vStride`, but only **frame 0** is
-  sampled — finishing it is a per-vertex bank flag plus a shader uniform, and
-  never a remesh. A detailed block also costs ~45 KB of chunk mesh (~30× a
+- ~~Only frame 0 of an animated block texture is sampled~~ **done, July 2026**
+  — and it was a per-vertex bank flag plus a shader uniform exactly as
+  predicted, with no remesh, no re-bake and no new art: all four models were
+  already authored as 8-frame strips that had never been played. Animation is
+  gated on POWER, which came free because power was already a mesh input for
+  the energized glow (bank 0 = `ShapeId::FullCube` = offset 0 = a dead machine
+  parked on frame 0). Gating on *crafting* instead would not be free — it flips
+  constantly and would thrash remeshes
+- Block shapes still ship one loose end: **parts don't move** — no spinning
+  drill, no rocking lid. The models already carry the rig (named groups with
+  correct pivots), but the bake reads only `elements` and discards `groups`,
+  and chunk-mesh positions are world-space so a rotation can't recover its
+  pivot. The fix is a baked per-vertex pivot + part index and a `uPartRot[]`
+  array — the `uBones[32]` pattern — and it is the same indirection a
+  crafting-driven animation would need, so those two land together.
+  A detailed block also costs ~45 KB of chunk mesh (~30× a
   plain block), so shapes belong on machines, not on anything placed in bulk.
   Collision on a ROTATED element is its bounding box, not its exact geometry —
   a little generous to walk into, and fine until something is both rotated and

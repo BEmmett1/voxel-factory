@@ -171,6 +171,21 @@ namespace vg {
     // can keep a pattern topped up, shallow enough to stay readable.
     inline constexpr int   kPedestalCap = 16;
 
+    // ---- Block animation (animated shape textures) ----
+    // A shaped block's texture may be a strip of frames stacked down
+    // shapes.png (ShapeAnim in BlockShape.h). Playing it is a per-vertex bank
+    // index naming the vertex's ShapeId plus one uniform array of this frame's
+    // v-offsets — never a remesh, so an animated machine costs nothing beyond
+    // the uniform upload. Sized with headroom exactly like kMaxEntityBones so
+    // adding a shape doesn't mean editing the shader — 32 covers modelling
+    // every machine and then some, and the array is a few dozen bytes uploaded
+    // once a frame, so the headroom is cheaper than ever revisiting this.
+    inline constexpr int   kMaxShapeBanks  = 32;     // must match uAnimV[] in voxel.vert
+    // The animation clock wraps here rather than growing forever, so a long
+    // session can't erode float precision out from under the frame math. Any
+    // multiple of every shape's cycle length would do; an hour is plenty.
+    inline constexpr float kAnimClockWrap  = 3600.0f;
+
     // ---- Entities: the test creature. Tune freely. ----
     inline constexpr const char* kCreatureModel = "assets/models/creature.bbmodel";
     inline constexpr float kCreatureScale        = 1.0f;   // model is authored in blocks

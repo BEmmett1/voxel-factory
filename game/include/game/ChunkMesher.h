@@ -20,12 +20,21 @@ class World;
 // resource sources). Belt top faces get a direction arrow rotated to the
 // belt's facing (looked up in `belts`).
 //
-// Two outputs, same layout, because they sample DIFFERENT textures: plain
-// blocks are unit cubes with atlas.png tiles, while a block carrying a
-// ShapeId (BlockShape.h) emits its baked sub-cube quads with UVs into
-// shapes.png. Splitting them keeps one texture bound per draw instead of
-// paying a per-vertex sheet selector across the whole world, and the shaped
-// pass is the one transparency will eventually need for itself.
+// Two outputs, because they sample DIFFERENT textures: plain blocks are unit
+// cubes with atlas.png tiles, while a block carrying a ShapeId (BlockShape.h)
+// emits its baked sub-cube quads with UVs into shapes.png. Splitting them
+// keeps one texture bound per draw instead of paying a per-vertex sheet
+// selector across the whole world, and the shaped pass is the one transparency
+// will eventually need for itself.
+//
+// The shaped buffer carries ONE extra float per vertex:
+//   position(3), normal(3), uv(2), emissive(1), animBank(1)
+// naming the vertex's ShapeId so the shader can offset its UV to the current
+// animation frame -- or 0 when the block is unpowered, which parks it on frame
+// 0 (bank 0 is ShapeId::FullCube, whose offset is always zero). Power is
+// already a mesh input for the glow, so that gate is free. Only shapes can
+// animate, so the whole ordinary world is spared the 4 bytes; the plain mesh's
+// VAO simply leaves that attribute disabled, which also reads back as bank 0.
 namespace ChunkMesher {
     using BeltMap = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
 

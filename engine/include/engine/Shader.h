@@ -26,6 +26,7 @@ namespace engine {
         void setVec3(const char* name, const glm::vec3& v) const;
         void setInt(const char* name, int v) const;
         void setFloat(const char* name, float v) const;
+        void setFloatArray(const char* name, const float* v, int count) const;
 
         GLuint id() const { return m_program; }
 

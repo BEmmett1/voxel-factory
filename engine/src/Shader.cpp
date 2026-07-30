@@ -1,7 +1,7 @@
 #include "engine/Shader.h"
 
+#include <SDL3/SDL.h>
 #include <glm/gtc/type_ptr.hpp>
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 
@@ -11,7 +11,7 @@ namespace engine {
         std::string readFile(const std::string& path) {
             std::ifstream in(path, std::ios::binary);
             if (!in) {
-                std::fprintf(stderr, "Shader: could not open '%s'\n", path.c_str());
+                SDL_Log("Shader: could not open '%s'", path.c_str());
                 return {};
             }
             std::ostringstream ss;
@@ -37,8 +37,8 @@ namespace engine {
         if (!ok) {
             char log[1024];
             glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-            std::fprintf(stderr, "Shader compile error (%s):\n%s\n",
-                         type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
+            SDL_Log("Shader: %s compile error: %s",
+                    type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
             glDeleteShader(shader);
             return 0;
         }
@@ -64,7 +64,7 @@ namespace engine {
         if (!ok) {
             char log[1024];
             glGetProgramInfoLog(program, sizeof(log), nullptr, log);
-            std::fprintf(stderr, "Shader link error:\n%s\n", log);
+            SDL_Log("Shader: link error: %s", log);
             glDeleteProgram(program);
             glDeleteShader(vs);
             glDeleteShader(fs);
@@ -113,6 +113,10 @@ namespace engine {
 
     void Shader::setFloat(const char* name, float v) const {
         glUniform1f(glGetUniformLocation(m_program, name), v);
+    }
+
+    void Shader::setFloatArray(const char* name, const float* v, int count) const {
+        glUniform1fv(glGetUniformLocation(m_program, name), count, v);
     }
 
 } // namespace engine

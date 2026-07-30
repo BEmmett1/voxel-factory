@@ -21,6 +21,13 @@
 
 using namespace vg;
 
+// The shader indexes uAnimV[] by ShapeId with no bounds check, so growing
+// ShapeId past the bank cap has to be a compile error, not a silent read off
+// the end of a uniform array.
+static_assert(static_cast<int>(ShapeId::Count) <= kMaxShapeBanks,
+              "uAnimV[] in voxel.vert needs one slot per ShapeId — "
+              "raise vg::kMaxShapeBanks and the array size in the shader");
+
 namespace {
 
     // Cheap deterministic per-texel noise for the procedural atlas.
@@ -211,7 +218,9 @@ void VoxelGame::remeshDirtyChunks() {
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
-        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1},
+        // One float wider than the plain mesh: shaped vertices name their
+        // ShapeId so the shader can find their animation frame.
+        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1, 1},
                                          GL_DYNAMIC_DRAW);
         chunk->clearDirty();
         ++chunks;
@@ -220,6 +229,28 @@ void VoxelGame::remeshDirtyChunks() {
         m_perf.lastRemeshMs = msBetween(t0, SDL_GetPerformanceCounter());
         m_perf.chunksRemeshed = chunks;
         ++m_perf.remeshCount;
+    }
+}
+
+// Pick the animation frame every shape is showing right now, as a UV v-offset
+// per ShapeId. A shaped block's texture may be a strip of frames stacked down
+// shapes.png (the bake emits `vStride`, the height of one band), so playing it
+// back is a shift in v -- no geometry changes, so no chunk is ever dirtied and
+// an animated machine costs exactly this loop plus one uniform upload.
+//
+// Rates are per shape (Blockbench's frame_time, in ticks, and this game ticks
+// at the same 20 Hz), which is why the vertex carries a bank index rather than
+// its own stride: the auger runs at 3 ticks a frame while the cauldron runs at
+// 2, and a single global frame counter could not serve both.
+void VoxelGame::updateShapeAnim() {
+    m_shapeAnimV.assign(kMaxShapeBanks, 0.0f);
+    for (int i = 0; i < static_cast<int>(ShapeId::Count); ++i) {
+        const ShapeAnim& a = blockShape(static_cast<ShapeId>(i)).anim;
+        if (a.frames <= 1 || a.vStride == 0.0f) continue; // still texture
+        const float secs = static_cast<float>(std::max(a.frameTime, 1)) * kTickSeconds;
+        const float cycle = static_cast<float>(a.frames) * secs;
+        const int frame = static_cast<int>(std::fmod(m_animClock, cycle) / secs);
+        m_shapeAnimV[static_cast<std::size_t>(i)] = static_cast<float>(frame) * a.vStride;
     }
 }
 
@@ -276,6 +307,7 @@ void VoxelGame::buildCrosshairMesh() {
 void VoxelGame::onRender() {
     // Everything the ticks and the update dirtied this frame, in one sweep.
     remeshDirtyChunks();
+    updateShapeAnim();
     buildRainMesh();
 
     // Sky: fair-weather blue easing toward storm grey — or the arena's flat
@@ -309,6 +341,10 @@ void VoxelGame::onRender() {
     // when nothing in the world carries a ShapeId.
     if (m_shapesReady) {
         m_shapes.bind(0);
+        // The only pass whose vertices carry an animation bank; every other
+        // mesh leaves that attribute disabled and so reads bank 0, whose
+        // offset this array always holds at zero.
+        m_shader.setFloatArray("uAnimV", m_shapeAnimV.data(), kMaxShapeBanks);
         for (auto& [coord, mesh] : m_chunkShapeMeshes) {
             mesh.draw();
         }

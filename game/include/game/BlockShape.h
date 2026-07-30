@@ -49,7 +49,12 @@ struct ShapeAabb {
 };
 
 // Minecraft-style animated texture: `frames` bands stacked down the sheet,
-// `vStride` apart in UV. Advancing a frame is a uniform, never a remesh.
+// `vStride` apart in UV. Advancing a frame is a uniform, never a remesh --
+// VoxelGame::updateShapeAnim() turns these into one v-offset per ShapeId each
+// frame and voxel.vert shifts vUv by the one its aAnimBank names. `frameTime`
+// is in ticks, like Blockbench writes it, and this game ticks at the same
+// 20 Hz. A block whose network is unpowered is meshed with bank 0 instead, so
+// it parks on frame 0.
 struct ShapeAnim {
     int   frames = 1;
     int   frameTime = 0;
