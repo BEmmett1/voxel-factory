@@ -7,11 +7,13 @@
 // Things the player can hold in their inventory. Distinct from BlockId: some
 // items are placeable (they place a block when used), most are materials.
 //
-// APPEND-ONLY: the save format serializes inventories by enum index and
-// accepts older, shorter item sets, so new items go immediately before Count
-// and existing entries never move. The kItems registry in Item.cpp is
-// static_asserted against this order.
-enum class ItemId : std::uint8_t {
+// Ordinals are an ENCODING, not an identity -- see the matching note on
+// BlockId. An inventory is still serialized by enum position, but a save now
+// carries the key table those positions refer to (v22), so an item that moves
+// is translated on load instead of silently becoming its neighbour. The old
+// APPEND-ONLY rule is retired; the kItems registry is still static_asserted
+// against this order, and keys must stay unique and stable.
+enum class ItemId : std::uint16_t {
     None = 0,
     // Raw materials (mined from world nodes)
     Stone,
@@ -196,6 +198,10 @@ inline constexpr int kHotbarSlots = 10;
 
 struct ItemInfo {
     ItemId      id;                        // must equal the row's position (static_asserted)
+    // Stable identity, independent of the ordinal and the display name --
+    // see the matching field on BlockInfo (Block.h) for why. Unique within
+    // kItems (static_asserted).
+    const char* key = "";
     const char* name = "-";
     int         atlasTile = -1;            // icon tile for materials; -1 for placeables (see iconTile)
     bool        placeable = false;         // can it be placed in the world?

@@ -17,6 +17,7 @@
 #include "engine/Log.h"
 #include "engine/Paths.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -24,6 +25,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -38,6 +40,87 @@ namespace {
             return 1;                                                          \
         }                                                                      \
     } while (0)
+
+// Rewrite a v22 save's block (table 0) or item (table 1) key table with two
+// keys swapped, WITHOUT touching the body. That fabricates something this
+// build cannot otherwise produce: a file whose ordinals are not ours -- the
+// same disagreement a save from a modded build, or a server we joined, hands
+// us. Every id in the body now names the other block, so a load that honours
+// the key table must come back mirrored and a load that ignores it comes back
+// unchanged. The swap keeps the region's byte length identical (same strings,
+// different order), so nothing after it moves.
+bool swapKeysInSave(const std::string& path, int table,
+                    const std::string& a, const std::string& b) {
+    std::vector<char> buf;
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        buf.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    std::size_t p = 8; // magic + version
+    auto readU32 = [&](std::uint32_t& v) {
+        if (p + 4 > buf.size()) return false;
+        std::memcpy(&v, buf.data() + p, 4);
+        p += 4;
+        return true;
+    };
+    // Walk (and skip) the tables ahead of the one we want.
+    for (int t = 0; t <= table; ++t) {
+        std::uint32_t n = 0;
+        if (!readU32(n)) return false;
+        const std::size_t start = p;
+        std::vector<std::string> keys;
+        keys.reserve(n);
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::uint32_t len = 0;
+            if (!readU32(len) || p + len > buf.size()) return false;
+            keys.emplace_back(buf.data() + p, len);
+            p += len;
+        }
+        if (t != table) continue;
+
+        const auto ia = std::find(keys.begin(), keys.end(), a);
+        const auto ib = std::find(keys.begin(), keys.end(), b);
+        if (ia == keys.end() || ib == keys.end()) return false;
+        std::iter_swap(ia, ib);
+
+        std::vector<char> region;
+        for (const std::string& k : keys) {
+            const auto len = static_cast<std::uint32_t>(k.size());
+            const char* lp = reinterpret_cast<const char*>(&len);
+            region.insert(region.end(), lp, lp + 4);
+            region.insert(region.end(), k.begin(), k.end());
+        }
+        if (region.size() != p - start) return false; // must not shift the body
+        std::copy(region.begin(), region.end(), buf.begin() + static_cast<std::ptrdiff_t>(start));
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    return out.good();
+}
+
+// Rename one key in place, simulating a save that names content this build
+// does not have (the "you removed a mod" case). `to` must be the same length
+// as `from` so nothing after the table moves -- the point of the fixture is the
+// unknown key, not exercising the parser's offset arithmetic twice.
+bool renameKeyInSave(const std::string& path, const std::string& from,
+                     const std::string& to) {
+    if (from.size() != to.size()) return false;
+    std::vector<char> buf;
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        buf.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const auto at = std::search(buf.begin(), buf.end(), from.begin(), from.end());
+    if (at == buf.end()) return false;
+    std::copy(to.begin(), to.end(), at);
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    return out.good();
+}
 
 // --selftest: a SaveSystem round-trip with no window/GL, so CI can run it
 // headless. Builds a small but representative SaveData, saves, loads into
@@ -333,6 +416,119 @@ int runSelfTest() {
 
     fs::remove(cfg, ec);
     fs::remove(cfg + ".bak", ec);
+
+    // ---- Content ids travel by key, not by ordinal (v22) -----------------
+    // The ordinal of a block or item is an encoding relative to the content set
+    // that wrote it, so a save has to say what its numbers MEAN. This is the
+    // check that the load path actually reads the key tables instead of
+    // trusting the raw bytes: swap two keys in the file and the world must come
+    // back mirrored. If it comes back unchanged, ids are being taken at face
+    // value and the whole layer is decorative.
+    //
+    // It is also the cheapest proxy for the multiplayer case the same mechanism
+    // exists to serve, where a client's ordinals legitimately differ from the
+    // ones it compiled with.
+    {
+        const std::string p =
+            (fs::temp_directory_path() / "voxel-factory-selftest-ids.vxf").string();
+        fs::remove(p, ec);
+        fs::remove(p + ".bak", ec);
+
+        World w;
+        w.setBlock(0, 1, 0, BlockId::Stone);
+        w.setBlock(1, 1, 0, BlockId::Scaffold);
+        w.setBlock(2, 1, 0, BlockId::Grass); // a control: must NOT move
+        Inventory iv;
+        iv.add(ItemId::CopperIngot, 3);
+        iv.add(ItemId::Charcoal, 9);
+
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> sr, sp;
+        Weather wt;
+        PlayerController pl;
+        float bf = 0.0f;
+        glm::vec3 cp{0.0f};
+        float yw = 0.0f, pt = 0.0f;
+        std::uint32_t sd = 1u, rng = 1u;
+        int sl = 0;
+        std::array<ItemId, kHotbarSlots> hb{};
+        hb[0] = ItemId::Charcoal; // the hotbar is an id site too
+        bool bd = false, td = false;
+        double play = 0.0;
+        std::vector<DroppedItem> dr;
+        std::array<ItemId, kArmorSlots> ar{};
+
+        SaveData sv{w, iv, {ms, bs, sr, sp}, wt, pl, bf, cp, yw, pt,
+                    sd, rng, sl, hb, bd, td, play, dr, ar};
+        SELFTEST_CHECK(SaveSystem::save(p, sv));
+
+        // Blocks: Stone <-> Scaffold.
+        SELFTEST_CHECK(swapKeysInSave(p, 0, "core:stone", "core:scaffold"));
+        // Items: Copper Ingot <-> Charcoal.
+        SELFTEST_CHECK(swapKeysInSave(p, 1, "core:copper_ingot", "core:charcoal"));
+
+        World w2;
+        Inventory iv2;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms2;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs2;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> sr2, sp2;
+        Weather wt2;
+        PlayerController pl2;
+        float bf2 = 0.0f;
+        glm::vec3 cp2{0.0f};
+        float yw2 = 0.0f, pt2 = 0.0f;
+        std::uint32_t sd2 = 0u, rng2 = 0u;
+        int sl2 = 0;
+        std::array<ItemId, kHotbarSlots> hb2{};
+        bool bd2 = false, td2 = false;
+        double play2 = 0.0;
+        std::vector<DroppedItem> dr2;
+        std::array<ItemId, kArmorSlots> ar2{};
+
+        SaveData sv2{w2, iv2, {ms2, bs2, sr2, sp2}, wt2, pl2, bf2, cp2, yw2, pt2,
+                     sd2, rng2, sl2, hb2, bd2, td2, play2, dr2, ar2};
+        SELFTEST_CHECK(SaveSystem::load(p, sv2));
+
+        // The two swapped blocks come back as each other; the third is proof
+        // the whole table did not simply shift.
+        SELFTEST_CHECK(w2.getBlock(0, 1, 0) == BlockId::Scaffold);
+        SELFTEST_CHECK(w2.getBlock(1, 1, 0) == BlockId::Stone);
+        SELFTEST_CHECK(w2.getBlock(2, 1, 0) == BlockId::Grass);
+
+        // Same for the inventory, whose slot POSITIONS are item ordinals.
+        SELFTEST_CHECK(iv2.count(ItemId::Charcoal) == 3);
+        SELFTEST_CHECK(iv2.count(ItemId::CopperIngot) == 9);
+        SELFTEST_CHECK(hb2[0] == ItemId::CopperIngot);
+
+        // A save naming content this build does not have is refused outright,
+        // rather than loaded with holes where the missing blocks were.
+        SELFTEST_CHECK(renameKeyInSave(p, "core:stone", "mod:absent"));
+        World w3;
+        Inventory iv3;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms3;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs3;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> sr3, sp3;
+        Weather wt3;
+        PlayerController pl3;
+        float bf3 = 0.0f;
+        glm::vec3 cp3{0.0f};
+        float yw3 = 0.0f, pt3 = 0.0f;
+        std::uint32_t sd3 = 0u, rng3 = 0u;
+        int sl3 = 0;
+        std::array<ItemId, kHotbarSlots> hb3{};
+        bool bd3 = false, td3 = false;
+        double play3 = 0.0;
+        std::vector<DroppedItem> dr3;
+        std::array<ItemId, kArmorSlots> ar3{};
+        SaveData sv3{w3, iv3, {ms3, bs3, sr3, sp3}, wt3, pl3, bf3, cp3, yw3, pt3,
+                     sd3, rng3, sl3, hb3, bd3, td3, play3, dr3, ar3};
+        SELFTEST_CHECK(!SaveSystem::load(p, sv3));
+
+        fs::remove(p, ec);
+        fs::remove(p + ".bak", ec);
+        fs::remove(SaveSystem::metaPath(p), ec);
+    }
 
     // ---- The Alchemy Circle (headless: no window, no GL) ----------------
     // Worth testing here rather than by hand: the necklace matcher is the one

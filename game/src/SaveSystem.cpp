@@ -3,6 +3,7 @@
 #include "game/World.h"
 #include "game/Chunk.h"
 #include "game/Block.h"
+#include "game/ContentRegistry.h"
 #include "game/Item.h"
 #include "game/Machine.h"
 #include "game/Recipes.h"
@@ -18,7 +19,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 21;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 22;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -48,6 +49,20 @@ namespace {
     // but they load with an EMPTY fuel slot and their charcoal still sitting in
     // `input`, which would leave every existing Furnace stone cold. So the read
     // path migrates: see the fuel sweep in readMachines().
+    //
+    // v22 does for BLOCK AND ITEM IDS what v20 did for recipe locks: the file
+    // now names its content instead of assuming a shared ordinal space. Right
+    // after the version come two KEY TABLES (blocks, then items), each a
+    // length-prefixed list of stable keys in the writer's ordinal order. Every
+    // id in the body -- chunk bytes, inventory slot positions, machine types,
+    // belt cargo, hotbar, armor, drops -- is read through the ContentMap those
+    // tables build, so an id whose ordinal moved still lands on the right
+    // content and one we no longer have becomes Air/None instead of whatever
+    // now occupies its slot. This is what stops the block and item enums being
+    // append-only forever, and it is the same negotiation a multiplayer client
+    // will need on join, which is why it lives in ContentRegistry rather than
+    // here. Pre-v22 saves get ContentMap::identity(): they were written by this
+    // content set's own ancestor, so their ordinals are already ours.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -73,20 +88,32 @@ namespace {
         }
     }
 
-    bool readInventory(std::ifstream& in, Inventory& inv) {
+    bool readInventory(std::ifstream& in, Inventory& inv,
+                       const content::ContentMap& map) {
         std::uint32_t n = 0;
-        // Older saves may carry FEWER item slots: ItemId only ever grows at
-        // the enum tail, so entry i means the same item in every version and
-        // the missing tail defaults to zero. More slots than we know = a
-        // newer build's file = reject.
-        if (!readPod(in, n) || n > static_cast<std::uint32_t>(ItemId::Count)) return false;
+        if (!readPod(in, n)) return false;
+        if (const std::size_t declared = map.foreignItemCount(); declared > 0) {
+            // v22+: the writer told us exactly how many items it had, so any
+            // other length is a truncated or corrupt record, not an old one.
+            if (n != declared) return false;
+        } else if (n > static_cast<std::uint32_t>(ItemId::Count)) {
+            // Pre-v22: entry i IS ItemId(i) because the enum only ever grew at
+            // its tail, so a shorter run is an older file and the missing tail
+            // defaults to zero. More slots than we know = a newer build = reject.
+            return false;
+        }
         for (std::uint32_t i = 0; i < n; ++i) {
             std::int32_t c = 0;
             if (!readPod(in, c) || c < 0) return false;
-            if (c > 0) inv.add(static_cast<ItemId>(i), c);
+            // An item this build no longer has maps to None and its count is
+            // dropped -- there is nothing to hold it in.
+            if (c > 0) {
+                if (const ItemId id = map.item(i); id != ItemId::None) inv.add(id, c);
+            }
         }
         return true;
     }
+
 
     // Length-prefixed UTF-8. Only used for recipe keys, which are short by
     // construction, so the cap doubles as corruption detection.
@@ -103,8 +130,45 @@ namespace {
         return in.good();
     }
 
-    bool validBlock(std::uint8_t b) {
-        return b < static_cast<std::uint8_t>(BlockId::Count);
+    // How a content set describes itself: a length-prefixed list of stable
+    // keys, position = that side's ordinal. Written by save(), read by load(),
+    // and the same shape a server would send a joining client.
+    void writeKeyTable(std::ofstream& out, const std::vector<std::string>& keys) {
+        writePod(out, static_cast<std::uint32_t>(keys.size()));
+        for (const std::string& k : keys) writeString(out, k);
+    }
+
+    // A block/item ordinal on disk. v22 widened both enums past 255, so it also
+    // widened the encoding; anything older wrote a single byte. Reads funnel
+    // through here so that difference lives in exactly one place.
+    void writeId(std::ofstream& out, std::uint32_t id) {
+        writePod(out, static_cast<std::uint16_t>(id));
+    }
+
+    bool readId(std::ifstream& in, std::uint32_t version, std::uint32_t& id) {
+        if (version >= 22) {
+            std::uint16_t v = 0;
+            if (!readPod(in, v)) return false;
+            id = v;
+            return true;
+        }
+        std::uint8_t v = 0;
+        if (!readPod(in, v)) return false;
+        id = v;
+        return true;
+    }
+
+    bool readKeyTable(std::ifstream& in, std::vector<std::string>& out) {
+        std::uint32_t n = 0;
+        if (!readPod(in, n) || n > 65535u) return false;
+        out.clear();
+        out.reserve(n);
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::string s;
+            if (!readString(in, s) || s.empty()) return false;
+            out.push_back(std::move(s));
+        }
+        return true;
     }
 
     // ---- Frozen v19 recipe order ----------------------------------------
@@ -205,6 +269,13 @@ bool save(const std::string& path, const SaveData& d) {
 
     writePod(out, kMagic);
     writePod(out, kVersion);
+
+    // The content set this file's ids are relative to (v22). Written before
+    // anything that uses an id, so the reader can build its translation before
+    // it has to interpret a single byte of the body.
+    writeKeyTable(out, content::blockKeyTable());
+    writeKeyTable(out, content::itemKeyTable());
+
     writePod(out, d.worldSeed);
     writePod(out, d.sourceRng);
     writePod(out, d.camPos.x);
@@ -225,7 +296,7 @@ bool save(const std::string& path, const SaveData& d) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int y = 0; y < CHUNK_SIZE; ++y) {
                 for (int x = 0; x < CHUNK_SIZE; ++x) {
-                    writePod(out, static_cast<std::uint8_t>(chunk->get(x, y, z)));
+                    writeId(out, static_cast<std::uint32_t>(chunk->get(x, y, z)));
                 }
             }
         }
@@ -237,7 +308,7 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::int32_t>(pos.x));
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
-        writePod(out, static_cast<std::uint8_t>(m.type));
+        writeId(out, static_cast<std::uint32_t>(m.type));
         // The lock travels as the recipe's KEY, so editing the recipe tables
         // can never repoint it (Recipes.h). Empty = AUTO.
         writeString(out, machineTraits(m.type).kind == MachineKind::RuneCore
@@ -259,7 +330,7 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::int8_t>(b.facing.x));
         writePod(out, static_cast<std::int8_t>(b.facing.y));
         writePod(out, static_cast<std::int8_t>(b.facing.z));
-        writePod(out, static_cast<std::uint8_t>(b.item));
+        writeId(out, static_cast<std::uint32_t>(b.item));
     }
 
     // Sources.
@@ -290,7 +361,7 @@ bool save(const std::string& path, const SaveData& d) {
 
     // Hotbar slot assignments (appended in v12); 0 = ItemId::None = empty.
     for (const ItemId id : d.hotbar) {
-        writePod(out, static_cast<std::uint8_t>(id));
+        writeId(out, static_cast<std::uint32_t>(id));
     }
 
     // Boss progression (appended in v13; each new boss appends its own, v14).
@@ -317,13 +388,13 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, dr.pos.x);
         writePod(out, dr.pos.y);
         writePod(out, dr.pos.z);
-        writePod(out, static_cast<std::uint8_t>(dr.id));
+        writeId(out, static_cast<std::uint32_t>(dr.id));
         writePod(out, static_cast<std::int32_t>(dr.count));
     }
 
     // Equipped armor (appended in v18); 0 = ItemId::None = empty slot.
     for (const ItemId id : d.armor) {
-        writePod(out, static_cast<std::uint8_t>(id));
+        writeId(out, static_cast<std::uint32_t>(id));
     }
 
     out.close();
@@ -369,6 +440,24 @@ bool load(const std::string& path, SaveData& d) {
         return false;
     }
 
+    // Build the id translation before reading anything that carries an id.
+    // Pre-v22 files predate the key tables, but they were written by an
+    // ancestor of this very content set, so their ordinals are ours already.
+    content::ContentMap map = content::ContentMap::identity();
+    if (version >= 22) {
+        std::vector<std::string> blockKeys, itemKeys;
+        if (!readKeyTable(in, blockKeys) || !readKeyTable(in, itemKeys)) return false;
+        map = content::ContentMap::build(blockKeys, itemKeys);
+        // Refuse a save naming content we do not have, up front and before a
+        // single id is interpreted. The alternative -- loading it with holes
+        // where the missing blocks were -- silently eats a factory, and a
+        // player who removed a mod would rather be told than shown the damage.
+        // (The nicer answer later is a placeholder block that round-trips its
+        // key so re-adding the mod restores the world; that needs a real
+        // ordinal for content we cannot describe, which is Layer 1's job.)
+        if (!map.missing().empty()) return false;
+    }
+
     if (!readPod(in, d.worldSeed)) return false;
     if (!readPod(in, d.sourceRng)) return false;
     if (!readPod(in, d.camPos.x) || !readPod(in, d.camPos.y) || !readPod(in, d.camPos.z)) return false;
@@ -377,9 +466,16 @@ bool load(const std::string& path, SaveData& d) {
     if (!readPod(in, slot) || slot < 0) return false;
     d.selectedSlot = slot;
 
-    if (!readInventory(in, d.inventory)) return false;
+    if (!readInventory(in, d.inventory, map)) return false;
 
-    // Chunks.
+    // Chunks. A block byte is an ordinal in the WRITER's content set, so what
+    // bounds it is that set's size, not ours.
+    const std::uint32_t blockLimit =
+        map.foreignBlockCount() > 0 ? static_cast<std::uint32_t>(map.foreignBlockCount())
+                                    : static_cast<std::uint32_t>(BlockId::Count);
+    const std::uint32_t itemLimit =
+        map.foreignItemCount() > 0 ? static_cast<std::uint32_t>(map.foreignItemCount())
+                                   : static_cast<std::uint32_t>(ItemId::Count);
     std::uint32_t chunkCount = 0;
     if (!readPod(in, chunkCount) || chunkCount > 4096u) return false;
     for (std::uint32_t c = 0; c < chunkCount; ++c) {
@@ -388,10 +484,10 @@ bool load(const std::string& path, SaveData& d) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int y = 0; y < CHUNK_SIZE; ++y) {
                 for (int x = 0; x < CHUNK_SIZE; ++x) {
-                    std::uint8_t b = 0;
-                    if (!readPod(in, b) || !validBlock(b)) return false;
+                    std::uint32_t b = 0;
+                    if (!readId(in, version, b) || b >= blockLimit) return false;
                     d.world.setBlock(cx * CHUNK_SIZE + x, cy * CHUNK_SIZE + y,
-                                     cz * CHUNK_SIZE + z, static_cast<BlockId>(b));
+                                     cz * CHUNK_SIZE + z, map.block(b));
                 }
             }
         }
@@ -402,11 +498,12 @@ bool load(const std::string& path, SaveData& d) {
     if (!readPod(in, machineCount) || machineCount > 100000u) return false;
     for (std::uint32_t i = 0; i < machineCount; ++i) {
         std::int32_t x = 0, y = 0, z = 0;
-        std::uint8_t type = 0;
+        std::uint32_t type = 0;
         Machine m;
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
-        if (!readPod(in, type) || !validBlock(type) || !isMachine(static_cast<BlockId>(type))) return false;
-        m.type = static_cast<BlockId>(type);
+        if (!readId(in, version, type) || type >= blockLimit) return false;
+        m.type = map.block(type);
+        if (!isMachine(m.type)) return false;
         if (version >= 20) {
             // The lock is a key. A key that no longer names a recipe -- because
             // it was renamed or deleted -- lands on AUTO instead of on whatever
@@ -424,9 +521,9 @@ bool load(const std::string& path, SaveData& d) {
         if (!readPod(in, m.progress)) return false;
         // burnLeft appended in v20; older saves relight on the next craft.
         if (version >= 20 && !readPod(in, m.burnLeft)) return false;
-        if (!readInventory(in, m.input) || !readInventory(in, m.output)) return false;
+        if (!readInventory(in, m.input, map) || !readInventory(in, m.output, map)) return false;
         if (version >= 21) {
-            if (!readInventory(in, m.fuel)) return false;
+            if (!readInventory(in, m.fuel, map)) return false;
         } else if (usesFuelSlot(m.type)) {
             // Pre-v21 kept fuel and ingredients in one buffer, so an existing
             // Furnace's charcoal is sitting in `input`. Sweep it across using
@@ -457,13 +554,13 @@ bool load(const std::string& path, SaveData& d) {
     for (std::uint32_t i = 0; i < beltCount; ++i) {
         std::int32_t x = 0, y = 0, z = 0;
         std::int8_t fx = 0, fy = 0, fz = 0;
-        std::uint8_t item = 0;
+        std::uint32_t item = 0;
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
         if (!readPod(in, fx) || !readPod(in, fy) || !readPod(in, fz)) return false;
-        if (!readPod(in, item) || item >= static_cast<std::uint8_t>(ItemId::Count)) return false;
+        if (!readId(in, version, item) || item >= itemLimit) return false;
         Belt b;
         b.facing = {fx, fy, fz};
-        b.item = static_cast<ItemId>(item);
+        b.item = map.item(item);
         d.registries.belts[{x, y, z}] = b;
     }
 
@@ -502,9 +599,9 @@ bool load(const std::string& path, SaveData& d) {
     // Hotbar slots: appended in v12; older saves keep the caller's default.
     if (version >= 12) {
         for (ItemId& cell : d.hotbar) {
-            std::uint8_t v = 0;
-            if (!readPod(in, v) || v >= static_cast<std::uint8_t>(ItemId::Count)) return false;
-            cell = static_cast<ItemId>(v);
+            std::uint32_t v = 0;
+            if (!readId(in, version, v) || v >= itemLimit) return false;
+            cell = map.item(v);
         }
     }
 
@@ -536,11 +633,11 @@ bool load(const std::string& path, SaveData& d) {
             if (!readPod(in, dr.pos.x) || !readPod(in, dr.pos.y) || !readPod(in, dr.pos.z)) {
                 return false;
             }
-            std::uint8_t id = 0;
+            std::uint32_t id = 0;
             std::int32_t c = 0;
-            if (!readPod(in, id) || id >= static_cast<std::uint8_t>(ItemId::Count)) return false;
+            if (!readId(in, version, id) || id >= itemLimit) return false;
             if (!readPod(in, c) || c <= 0) return false;
-            dr.id = static_cast<ItemId>(id);
+            dr.id = map.item(id);
             dr.count = c;
             dr.dim = DimensionId::Overworld;
             dr.settled = true;
@@ -552,9 +649,9 @@ bool load(const std::string& path, SaveData& d) {
     // (all None). A worn piece must still be a valid item id.
     if (version >= 18) {
         for (ItemId& cell : d.armor) {
-            std::uint8_t v = 0;
-            if (!readPod(in, v) || v >= static_cast<std::uint8_t>(ItemId::Count)) return false;
-            cell = static_cast<ItemId>(v);
+            std::uint32_t v = 0;
+            if (!readId(in, version, v) || v >= itemLimit) return false;
+            cell = map.item(v);
         }
     }
 

@@ -12,11 +12,21 @@
 //  - Sources:    glowing blocks that grow a patch of their resource's nodes
 //                nearby over time; mining one drops its (re-placeable) item
 //
-// APPEND-ONLY: the ordinal is the on-disk save encoding (SaveSystem writes raw
-// block bytes), so new blocks go immediately before Count and existing entries
-// never move. The kBlocks registry in Block.cpp is static_asserted against
-// this order — a missing or misplaced row is a compile error.
-enum class BlockId : std::uint8_t {
+// Ordinals are an ENCODING, not an identity. Each row carries a stable `key`
+// and a save writes its own key table alongside the world (save v22), so a
+// block that moves in this enum is translated on load rather than misread --
+// which is what retired the old APPEND-ONLY rule here. Reordering or removing
+// an entry is now a content decision, not a save-corruption hazard.
+//
+// Two things still hold. The kBlocks registry in Block.cpp is static_asserted
+// against this order, so a missing or misplaced row is a compile error; and
+// keys must stay unique and stable, because they are what the translation is
+// built from (see ContentRegistry.h). Renaming a key IS the breaking change
+// the ordinal used to be.
+//
+// uint16_t rather than uint8_t: the ceiling stopped being theoretical once
+// content can come from outside this enum.
+enum class BlockId : std::uint16_t {
     Air = 0,
     Grass,
     Dirt,
@@ -104,8 +114,9 @@ enum class BlockId : std::uint8_t {
     Count
 };
 
-// Defined in Item.h; only the drop field below needs the type.
-enum class ItemId : std::uint8_t;
+// Defined in Item.h; only the drop field below needs the type. The underlying
+// type must match Item.h's exactly (the compiler enforces it).
+enum class ItemId : std::uint16_t;
 // Defined in Item.h; a fixed underlying type lets it be a BlockInfo member here.
 enum class ToolType : std::uint8_t;
 // Defined in BlockShape.h (which includes THIS header, so it can only be
@@ -129,6 +140,14 @@ struct BlockTiles {
 // Everything static about a block type, one registry row per BlockId.
 struct BlockInfo {
     BlockId     id;                 // must equal the row's position (static_asserted)
+    // Stable identity, independent of both the ordinal and the display name.
+    // The ordinal is a save/wire encoding that shifts the moment content is
+    // added or removed around it; `name` is UI text that may be reworded (this
+    // registry already displays SpringWater as "Rain Water"). The key is what
+    // survives both, so it is what a save's id table and a future multiplayer
+    // join handshake actually agree on. Unique within kBlocks (static_asserted).
+    // Namespaced: "core:" here, "<mod>:" for content loaded from a mod.
+    const char* key = "";
     const char* name = "?";         // human-readable, e.g. for UI / window title
     // `solid` and `fullCube` were one flag until sub-cube block shapes needed
     // them apart: a tube or a slab still stops rays and blocks movement while

@@ -114,8 +114,10 @@ stay in their file's anonymous namespace.
 - Block/item content lives in id-tagged registry tables (`kBlocks` in Block.cpp,
   `kItems` in Item.cpp — name, flags, drops, atlas tiles, all of it), one
   designated-initializer row per enum value, `static_assert`ed against enum order.
-  Adding content = append the enum value + one row; enums are APPEND-ONLY because
-  ordinals are the save encoding (see SCALABILITY.md).
+  Adding content = append the enum value + one row. Every row also carries a
+  stable `key` ("core:copper_ingot") which is the content's real identity —
+  ordinals are just an encoding, translated on load (see **Content identity**
+  below). Enums are NO LONGER append-only; keys are what must never change.
 - Machine behavior is data too: `kMachineTraits` in Machine.h (one row per
   machine — `MachineKind`, power demand/output, fuel, collection, plus
   `recipeGroup`/`speedMult` for the manual tier), cross-`static_assert`ed
@@ -131,12 +133,30 @@ stay in their file's anonymous namespace.
   as that key rather than as its position. Rows may therefore be reordered,
   retimed, rebalanced, or deleted at will; a save whose locked recipe no
   longer exists falls back to AUTO instead of silently making something else.
-  This is the one place the append-only rule does NOT apply — block/item enums
-  still do, because those ordinals really are the save encoding. Two things
-  replace it as the safety net, both in `--selftest`: a tech-tree
+  This was the first place the append-only rule stopped applying; save v22
+  extended the same idea to blocks and items, so it now applies nowhere. Two
+  things replace it as the safety net, both in `--selftest`: a tech-tree
   **reachability closure** (edit a recipe into a deadlock and it fails) and a
   **circle-pattern shadowing check** (lay every pattern, prove the matcher
   returns it). `RECIPES.md` is generated — `voxel-factory --dump-recipes`.
+- **Content identity is the key, not the ordinal** (`ContentRegistry.h`/.cpp,
+  save v22). A `BlockId`/`ItemId` ordinal is an ENCODING — the raw byte in a
+  chunk, the slot position in an inventory — and only means anything relative
+  to the content set that produced it. Two content sets have to agree in two
+  places: a SAVE written by a different build, and (eventually) a SERVER a
+  client joined. Both are the same "your ordinal N is my ordinal M" problem, so
+  both are served by one object rather than two mechanisms invented apart.
+  A save writes two **key tables** (blocks, then items — stable keys in the
+  writer's ordinal order) right after the version, and `ContentMap` translates
+  the whole body through them. That is what retired the append-only rule and
+  what let both enums widen to `uint16_t`. Pre-v22 saves get
+  `ContentMap::identity()` (their ordinals are this content set's own
+  ancestor's) and read the old 1-byte ids — `readId()` is the one place that
+  difference lives. A save naming content this build lacks is refused up
+  front, by design: loading it with holes silently eats a factory.
+  `--selftest` fabricates a foreign save by swapping two keys in the file and
+  asserts the world comes back MIRRORED — a load that ignores the tables
+  returns it unchanged, so the check fails loudly if the layer goes decorative.
 - Block place/break side effects funnel through **`WorldEdit`**
   (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
   machine/belt/source/sapling registry sync and return facts (drop, handed-back
@@ -609,7 +629,7 @@ Player physics (pressure & pull):
   boss loot answers "why fight" later). A missed swing falls through to mining.
   Knobs in the `// ---- Melee ----` block. Save note: v11 grew the ItemId enum —
   `readInventory` accepts older, SHORTER item arrays (append-only enum growth stays
-  save-compatible; reordering never is).
+  save-compatible; reordering did not, until v22's key tables made it so).
 - **Health & damage** — `m_health` in hearts (`kMaxHealth`, knobs in the
   `// ---- Health & damage ----` block); heart segments render above the hotbar's
   left end in `drawHud`. Hard landings hurt past `kFallSafeSpeed`
@@ -916,7 +936,15 @@ Persistence:
   each machine record — a tail append, so `kOldestLoadable` did not move, but
   one that still needs a migration: an older save keeps its fuel in `input`, so
   the read path sweeps it across for machines with a slot, or every existing
-  Furnace would load stone cold.
+  Furnace would load stone cold. **v22 ended the need to bump for an enum
+  change at all**: the file now carries the block and item KEY TABLES its
+  ordinals refer to, so content that moved is translated instead of misread
+  (see **Content identity** above). It also widened both ids on disk from one
+  byte to two, which roughly DOUBLES a save (223 KB → 463 KB on a real world) —
+  irrelevant at the current 6×6-chunk cap, and the fix if the world ever grows
+  is a per-chunk palette, which would land it below the original. Pre-v22 saves
+  migrate on read (identity map + 1-byte ids); v14/v18/v21 real saves were
+  verified to load and re-save losslessly.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /
