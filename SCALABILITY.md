@@ -13,6 +13,15 @@ lines this is a structured cleanup target, not a rewrite candidate.*
 
 ## Part 1 — Content scalability: "half data-driven"
 
+> **Superseded in part (Aug 2026).** Part 1's central finding — that an ordinal
+> is simultaneously the registry index and the save encoding, which is what made
+> everything append-only — no longer holds. Save **v20** moved recipe locks onto
+> stable keys, and save **v22** did the same for blocks and items: every row
+> carries a `key`, a save writes the key tables its ordinals refer to, and
+> `ContentMap` (`ContentRegistry.h`) translates on load. Both enums are now
+> freely reorderable and widened to `uint16_t`. The paragraphs below are kept as
+> the audit that motivated the fix — read them as history, not as current state.
+
 Everything is keyed off central `enum class BlockId` / `ItemId`, whose ordinal is
 **both** the index into parallel positional registries **and** the on-disk save
 encoding. Real data tables exist (`Block.cpp`, `Item.cpp`, `Atlas.cpp`, `Recipes.cpp`),

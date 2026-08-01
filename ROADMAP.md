@@ -50,6 +50,22 @@ calendar quarters counted from July 2026.
       `DroppedItem`s that fall/settle and auto-collect (`DropSystem`), and a
       non-void death scatters the pack at the spot (void still wipes). Saved in
       v16. **Foundation for the harder start + deeper factory below.**
+- [x] Content identity by key, not ordinal (Aug 2026, save v22): every
+      `kBlocks`/`kItems` row carries a stable `key` and a save writes the key
+      tables its ordinals refer to, so `ContentMap` (`ContentRegistry.h`/.cpp)
+      translates a foreign content set onto ours instead of trusting raw bytes.
+      This **retired the append-only rule** that had governed both enums since
+      the beginning — they may now be reordered and edited like the recipe
+      tables, and both widened to `uint16_t` past a 255 ceiling that stopped
+      being theoretical. Done early on purpose: it is a save migration, and
+      those get much harder once saves are in players' hands. It is also the
+      exact negotiation a multiplayer client needs on join, and the first brick
+      of the modding path (below). `--selftest` fabricates a save whose
+      ordinals are not ours by swapping two keys in the file and asserts the
+      world comes back mirrored. Costs one thing worth tracking: a save roughly
+      doubles (223 KB → 463 KB) because block bytes went 1 → 2, which is
+      irrelevant at the 6×6-chunk cap and would be fixed — below the original —
+      by a per-chunk palette if the world ever grows
 
 ## Q4 2026 — content depth + combat foundations
 
@@ -243,13 +259,15 @@ the pillar slips to post-launch.
     already strictly better. Walking through wheat is then a follow-on that
     splits ray boxes from physics boxes, which is the same move the codebase
     already made once when `isSolid` came apart into `solid` + `fullCube`
-  - **Growth stages cost append-only BlockIds.** The mesher picks a shape from
+  - **Growth stages cost a BlockId row each.** The mesher picks a shape from
     the BlockId alone and `Chunk` is a flat BlockId array with no per-cell
-    metadata, so each visible stage is its own permanent `kBlocks` row (the
-    timer can live in the side registry, but the *look* cannot). Ship **one crop
-    at 3-4 stages** first to prove the loop; each later crop is then N more
-    append-only rows and nothing else. `ShapeId` is free by comparison — it is
-    not a save encoding and may be reordered at will
+    metadata, so each visible stage is its own `kBlocks` row (the timer can live
+    in the side registry, but the *look* cannot). Ship **one crop at 3-4
+    stages** first to prove the loop; each later crop is then N more rows and
+    nothing else. Note this got cheaper in Aug 2026: since save v22 those rows
+    are no longer append-only-forever — a stage that turns out wrong can be
+    reordered or deleted, and the enum has `uint16_t` of headroom — so the cost
+    is now a row and a stable key rather than a permanent commitment
   - **Tilling: yes — decided July 2026.** Crops require a **Tilled Soil** block
     rather than planting straight onto Dirt/Grass, so laying out a field is a
     deliberate build step instead of a side effect of walking around. A new
@@ -451,6 +469,64 @@ the pillar slips to post-launch.
   tuning (weapon damage, armor curves, boss HP, key/gear recipe costs)
 - Launch
 
+## Post-launch — AI-authored mods (user vision, Aug 2026)
+
+The goal: a player describes a mod in natural language ("a machine that turns
+charcoal into diamonds over 30 seconds") and gets a working, save-compatible
+one. **The AI is the thin cap; the work is a runtime content layer**, and every
+step below ships value on its own as ordinary modding support — which is a
+Steam-visible feature whether or not the generation half ever lands.
+
+Two findings make it tractable rather than speculative. The five content
+registries are referenced in only ~19 places behind six one-line accessors
+(`blockInfo` / `itemInfo` / `machineTraits` / `blockShape`), so swapping
+compiled tables for runtime vectors is a contained change, not a rewrite. And
+the hard problem with generated content — *is it coherent?* — is already
+answered by `--selftest`'s tech-tree reachability closure, which fails on a
+deadlock with a specific English diagnostic. That is exactly the
+generate → validate → repair loop a model needs.
+
+1. [x] **Content identity by key** (done, save v22 — see Q3 above). The
+       prerequisite: content that isn't compiled in needs an identity that
+       isn't an ordinal
+2. [ ] **Runtime registries** — the five tables become vectors seeded from the
+       compiled rows; mods append. The `static_assert` lambdas become runtime
+       validators (same loops, same messages). Watch two ceilings:
+       `kMaxShapeBanks` caps shapes at 32, and `kMachineTraitIndex` is `int8_t`,
+       silently capping machines at 127
+3. [ ] **Extract `checkReachability`** out of `runSelfTest` into Recipes.cpp so
+       a mod loader can call it and report problems, not just exit non-zero
+4. [ ] **JSON mod format + loader** (nlohmann is already vendored), validated
+       by 2 and 3. At this point hand-written mods work — shippable alone
+5. [ ] **Generation tooling** — an out-of-game companion tool that emits a mod
+       file, NOT an in-game HTTP client: the game has zero networking today,
+       and keeping generation outside the binary avoids server costs and
+       moderation liability entirely
+
+Constraints that are not negotiable once multiplayer is in view (above):
+**mods are declarative data, never a scripting language** — a client receives
+the host's mod set, so Lua/wasm would be arbitrary code execution from an
+untrusted host — and the schema must admit no wall-clock or local RNG. Weighted
+recipe outputs already ride `hash2()` + the saved `m_sourceRng` counter, which
+is replay- and therefore lockstep-safe. Generation is a host-side,
+world-stopped action: you cannot hot-add a block id to a running networked
+world without re-syncing every client.
+
+What is authorable as pure data today: recipes (all three tables), fuels,
+materials, tools/weapons/armor tiers, plain blocks, Processor machines,
+hand-cranked twins, collectors, node+source pairs, species reskins — most of
+what a Factorio mod actually is. What needs an engine hook first: item effects
+(a hardcoded `held == ItemId::X` chain today, with no `effect` field), worldgen
+presence, growth behaviours. What stays out of reach: new `MachineKind`s and
+`CreatureKind`s (6+ hand-written dispatch sites each) and new block shapes
+(these need a Blockbench model and a re-bake, so they are not text-authorable).
+
+Art needs no image model: `VoxelGameRender.cpp` already generates fallback
+tiles from `BlockInfo::color`, so a modded block with a chosen colour is
+visually complete; better is a 16×16 palette-indexed grid emitted as text, into
+a separate runtime sheet (never `atlas.png`, whose indices are frozen —
+the `shapes.png` second-sheet precedent).
+
 ## Known gaps (survey, July 2026)
 
 Kept here so they don't get lost — none are architectural dead-ends:
@@ -510,9 +586,16 @@ Kept here so they don't get lost — none are architectural dead-ends:
   logistics item; the crate itself is nearly free because `Inventory` is an
   unbounded count map
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
-- **Multiplayer: explicitly deferred (decided July 2026).** Nothing in the
-  architecture anticipates it — the sim is a single-process 20 Hz tick with
-  direct state mutation, the save is one wholesale binary, and there is no
-  entity-ownership model. It would be a rearchitecture (networked tick,
-  authority, save format), not a feature. Revisit, if ever, only after the
-  combat/entity pillar ships — the entity layer is a prerequisite either way
+- **Multiplayer: post-launch, but no longer "if ever" (Aug 2026).** The intent
+  is now that the game eventually IS multiplayer, which changes what counts as
+  a defensible shortcut today even though none of the work is scheduled. The
+  scale is unchanged — the sim is a single-process 20 Hz tick with direct state
+  mutation, there is no entity-ownership model, and it remains a rearchitecture
+  (networked tick, authority, save format) rather than a feature — and the
+  combat/entity pillar is still a prerequisite. What changed is the standing
+  instruction: anything touching the save format, content identity, or
+  simulation determinism should assume a networked authority is coming, because
+  those are the three things that get expensive to retrofit. The first
+  instalment already landed (see the content-identity item below): the ordinal
+  ↔ key mapping a save needs and the one a joining client needs are the same
+  object, so it was built once as `ContentRegistry` rather than twice
