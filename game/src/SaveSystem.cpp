@@ -18,7 +18,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 20;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 21;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -41,6 +41,13 @@ namespace {
     // bespoke remap is gone with it. v20 also appends `burnLeft` to each
     // machine record (fuel-fired Processors); older saves default it to 0,
     // which just means the burner relights on its next craft.
+    //
+    // v21 appends a third INVENTORY to each machine record: the dedicated fuel
+    // buffer that machines with recipes now keep their firewood in (see
+    // usesFuelSlot in Machine.h). A tail append, so older saves still load --
+    // but they load with an EMPTY fuel slot and their charcoal still sitting in
+    // `input`, which would leave every existing Furnace stone cold. So the read
+    // path migrates: see the fuel sweep in readMachines().
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -240,6 +247,7 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, m.burnLeft);
         writeInventory(out, m.input);
         writeInventory(out, m.output);
+        writeInventory(out, m.fuel); // v21; empty for anything without a slot
     }
 
     // Belts.
@@ -417,6 +425,29 @@ bool load(const std::string& path, SaveData& d) {
         // burnLeft appended in v20; older saves relight on the next craft.
         if (version >= 20 && !readPod(in, m.burnLeft)) return false;
         if (!readInventory(in, m.input) || !readInventory(in, m.output)) return false;
+        if (version >= 21) {
+            if (!readInventory(in, m.fuel)) return false;
+        } else if (usesFuelSlot(m.type)) {
+            // Pre-v21 kept fuel and ingredients in one buffer, so an existing
+            // Furnace's charcoal is sitting in `input`. Sweep it across using
+            // the rule the old pickFuel used to apply every tick -- fuel that
+            // is ALSO an ingredient here was feedstock and stays put. Applied
+            // once, at the boundary, and then the rule is retired for good.
+            for (const FuelInfo& f : kFuels) {
+                const int held = m.input.count(f.item);
+                if (held <= 0) continue;
+                bool ingredient = false;
+                for (const MachineRecipe* r : recipesForMachine(m.type)) {
+                    for (const ItemStack& ri : r->inputs) {
+                        if (ri.id == f.item) { ingredient = true; break; }
+                    }
+                    if (ingredient) break;
+                }
+                if (ingredient) continue;
+                m.input.remove(f.item, held);
+                m.fuel.add(f.item, held);
+            }
+        }
         d.registries.machines[{x, y, z}] = std::move(m);
     }
 

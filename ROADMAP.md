@@ -78,9 +78,14 @@ the pillar slips to post-launch.
   (Furnace / Sifter / Glassblower / Compactor) took over the last free clicks
   in the hand menu, **iron** arrived as both the structural metal and the tier
   above copper (sifted from sand, so the Sifter is permanent), and a thirteen-
-  machine **manual tier** — pure registry data, no new code — makes the whole
-  factory playable before electricity. `kFuels` made fuel a registry, which is
-  the charcoal half of the item below.
+  machine **manual tier** makes the whole factory playable before electricity.
+  `kFuels` made fuel a registry, which is the charcoal half of the item below.
+  The manual tier is now genuinely MANUAL (Aug 2026): a cranked machine
+  advances only while the player turns its handle — the four arrows in order,
+  with the panel open — so belts can load one but never run it, and the powered
+  tier sells absence rather than speed. Fuel moved into a buffer of its own on
+  the machines that also have recipes (save v21), which retired the "never burn
+  your own feedstock" rule and let a Furnace char wood while burning wood.
 - **Factory depth (Factorio/Satisfactory direction, user vision):** the game
   needs many more stages between "first machine" and "endgame". Staged
   milestones: **generator tiers** — the **Storm Core** has a sink in the Aegis

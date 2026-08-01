@@ -2,6 +2,7 @@
 
 #include "game/Block.h"
 #include "game/Inventory.h"
+#include "game/Recipes.h"
 
 #include <glm/glm.hpp>
 
@@ -10,13 +11,17 @@
 #include <cstdint>
 #include <iterator>
 
-// Runtime state for a placed machine block. Items wait in `input`, finished
-// goods collect in `output`, and `progress` counts seconds into the current
-// craft. The input/output buffers are belt-ready (Step 5 will fill/drain them).
+// Runtime state for a placed machine block. Ingredients wait in `input`,
+// finished goods collect in `output`, and `progress` counts seconds into the
+// current craft.
 struct Machine {
     BlockId   type = BlockId::Air;
     Inventory input;
     Inventory output;
+    // Fuel, kept apart from the ingredients. Only machines that both burn fuel
+    // AND run recipes use this (see usesFuelSlot) -- a Generator has no recipes
+    // to confuse fuel with, so it burns straight out of `input`.
+    Inventory fuel;
     float     progress = 0.0f;   // seconds into the active recipe; a Generator
                                  // stores its remaining burn seconds here
     float     burnLeft = 0.0f;   // seconds of fuel left (burnsFuel Processors);
@@ -32,6 +37,13 @@ struct Machine {
     glm::ivec3 target{0};
     bool       hasTarget = false;
     int        rescanCooldown = 0; // ticks until the next idle scan
+
+    // Hand-cranked tier only, transient (not saved -- a half-turned handle is
+    // not worth persisting, and a fresh load simply starts the turn again):
+    // how far round the current rotation the player is, and the work they have
+    // banked but the tick has not yet spent.
+    int        crankStep = 0;      // quarter-turns done, 0..3
+    float      crankBanked = 0.0f; // seconds of progress waiting for the tick
 };
 
 // What a machine does each tick. Behavior code lives in per-kind dispatch
@@ -92,16 +104,21 @@ struct MachineTraits {
     // inherits every recipe, so a recipe is authored exactly once and the two
     // tiers can never drift apart.
     BlockId     recipeGroup = BlockId::Air;
-    // Multiplies every recipe's time. The manual tier's whole cost.
+    // Multiplies every recipe's time. How much WORK a manual craft costs.
     float       speedMult = 1.0f;
+    // The manual tier: progress comes from the player turning the handle, not
+    // from the clock. A cranked machine with full buffers and nobody at it
+    // does nothing at all -- see tickPowered.
+    bool        handCranked = false;
 };
 
-// How much slower the hand-cranked tier is than its powered twin. The whole
-// price of playing before electricity, and deliberately the same bargain the
-// Lesser Alchemy Circle makes (kLesserCircleSlowdown): a manual machine WILL
-// build you the powered one, it will just make you wait for it. Lives here
-// rather than with the other tuning knobs because it is machine data, like the
-// rest of this table.
+// How much more work the hand-cranked tier is than its powered twin. This is
+// no longer a wall-clock stretch: a cranked machine does not advance on its
+// own, so this multiplies the number of rotations the player owes. The Lesser
+// Alchemy Circle still makes the older, gentler bargain (kLesserCircleSlowdown
+// -- slow but self-running), because a ritual circle is not a handle. Lives
+// here rather than with the other tuning knobs because it is machine data,
+// like the rest of this table.
 inline constexpr float kManualSlowdown = 3.0f;
 
 inline constexpr MachineTraits kMachineTraits[] = {
@@ -133,42 +150,53 @@ inline constexpr MachineTraits kMachineTraits[] = {
     // available from the first bloom of ore and generators stay a
     // convenience rather than a gate. Heat being its own resource is also
     // what gives Charcoal a job.
-    {.block = BlockId::Furnace, .burnsFuel = true},
+    {.block = BlockId::Furnace, .demand = 0, .burnsFuel = true},
     {.block = BlockId::Sifter},
     {.block = BlockId::Glassblower},
     {.block = BlockId::Compactor},
 
-    // The MANUAL tier. Each row is the whole machine: no power (demand 0),
-    // its powered twin's recipes (recipeGroup), and kManualSlowdown times
-    // longer to do them. The Bloomery still needs fuel -- you cannot hand
-    // crank a fire -- and burns it less efficiently than a real Furnace.
+    // The MANUAL tier. Each row is the whole machine: no power (demand 0), its
+    // powered twin's recipes (recipeGroup), kManualSlowdown times the work --
+    // and handCranked, which is what makes it manual rather than merely slow.
+    // The Bloomery still needs fuel -- you cannot hand crank a fire -- and
+    // burns it less efficiently than a real Furnace.
     {.block = BlockId::Bloomery, .demand = 0, .burnsFuel = true, .fuelMult = 0.6f,
-     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Sieve, .demand = 0,
-     .recipeGroup = BlockId::Sifter, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Sifter, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Blowpipe, .demand = 0,
-     .recipeGroup = BlockId::Glassblower, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Glassblower, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Tamper, .demand = 0,
-     .recipeGroup = BlockId::Compactor, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Compactor, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Mortar, .demand = 0,
-     .recipeGroup = BlockId::Grinder, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Grinder, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::HandPress, .demand = 0,
-     .recipeGroup = BlockId::Press, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Press, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Anvil, .demand = 0,
-     .recipeGroup = BlockId::Forge, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Forge, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::CompostHeap, .demand = 0,
-     .recipeGroup = BlockId::Composter, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Composter, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::MixingBowl, .demand = 0,
-     .recipeGroup = BlockId::Cauldron, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Cauldron, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::InfusionStand, .demand = 0,
-     .recipeGroup = BlockId::Infuser, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Infuser, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Still, .demand = 0,
-     .recipeGroup = BlockId::Alembic, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Alembic, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::HandDistiller, .demand = 0,
-     .recipeGroup = BlockId::Distiller, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Distiller, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::HandTransmuter, .demand = 0,
-     .recipeGroup = BlockId::Transmuter, .speedMult = kManualSlowdown},
+     .recipeGroup = BlockId::Transmuter, .speedMult = kManualSlowdown, .handCranked = true},
 };
+
+// Only the manual tier is cranked, and every cranked machine is a manual twin.
+// The two travel together by design -- if they ever come apart, the panel and
+// the tick would disagree about what "manual" means.
+static_assert([] {
+    for (const MachineTraits& t : kMachineTraits) {
+        if (t.handCranked != (t.recipeGroup != BlockId::Air)) return false;
+    }
+    return true;
+}(), "handCranked and the manual tier (recipeGroup) must agree");
 
 static_assert([] {
     for (std::size_t i = 0; i < std::size(kMachineTraits); ++i) {
@@ -218,4 +246,20 @@ inline const MachineTraits& machineTraits(BlockId id) {
 inline BlockId recipeGroupFor(BlockId id) {
     const BlockId group = machineTraits(id).recipeGroup;
     return group == BlockId::Air ? id : group;
+}
+
+// Does this machine keep its fuel in a buffer of its own?
+//
+// Only when it burns fuel AND has recipes, because that is exactly when the
+// two piles can be confused: a Furnace fed wood cannot otherwise tell the wood
+// it is meant to CHAR from the wood it is meant to BURN. A dedicated slot makes
+// the player say which, and in exchange the machine may now do both at once.
+// A Generator has no recipes and so no ambiguity -- it burns straight out of
+// `input`, and a second buffer would be ceremony.
+//
+// Derived rather than a hand-set traits field on purpose: a future fuel-fired
+// Processor earns a slot by existing, a future generator tier stays slotless,
+// and there is no fourteenth column to keep in sync with reality.
+inline bool usesFuelSlot(BlockId id) {
+    return machineTraits(id).burnsFuel && !recipesForMachine(id).empty();
 }

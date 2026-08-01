@@ -806,26 +806,58 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **`RECIPES.md` is generated** — `voxel-factory --dump-recipes > RECIPES.md`.
   It used to be a hand-maintained mirror carrying an "update both together"
   warning, which is a promise a repo cannot keep.
-- **The manual tier is pure data.** Thirteen hand-cranked twins (Bloomery,
-  Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap, Mixing
-  Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter) — one per
+- **The manual tier is thirteen data rows plus one branch.** Hand-cranked twins
+  (Bloomery, Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap,
+  Mixing Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter) — one per
   Processor. Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
-  build recipe; **no new code and no new `MachineKind`**. Two traits fields do
-  it: `recipeGroup` points at the powered twin so `recipesForMachine()` returns
-  its rows (a recipe stays authored exactly once, and a static_assert keeps the
-  delegation one hop), and `speedMult` (`kManualSlowdown` = 3) is the entire
-  price. `demand = 0` was already enough to bypass the power gate at
-  `tickPowered`'s one `traits.demand > 0 &&` and to keep them off the power
-  graph via `isPowerNode` — the Rain Barrel precedent. Only the panel header
-  needed a case, so a manual machine reads MANUAL/BURNING instead of NO POWER.
+  build recipe; **no new `MachineKind`**. `recipeGroup` points at the powered
+  twin so `recipesForMachine()` returns its rows (a recipe stays authored
+  exactly once, and a static_assert keeps the delegation one hop), `speedMult`
+  (`kManualSlowdown` = 3) is the price, and `demand = 0` bypasses the power gate
+  at `tickPowered`'s one `traits.demand > 0 &&` and keeps them off the power
+  graph via `isPowerNode` — the Rain Barrel precedent.
+- **Cranking is what makes the tier manual rather than merely slow** (Aug 2026).
+  It shipped as pure data — a 3× wall-clock stretch — which meant a Bloomery ran
+  itself overnight and the powered tier sold nothing but speed. A `handCranked`
+  traits flag (static_asserted to agree with the manual tier, since the two must
+  never come apart) now makes `tickPowered` advance those machines by
+  `Machine::crankBanked` instead of `kTickSeconds`. The bank is filled by the
+  **panel**: with it open, the four ARROWS pressed in order (`vg::kCrankOrder`,
+  clockwise from up) turn the handle, and a completed rotation banks
+  `kCrankProgress` seconds. A wrong key resets the turn. `crankStep`/`crankBanked`
+  are transient, so a half-turn is not saved and needs no version bump; W/S keep
+  the rows via `menuNav`'s new `useArrows` flag, so the two never fight. The tick
+  bails BEFORE spending the bank when the fire is out, so a turn against an unlit
+  Bloomery is owed, not swallowed — and fuel burns only on a tick that banked a
+  crank, so an unattended burner costs nothing. **Belts still load a manual
+  machine but can never run one**: the tier is now genuinely un-automatable, and
+  what the powered tier sells is not speed but not having to be there. Covered by
+  `--selftest` (400 ticks of a loaded Bloomery must produce and burn nothing).
 - **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, Charcoal
   60s) replaced the Generator's single `.fuel`/`.burnSeconds` pair, so a better
   fuel is one row. A Processor with `burnsFuel` runs on heat instead of
   electricity (the Furnace and Bloomery; `Machine::burnLeft`, appended in v20).
-  The non-obvious rule: **a machine never burns an item its own recipes
-  consume** (`pickFuel`), or a Furnace fed wood would eat the wood it is there
-  to char. It also lights fuel only when a craft is ready — the generator's
-  "hungry" rule applied to a recipe — and burns the SHORTEST fuel first.
+  It lights fuel only when a craft is ready — the generator's "hungry" rule
+  applied to a recipe — and burns the SHORTEST fuel first.
+- **Fuel has its own buffer** (`Machine::fuel`, save v21). A machine that burns
+  fuel *and* has recipes gets a third belt-reachable buffer and a FUEL strip in
+  its panel — that is `usesFuelSlot()`, **derived** (`burnsFuel && has recipes`)
+  rather than a hand-set flag, so a future fuel-fired Processor earns a slot by
+  existing and a future generator tier stays slotless. A Generator has no recipes
+  and so no ambiguity; it still burns out of `input`, via `fuelBuffer()`. This
+  **retired** the old rule that *a machine never burns an item its own recipes
+  consume* — that existed only because one buffer had to serve two jobs, and it
+  cost real behaviour: a Furnace can now char wood while burning wood. The
+  inference survives in exactly one place, `bufferFor()`, because a belt has no
+  hands and must guess which pile an arriving item joins (ingredient wins). A
+  hand-drag lands in the cell you dropped on and infers nothing — which is why
+  the FUEL strip needed its own `Drag::Source`, or a cancelled drag would return
+  charcoal to `input`. Pre-v21 saves migrate on read (fuel swept out of `input`
+  using the retired rule, once, at the boundary).
+- The Furnace's traits row was **missing `.demand = 0`** despite the comment
+  above it and this file both saying it had one, so it silently required
+  electricity *and* fuel — defeating the point of the fuel-fired tier. Fixed
+  Aug 2026; the crank selftest is what caught it.
 - **Weighted outputs.** `MachineRecipe::output` became
   `std::vector<RecipeOutput>` (stack + weight); one entry is the ordinary
   deterministic case and doesn't touch the RNG at all. More than one makes the
@@ -874,13 +906,17 @@ Persistence:
   caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar,
   v14→v15 for playtime, and v15→v16 for ground drops — any enum/layout change must
   drop that compatibility. The other way to keep it is to MIGRATE on read, which
-  v19 and v20 both do. v19 remapped `selectedRecipe` indices after two recipe
-  lists were reordered. **v20 changed the machine record itself** — the lock is
-  a length-prefixed KEY now, plus a trailing `burnLeft` float — and reads the
-  old i32 when `version < 20`, translating it through a frozen v19 order
-  snapshot (`SaveSystem::legacyRecipeIndex`, `--selftest`-pinned). That is why
-  editing the recipe tables no longer needs a version bump at all: the format
-  stopped depending on their order.
+  v19, v20 and v21 all do. v19 remapped `selectedRecipe` indices after two
+  recipe lists were reordered. **v20 changed the machine record itself** — the
+  lock is a length-prefixed KEY now, plus a trailing `burnLeft` float — and
+  reads the old i32 when `version < 20`, translating it through a frozen v19
+  order snapshot (`SaveSystem::legacyRecipeIndex`, `--selftest`-pinned). That is
+  why editing the recipe tables no longer needs a version bump at all: the
+  format stopped depending on their order. **v21 appends the fuel buffer** to
+  each machine record — a tail append, so `kOldestLoadable` did not move, but
+  one that still needs a migration: an older save keeps its fuel in `input`, so
+  the read path sweeps it across for machines with a slot, or every existing
+  Furnace would load stone cold.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /

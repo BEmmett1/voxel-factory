@@ -175,6 +175,25 @@ namespace vg {
     // can keep a pattern topped up, shallow enough to stay readable.
     inline constexpr int   kPedestalCap = 16;
 
+    // ---- Cranking (the hand-cranked tier) ----
+    // A manual machine advances only while the player turns its handle: with
+    // its panel open, press the four arrows IN ORDER, and each completed
+    // rotation banks this many seconds of recipe progress (MachineSystem's
+    // tickPowered spends the bank). At 3s a turn, a 4s smelt costs
+    // 4s * kManualSlowdown / 3s = 4 rotations -- enough to feel like work,
+    // few enough to stay short of tedium. If it ever reads as a chore the fix
+    // is to RAISE this (fewer, weightier turns) rather than to cut
+    // kManualSlowdown, which would flatten the gap the powered tier sells.
+    inline constexpr float kCrankProgress = 3.0f;
+    // The handle's rotation, clockwise from the top. One array, so changing the
+    // gesture -- or making it per-machine later -- is a single edit. These are
+    // the ARROWS deliberately: WASD stays with row navigation inside a panel,
+    // and the arrows are reserved keys, so nothing the player rebinds can
+    // collide with the crank.
+    inline constexpr SDL_Scancode kCrankOrder[4] = {
+        SDL_SCANCODE_UP, SDL_SCANCODE_RIGHT, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT,
+    };
+
     // ---- Block animation (animated shape textures) ----
     // A shaped block's texture may be a strip of frames stacked down
     // shapes.png (ShapeAnim in BlockShape.h). Playing it is a per-vertex bank

@@ -27,6 +27,19 @@ namespace MachineSystem {
     // overfill it with ingredients it will never consume).
     bool machineAccepts(const Machine& mac, ItemId item);
 
+    // Where this machine's fuel lives: its own `fuel` buffer when it has one,
+    // otherwise `input` (a Generator has no recipes to confuse fuel with).
+    // Reading fuel through here means no burner needs a special case.
+    const Inventory& fuelBuffer(const Machine& mac);
+    Inventory&       fuelBuffer(Machine& mac);
+
+    // Which buffer an arriving `item` should land in. Only belts need this: a
+    // belt has no hands, so something must decide whether the wood rolling into
+    // a Furnace is feedstock or firewood (ingredient wins -- the machine is
+    // there to make the thing). A player dragging onto a cell has already said
+    // which, and never consults this.
+    Inventory& bufferFor(Machine& mac, ItemId item);
+
     // The first raw item in a miner's input buffer; None = unfiltered (mine
     // anything nearby). The filter item is a reference sample, never consumed.
     ItemId minerFilter(const Machine& mac);

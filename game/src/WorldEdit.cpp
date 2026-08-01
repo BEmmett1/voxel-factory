@@ -15,11 +15,13 @@ BreakResult breakBlock(World& world, const Registries& regs, const glm::ivec3& p
     if (isMachine(r.broken)) {
         const auto it = regs.machines.find(pos);
         if (it != regs.machines.end()) {
-            // Hand every buffered item back so nothing is lost.
+            // Hand every buffered item back so nothing is lost -- including the
+            // fuel slot, or the charcoal in a broken Furnace burns for nobody.
             for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 r.returned.add(id, it->second.input.count(id));
                 r.returned.add(id, it->second.output.count(id));
+                r.returned.add(id, it->second.fuel.count(id));
             }
             regs.machines.erase(it);
         }

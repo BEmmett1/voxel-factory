@@ -50,6 +50,8 @@ namespace {
         int   rows = 0;      // action rows (AUTO + recipes + TAKE)
         float rowsY = 0;     // top of the action rows
         float inY = 0;       // top of the IN cell strip
+        bool  hasFuel = false; // machine keeps fuel in its own buffer
+        float fuelY = 0;     // top of the FUEL strip (only when hasFuel)
         float outY = 0;      // top of the OUT cell strip
         float stripCellsX = 0; // first cell x in the IN/OUT strips
         float barY = 0;      // progress bar
@@ -121,30 +123,37 @@ namespace {
         return true;
     }
 
-    // Everything in the machine panel that is not the inventory grid.
-    float panelFixedHeight(int actionRows) {
+    // Everything in the machine panel that is not the inventory grid. A machine
+    // with its own fuel buffer shows a third strip, so it is one taller.
+    float panelFixedHeight(int actionRows, bool fuelStrip) {
         return PanelLayout::HeaderH + actionRows * PanelLayout::RowH +
-               2.0f * PanelLayout::StripH + PanelLayout::BarH + PanelLayout::LabelH +
-               PanelLayout::TooltipH + PanelLayout::FooterH + PanelLayout::Pad;
+               (fuelStrip ? 3.0f : 2.0f) * PanelLayout::StripH + PanelLayout::BarH +
+               PanelLayout::LabelH + PanelLayout::TooltipH + PanelLayout::FooterH +
+               PanelLayout::Pad;
     }
 
-    int panelInvRowsThatFit(int windowH, int actionRows) {
+    int panelInvRowsThatFit(int windowH, int actionRows, bool fuelStrip) {
         const float avail = static_cast<float>(windowH) - PanelLayout::Margin -
-                            panelFixedHeight(actionRows);
+                            panelFixedHeight(actionRows, fuelStrip);
         return static_cast<int>(avail / PanelLayout::CellPitch);
     }
 
-    PanelLayout panelLayout(int w, int h, int actionRows, int invRows) {
+    PanelLayout panelLayout(int w, int h, int actionRows, int invRows, bool fuelStrip) {
         PanelLayout L;
         L.rows = actionRows;
+        L.hasFuel = fuelStrip;
         L.invRows = std::max(1, invRows);
         const float invH = L.invRows * PanelLayout::CellPitch;
-        L.panelH = panelFixedHeight(actionRows) + invH;
+        L.panelH = panelFixedHeight(actionRows, fuelStrip) + invH;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.rowsY = L.py + PanelLayout::HeaderH;
         L.inY = L.rowsY + actionRows * PanelLayout::RowH + 6.0f;
-        L.outY = L.inY + PanelLayout::StripH;
+        // FUEL sits with IN rather than next to OUT: both are things you feed
+        // the machine, and the two feeds reading together is what makes the
+        // split legible at a glance.
+        L.fuelY = L.inY + PanelLayout::StripH;
+        L.outY = (fuelStrip ? L.fuelY : L.inY) + PanelLayout::StripH;
         L.stripCellsX = L.px + 64.0f;
         L.barY = L.outY + PanelLayout::StripH + 2.0f;
         L.invLabelY = L.barY + PanelLayout::BarH;
@@ -325,14 +334,19 @@ namespace {
         bool activated() const { return enter || clickedRows; }
     };
 
+    // `useArrows = false` leaves the arrow keys alone, for the one panel that
+    // wants them for something else: a hand-cranked machine turns its handle
+    // with the arrows, so W/S keep the rows and the two never fight.
     MenuNav menuNav(engine::Input& in, int& sel, int rows,
                     float px, float panelW, float rowsY, float rowH,
-                    bool useWheel = false) {
+                    bool useWheel = false, bool useArrows = true) {
         const int before = sel;
-        if (in.wasKeyPressed(SDL_SCANCODE_W) || in.wasKeyPressed(SDL_SCANCODE_UP)) {
+        if (in.wasKeyPressed(SDL_SCANCODE_W) ||
+            (useArrows && in.wasKeyPressed(SDL_SCANCODE_UP))) {
             sel = (sel - 1 + rows) % rows;
         }
-        if (in.wasKeyPressed(SDL_SCANCODE_S) || in.wasKeyPressed(SDL_SCANCODE_DOWN)) {
+        if (in.wasKeyPressed(SDL_SCANCODE_S) ||
+            (useArrows && in.wasKeyPressed(SDL_SCANCODE_DOWN))) {
             sel = (sel + 1) % rows;
         }
         if (useWheel) {
@@ -353,6 +367,25 @@ namespace {
                   in.wasKeyPressed(SDL_SCANCODE_KP_ENTER);
         r.clickedRows = in.wasMousePressed(SDL_BUTTON_LEFT) && overRows;
         return r;
+    }
+
+    // Which of a machine's two feed cells an item may be DROPPED into. The
+    // machine itself never has to guess (that is the point of the fuel slot),
+    // so these only decide whether a drop is legal and which strip lights up.
+    // A machine without a fuel slot has one feed and takes whatever it accepts.
+    bool acceptsAsIngredient(const Machine& mac, ItemId item) {
+        if (!MachineSystem::machineAccepts(mac, item)) return false;
+        if (!usesFuelSlot(mac.type)) return true;
+        for (const MachineRecipe* r : recipesForMachine(mac.type)) {
+            for (const ItemStack& in : r->inputs) {
+                if (in.id == item) return true;
+            }
+        }
+        return false; // pure fuel: it belongs in the FUEL cell, not this one
+    }
+
+    bool acceptsAsFuel(const Machine& mac, ItemId item) {
+        return usesFuelSlot(mac.type) && fuelSeconds(item) > 0.0f;
     }
 
     // ItemGrid: draw `items` as rows of `cols` cells at (x, y). Hit-testing
@@ -511,16 +544,18 @@ void VoxelGame::drawMachineUi() {
 
     const auto recipes = recipesForMachine(mac.type);
     const int rows = static_cast<int>(recipes.size()) + 2;
+    const bool fuelStrip = usesFuelSlot(mac.type);
     const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
+    const auto fuelItems = itemsOf(mac.fuel);
     const auto outItems = itemsOf(mac.output);
 
     const int w = window().width();
     const int h = window().height();
     const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
-                                   panelInvRowsThatFit(h, rows), m_invScroll);
+                                   panelInvRowsThatFit(h, rows, fuelStrip), m_invScroll);
     const auto invItems = invSlice(allItems, iv);
-    const PanelLayout L = panelLayout(w, h, rows, iv.rows);
+    const PanelLayout L = panelLayout(w, h, rows, iv.rows, fuelStrip);
     const float mx = input().mouseX(), my = input().mouseY();
 
     beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, blockName(mac.type), 0.45f);
@@ -657,34 +692,70 @@ void VoxelGame::drawMachineUi() {
         m_ui.text(L.px + 16, ry + 5, 14.0f, label, rowColor(selected, !actionable));
     }
 
-    // IN strip (highlighted as the drop target while dragging from inventory).
+    // IN / FUEL strips, highlighted as drop targets while dragging from the
+    // inventory. With two feeds the highlight is per-strip, so the panel says
+    // where the payload may land rather than just whether the machine wants it.
     if (m_drag.active() && m_drag.source == Drag::Source::PlayerInv) {
-        const bool ok = MachineSystem::machineAccepts(mac, m_drag.id);
+        const glm::vec4 yes(0.20f, 0.55f, 0.25f, 0.45f), no(0.55f, 0.20f, 0.20f, 0.45f);
         m_ui.rect(L.px + 8, L.inY, L.panelW - 16, PanelLayout::StripH - 4,
-                  ok ? glm::vec4(0.20f, 0.55f, 0.25f, 0.45f) : glm::vec4(0.55f, 0.20f, 0.20f, 0.45f));
+                  acceptsAsIngredient(mac, m_drag.id) ? yes : no);
+        if (L.hasFuel) {
+            m_ui.rect(L.px + 8, L.fuelY, L.panelW - 16, PanelLayout::StripH - 4,
+                      acceptsAsFuel(mac, m_drag.id) ? yes : no);
+        }
     }
     m_ui.text(L.px + 16, L.inY + 16, 13.0f, "IN:", glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
     drawItemGrid(m_ui, m_atlas, L.stripCellsX, L.inY + 6.0f, inItems, /*cols=*/99);
+
+    if (L.hasFuel) {
+        m_ui.text(L.px + 16, L.fuelY + 16, 13.0f, "FUEL:", glm::vec4(0.95f, 0.75f, 0.45f, 1.0f));
+        drawItemGrid(m_ui, m_atlas, L.stripCellsX, L.fuelY + 6.0f, fuelItems, /*cols=*/99);
+    }
 
     // OUT strip.
     m_ui.text(L.px + 16, L.outY + 16, 13.0f, "OUT:", glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
     drawItemGrid(m_ui, m_atlas, L.stripCellsX, L.outY + 6.0f, outItems, /*cols=*/99);
 
-    // Progress bar.
-    m_ui.rect(L.px + 16, L.barY, L.panelW - 32, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
+    // Progress bar. A cranked machine's bar is short by the width of the dial,
+    // which sits on its right and IS the reason the bar moves at all.
+    const float barW = (L.panelW - 32) - (traits.handCranked ? 78.0f : 0.0f);
+    m_ui.rect(L.px + 16, L.barY, barW, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
     if (mac.crafting) {
         const float frac = glm::clamp(mac.craftTime > 0 ? mac.progress / mac.craftTime : 0.0f, 0.0f, 1.0f);
-        m_ui.rect(L.px + 16, L.barY, (L.panelW - 32) * frac, 10, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+        m_ui.rect(L.px + 16, L.barY, barW * frac, 10, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+    }
+
+    // The crank dial: the handle, drawn as the four positions of one turn with
+    // the next one lit. Built from rects rather than glyphs because the bitmap
+    // font has no arrows -- and a turning handle reads better as a shape than
+    // as the words "UP RIGHT DOWN LEFT" anyway.
+    if (traits.handCranked) {
+        const float cx = L.px + L.panelW - 46.0f, cy = L.barY + 5.0f;
+        const float r = 13.0f, dot = 6.0f;
+        for (int s = 0; s < 4; ++s) {
+            // Screen bearings for UP / RIGHT / DOWN / LEFT, in crank order.
+            const float ox = (s == 1 ? r : s == 3 ? -r : 0.0f);
+            const float oy = (s == 2 ? r : s == 0 ? -r : 0.0f);
+            const bool done = s < mac.crankStep;
+            const bool next = s == mac.crankStep;
+            const glm::vec4 col = next ? glm::vec4(1.00f, 0.85f, 0.30f, 1.00f)
+                                : done ? glm::vec4(0.45f, 0.85f, 0.50f, 0.95f)
+                                       : glm::vec4(0.30f, 0.30f, 0.35f, 0.85f);
+            m_ui.rect(cx + ox - dot * 0.5f, cy + oy - dot * 0.5f, dot, dot, col);
+        }
     }
 
     // Inventory grid (windowed; the label says so when it is scrolled).
     m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY" + invMoreLabel(iv), kTextHeader);
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
-    // Tooltip: name of the hovered cell (any of the three regions).
+    // Tooltip: name of the hovered cell (any of the item regions).
     ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
     if (hovered == ItemId::None) {
         hovered = hoveredItemIn(inItems, mx, my, L.stripCellsX, L.inY + 6.0f, 99);
+    }
+    if (hovered == ItemId::None && L.hasFuel) {
+        hovered = hoveredItemIn(fuelItems, mx, my, L.stripCellsX, L.fuelY + 6.0f, 99);
     }
     if (hovered == ItemId::None) {
         hovered = hoveredItemIn(outItems, mx, my, L.stripCellsX, L.outY + 6.0f, 99);
@@ -694,7 +765,9 @@ void VoxelGame::drawMachineUi() {
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
-              "DRAG ITEMS: LMB STACK / RMB ONE   ROWS: CLICK OR W/S + ENTER   ESC CLOSE",
+              traits.handCranked
+                  ? "TURN THE HANDLE: UP RIGHT DOWN LEFT   DRAG: LMB STACK / RMB ONE   ESC CLOSE"
+                  : "DRAG ITEMS: LMB STACK / RMB ONE   ROWS: CLICK OR W/S + ENTER   ESC CLOSE",
               kTextFooter);
 
     // Drag payload rides the cursor, drawn last so it sits on top.
@@ -758,8 +831,9 @@ void VoxelGame::cancelDrag() {
     } else {
         const auto mit = m_machines.find(m_machineUiPos);
         if (mit != m_machines.end()) {
-            Inventory& buf = (m_drag.source == Drag::Source::MachineIn) ? mit->second.input
-                                                                        : mit->second.output;
+            Inventory& buf = (m_drag.source == Drag::Source::MachineIn)   ? mit->second.input
+                           : (m_drag.source == Drag::Source::MachineFuel) ? mit->second.fuel
+                                                                         : mit->second.output;
             buf.add(m_drag.id, m_drag.count);
         } else {
             m_inventory.add(m_drag.id, m_drag.count); // machine vanished
@@ -780,23 +854,51 @@ void VoxelGame::updateMachineUi() {
     if (machineTraits(mac.type).kind == MachineKind::RuneCore) { updateCircleUi(); return; }
 
     // Action rows: AUTO, one MAKE row per recipe, then TAKE OUTPUTS.
+    const MachineTraits& traits = machineTraits(mac.type);
     const auto recipes = recipesForMachine(mac.type);
     const int rows = static_cast<int>(recipes.size()) + 2;
+    const bool fuelStrip = usesFuelSlot(mac.type);
     const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
+    const auto fuelItems = itemsOf(mac.fuel);
     const auto outItems = itemsOf(mac.output);
     const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
-                                   panelInvRowsThatFit(window().height(), rows), m_invScroll);
+                                   panelInvRowsThatFit(window().height(), rows, fuelStrip),
+                                   m_invScroll);
     const auto invItems = invSlice(allItems, iv);
-    const PanelLayout L = panelLayout(window().width(), window().height(), rows, iv.rows);
+    const PanelLayout L = panelLayout(window().width(), window().height(), rows,
+                                      iv.rows, fuelStrip);
     const float mx = input().mouseX(), my = input().mouseY();
     const bool inPanelX = mx >= L.px && mx <= L.px + L.panelW;
 
     scrollInvGrid(input(), m_invScroll, iv, L.px + 16.0f, L.invY, mx, my);
 
+    // A cranked machine wants the arrows for its handle, so W/S alone drive the
+    // rows here (menuNav's useArrows).
     const MenuNav nav = menuNav(input(), m_machineUiSel, rows, L.px, L.panelW,
-                                L.rowsY, PanelLayout::RowH);
+                                L.rowsY, PanelLayout::RowH, /*useWheel=*/false,
+                                /*useArrows=*/!traits.handCranked);
     if (nav.changed) audio().play("click", kUiVolume);
+
+    // --- The crank. This is the ONLY thing that moves a manual machine: one
+    // full turn banks kCrankProgress seconds for the next tick to spend. A
+    // wrong key is a slipped grip -- back to the top of the turn.
+    if (traits.handCranked && !m_drag.active()) {
+        for (int d = 0; d < 4; ++d) {
+            if (!input().wasKeyPressed(kCrankOrder[d])) continue;
+            if (d != mac.crankStep) {
+                mac.crankStep = 0;
+                audio().play("deny", kUiVolume);
+            } else if (++mac.crankStep >= 4) {
+                mac.crankStep = 0;
+                mac.crankBanked += kCrankProgress;
+                audio().play("craft", kCraftVolume);
+            } else {
+                audio().play("click", kUiVolume);
+            }
+            break; // one key per frame; two arrows at once is not half a turn
+        }
+    }
 
     const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
     const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
@@ -819,6 +921,14 @@ void VoxelGame::updateMachineUi() {
             mac.input.remove(id, take);
             m_drag = {Drag::Source::MachineIn, id, take};
             clickConsumed = true;
+        } else if (L.hasFuel &&
+                   (ci = hitCell(mx, my, L.stripCellsX, L.fuelY + 6.0f,
+                                 static_cast<int>(fuelItems.size()), 99)) >= 0) {
+            const auto [id, cnt] = fuelItems[ci];
+            const int take = lmb ? cnt : 1;
+            mac.fuel.remove(id, take);
+            m_drag = {Drag::Source::MachineFuel, id, take};
+            clickConsumed = true;
         } else if ((ci = hitCell(mx, my, L.stripCellsX, L.outY + 6.0f,
                                  static_cast<int>(outItems.size()), 99)) >= 0) {
             const auto [id, cnt] = outItems[ci];
@@ -834,11 +944,17 @@ void VoxelGame::updateMachineUi() {
     if (m_drag.active() && (input().wasMouseReleased(SDL_BUTTON_LEFT) ||
                             input().wasMouseReleased(SDL_BUTTON_RIGHT))) {
         const bool overIn = inPanelX && my >= L.inY && my < L.inY + PanelLayout::StripH;
+        const bool overFuel = L.hasFuel && inPanelX && my >= L.fuelY &&
+                              my < L.fuelY + PanelLayout::StripH;
         const bool overInv = inPanelX && my >= L.invY &&
                              my < L.invY + L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
         if (overIn && m_drag.source == Drag::Source::PlayerInv &&
-            MachineSystem::machineAccepts(mac, m_drag.id)) {
+            acceptsAsIngredient(mac, m_drag.id)) {
             mac.input.add(m_drag.id, m_drag.count);
+            m_drag = Drag{};
+        } else if (overFuel && m_drag.source == Drag::Source::PlayerInv &&
+                   acceptsAsFuel(mac, m_drag.id)) {
+            mac.fuel.add(m_drag.id, m_drag.count);
             m_drag = Drag{};
         } else if (overInv && m_drag.source != Drag::Source::PlayerInv) {
             m_inventory.add(m_drag.id, m_drag.count);
@@ -1598,24 +1714,38 @@ void VoxelGame::drawHud() {
         const auto mit = m_machines.find(m_targetBlock);
         if (mit != m_machines.end()) {
             const Machine& m = mit->second;
-            const float pw = 380.0f, ph = 98.0f;
+            // A machine with its own fuel buffer gets a third line for it.
+            const bool showFuel = usesFuelSlot(m.type);
+            const float pw = 380.0f, ph = showFuel ? 118.0f : 98.0f;
             const float pxp = (static_cast<float>(w) - pw) * 0.5f;
             const float pyp = y - ph - 14.0f;
             m_ui.rect(pxp, pyp, pw, ph, glm::vec4(0.07f, 0.07f, 0.09f, 0.92f));
             m_ui.text(pxp + 12, pyp + 8, 16.0f, blockName(m.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
 
             std::string in = "IN:";
+            std::string fuel = "FUEL:";
             std::string out = "OUT:";
             for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 if (m.input.count(id) > 0)
                     in += " " + std::string(itemName(id)) + " x" + std::to_string(m.input.count(id));
+                if (m.fuel.count(id) > 0)
+                    fuel += " " + std::string(itemName(id)) + " x" + std::to_string(m.fuel.count(id));
                 if (m.output.count(id) > 0)
                     out += " " + std::string(itemName(id)) + " x" + std::to_string(m.output.count(id));
             }
-            m_ui.text(pxp + 12, pyp + 32, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
-            m_ui.text(pxp + 12, pyp + 52, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
-            m_ui.text(pxp + 12, pyp + 76, 12.0f, "RMB OPEN", glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+            float ly = pyp + 32;
+            m_ui.text(pxp + 12, ly, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
+            ly += 20;
+            if (showFuel) {
+                m_ui.text(pxp + 12, ly, 13.0f, fuel, glm::vec4(0.95f, 0.75f, 0.45f, 1.0f));
+                ly += 20;
+            }
+            m_ui.text(pxp + 12, ly, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
+            m_ui.text(pxp + 12, pyp + ph - 22.0f, 12.0f,
+                      machineTraits(m.type).handCranked ? "RMB OPEN - THEN CRANK IT"
+                                                        : "RMB OPEN",
+                      glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
         }
     }
 

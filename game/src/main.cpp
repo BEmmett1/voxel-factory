@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/MachineSystem.h"
 #include "game/Recipes.h"
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
@@ -69,6 +70,17 @@ int runSelfTest() {
     grinder.input.add(ItemId::Herb, 3);
     grinder.output.add(ItemId::GroundHerb, 2);
     machines[glm::ivec3{1, 3, 3}] = grinder;
+
+    // A furnace exercises the v21 fuel buffer: wood in IN is FEEDSTOCK (it
+    // chars into charcoal) while charcoal in FUEL is the fire. The two must
+    // stay in their own buffers across a round-trip, or a load would hand a
+    // furnace its own product to burn.
+    Machine furnace;
+    furnace.type = BlockId::Furnace;
+    furnace.burnLeft = 12.5f;
+    furnace.input.add(ItemId::Wood, 5);
+    furnace.fuel.add(ItemId::Charcoal, 2);
+    machines[glm::ivec3{9, 3, 3}] = furnace;
 
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts;
     belts[glm::ivec3{2, 3, 3}] = Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb};
@@ -155,13 +167,37 @@ int runSelfTest() {
     SELFTEST_CHECK(inv2.count(ItemId::CopperIngot) == 7);
     SELFTEST_CHECK(inv2.count(ItemId::Herb) == 2);
 
-    SELFTEST_CHECK(machines2.size() == 1);
+    SELFTEST_CHECK(machines2.size() == 2);
     const Machine& m2 = machines2.at(glm::ivec3{1, 3, 3});
     SELFTEST_CHECK(m2.type == BlockId::Grinder);
     SELFTEST_CHECK(m2.selectedRecipe == 1);
     SELFTEST_CHECK(m2.progress == 0.75f);
     SELFTEST_CHECK(m2.input.count(ItemId::Herb) == 3);
     SELFTEST_CHECK(m2.output.count(ItemId::GroundHerb) == 2);
+
+    const Machine& f2 = machines2.at(glm::ivec3{9, 3, 3});
+    SELFTEST_CHECK(f2.type == BlockId::Furnace);
+    SELFTEST_CHECK(f2.burnLeft == 12.5f);
+    SELFTEST_CHECK(f2.input.count(ItemId::Wood) == 5);   // feedstock, still IN
+    SELFTEST_CHECK(f2.fuel.count(ItemId::Charcoal) == 2); // the fire, still FUEL
+    SELFTEST_CHECK(f2.input.count(ItemId::Charcoal) == 0);
+    SELFTEST_CHECK(f2.fuel.count(ItemId::Wood) == 0);
+    // The buffer a burner draws from, and the split a belt has to infer.
+    SELFTEST_CHECK(&MachineSystem::fuelBuffer(f2) == &f2.fuel);
+    SELFTEST_CHECK(usesFuelSlot(BlockId::Furnace));
+    SELFTEST_CHECK(usesFuelSlot(BlockId::Bloomery));
+    SELFTEST_CHECK(!usesFuelSlot(BlockId::Generator)); // no recipes, no ambiguity
+    {
+        Machine fb;
+        fb.type = BlockId::Furnace;
+        // Charcoal is nothing the furnace makes anything FROM, so it is fuel;
+        // wood is what charcoal is made OF, so a belt must treat it as input.
+        SELFTEST_CHECK(&MachineSystem::bufferFor(fb, ItemId::Charcoal) == &fb.fuel);
+        SELFTEST_CHECK(&MachineSystem::bufferFor(fb, ItemId::Wood) == &fb.input);
+        Machine gen;
+        gen.type = BlockId::Generator;
+        SELFTEST_CHECK(&MachineSystem::bufferFor(gen, ItemId::Wood) == &gen.input);
+    }
 
     SELFTEST_CHECK(belts2.size() == 1);
     const Belt& b2 = belts2.at(glm::ivec3{2, 3, 3});
@@ -632,6 +668,59 @@ int runSelfTest() {
         SELFTEST_CHECK(known(ItemId::CopperIngot));
         SELFTEST_CHECK(known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem));
         SELFTEST_CHECK(known(ItemId::MachineFrame));
+    }
+
+    // ---- The hand-cranked tier is inert without a hand ---------------------
+    // The whole point of the manual tier: a fully loaded machine left alone
+    // must produce NOTHING and burn NOTHING, however long it sits. A
+    // regression here would look like the tier merely being slow again, which
+    // is exactly the state this replaced -- and it would go unnoticed, because
+    // everything still works, just for free.
+    {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        PowerState dead; // nothing energized; a Bloomery asks for no power
+        const glm::ivec3 p{40, 20, 40};
+        cw.setBlock(p.x, p.y, p.z, BlockId::Bloomery);
+        cm[p].type = BlockId::Bloomery;
+        cm[p].input.add(ItemId::CopperOre, 8); // a smelt is ready to go
+        cm[p].fuel.add(ItemId::Charcoal, 4);   // and the fire is stocked
+
+        std::uint32_t rc = 0;
+        for (int i = 0; i < 400; ++i) { // 20 seconds of being ignored
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+        }
+        SELFTEST_CHECK(cm[p].progress == 0.0f);
+        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 4);
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 0);
+
+        // One turn of the handle, and it moves by exactly that much.
+        cm[p].crankBanked = vg::kCrankProgress;
+        MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+        SELFTEST_CHECK(cm[p].progress == vg::kCrankProgress);
+        SELFTEST_CHECK(cm[p].crankBanked == 0.0f);
+        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 3); // now it burns
+
+        // Enough turns to finish the craft. A Furnace smelt is 4s, and the
+        // manual twin owes kManualSlowdown times that.
+        const float need = 4.0f * kManualSlowdown;
+        for (int i = 0; cm[p].output.count(ItemId::CopperIngot) == 0 && i < 64; ++i) {
+            cm[p].crankBanked = vg::kCrankProgress;
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+        }
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 1);
+        SELFTEST_CHECK(cm[p].input.count(ItemId::CopperOre) == 6); // 2 per smelt
+        SELFTEST_CHECK(need > 0.0f);
+
+        // A powered twin, by contrast, runs on nothing but time.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm;
+        const glm::ivec3 q{44, 20, 44};
+        cw.setBlock(q.x, q.y, q.z, BlockId::Furnace);
+        pm[q].type = BlockId::Furnace;
+        pm[q].input.add(ItemId::CopperOre, 8);
+        pm[q].fuel.add(ItemId::Charcoal, 4);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc);
+        SELFTEST_CHECK(pm[q].output.count(ItemId::CopperIngot) > 0);
     }
 
     std::printf("selftest OK\n");

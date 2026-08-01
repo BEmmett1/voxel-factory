@@ -156,8 +156,9 @@ namespace {
         {"furnace/glass",        B::Furnace, {{I::Sand, 1}},   {{{I::Glass, 1}}},       3.0f},
         // Charring wood is what makes a Furnace pay for itself: Charcoal
         // burns 3x as long as the wood it came from, so a furnace line feeds
-        // its own fire (and the generators). Wood is never BURNED by a
-        // machine that has a recipe consuming it -- see pickFuel.
+        // its own fire (and the generators). A Furnace keeps fuel in its own
+        // buffer, so it can char wood and burn wood at the same time -- which
+        // the old shared buffer could not express (see usesFuelSlot).
         {"furnace/charcoal",     B::Furnace, {{I::Wood, 2}},   {{{I::Charcoal, 1}}},    6.0f},
 
         // ---- Sifter: the only source of iron -----------------------------

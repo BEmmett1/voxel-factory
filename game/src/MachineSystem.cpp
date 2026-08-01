@@ -20,33 +20,48 @@ using namespace vg;
 
 namespace MachineSystem {
 
+const Inventory& fuelBuffer(const Machine& mac) {
+    return usesFuelSlot(mac.type) ? mac.fuel : mac.input;
+}
+
+Inventory& fuelBuffer(Machine& mac) {
+    return usesFuelSlot(mac.type) ? mac.fuel : mac.input;
+}
+
+Inventory& bufferFor(Machine& mac, ItemId item) {
+    if (!usesFuelSlot(mac.type) || fuelSeconds(item) <= 0.0f) return mac.input;
+    // Fuel that is ALSO an ingredient here is feedstock: a belt feeding wood to
+    // a Furnace is stocking the charcoal recipe, not the fire. Anything the
+    // recipes never ask for is unambiguously fuel.
+    for (const MachineRecipe* r : recipesForMachine(mac.type)) {
+        for (const ItemStack& in : r->inputs) {
+            if (in.id == item) return mac.input;
+        }
+    }
+    return mac.fuel;
+}
+
 namespace {
 
     // What this machine should light next: the SHORTEST burn it holds, so
     // cheap fuel (sticks) is spent before the good stuff (charcoal) and a
     // stockpile of the latter survives idle chores.
     //
-    // A machine never burns an item its own recipes consume. A Furnace fed
-    // wood is there to CHAR that wood, not to eat it, and without this rule a
-    // fuel-fired machine quietly devours its own feedstock. Generators have no
-    // recipes, so nothing is excluded and they burn whatever they are handed.
+    // There used to be a second rule here -- a machine never burns an item its
+    // own recipes consume -- which existed only because fuel and ingredients
+    // shared one buffer and a Furnace fed wood could not tell what the wood was
+    // FOR. Machines with recipes now have a fuel buffer of their own
+    // (usesFuelSlot), so what you load is what you meant, and the rule is gone
+    // rather than moved: a Furnace can finally char wood while burning wood.
+    // The inference survives in exactly one place, bufferFor(), because a belt
+    // has no hands and must guess which pile an arriving item belongs to.
     ItemId pickFuel(const Machine& mac) {
-        const auto recipes = recipesForMachine(mac.type);
-        auto isIngredient = [&](ItemId item) {
-            for (const MachineRecipe* r : recipes) {
-                for (const ItemStack& in : r->inputs) {
-                    if (in.id == item) return true;
-                }
-            }
-            return false;
-        };
-
+        const Inventory& from = fuelBuffer(mac);
         ItemId best = ItemId::None;
         float  bestSeconds = 0.0f;
         for (const FuelInfo& f : kFuels) {
-            if (mac.input.count(f.item) <= 0) continue;
+            if (from.count(f.item) <= 0) continue;
             if (best != ItemId::None && f.seconds >= bestSeconds) continue;
-            if (isIngredient(f.item)) continue;
             best = f.item;
             bestSeconds = f.seconds;
         }
@@ -86,7 +101,7 @@ namespace {
         }
         if (m.progress <= 0.0f && hungry) {
             if (const ItemId fuel = pickFuel(m); fuel != ItemId::None) {
-                m.input.remove(fuel, 1);
+                fuelBuffer(m).remove(fuel, 1);
                 m.progress = fuelSeconds(fuel) * t.fuelMult;
                 m.craftTime = m.progress; // the gauge's full scale is THIS fuel
             }
@@ -312,28 +327,46 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
             }
             if (ok) { active = candidates[i]; break; }
         }
-        if (!active) { m.progress = 0.0f; continue; }
+        if (!active) {
+            m.progress = 0.0f;
+            // Work banked against a machine that has nothing to make is work
+            // aimed at no job: drop it rather than let it land on the next one.
+            m.crankBanked = 0.0f;
+            continue;
+        }
+
+        // The hand-cranked tier does not run on time. Its progress is whatever
+        // the player banked by turning the handle since the last tick (see the
+        // panel's crank input), so a loaded Bloomery with nobody at it simply
+        // stands there. A powered machine still advances by the clock, which
+        // for it is always a positive step.
+        const float step = traits.handCranked ? m.crankBanked : kTickSeconds;
 
         // Fuel-fired machines: heat is their power. Fuel is lit only once there
         // is something to make, so a loaded Furnace doesn't burn its stock down
         // while idle -- the generator's "hungry" rule applied to a recipe. Out
         // of fuel HOLDS progress rather than losing it, exactly like the
-        // unpowered case above.
-        if (traits.burnsFuel) {
+        // unpowered case above. Gating on `step` adds the cranked case for
+        // free: an unattended Bloomery burns nothing, because nobody is working
+        // it. Note this bails BEFORE the bank is spent, so a turn of the handle
+        // against an unlit fire is owed to the player, not swallowed.
+        if (traits.burnsFuel && step > 0.0f) {
             if (m.burnLeft <= 0.0f) {
                 const ItemId fuel = pickFuel(m);
                 if (fuel == ItemId::None) continue;
-                m.input.remove(fuel, 1);
+                fuelBuffer(m).remove(fuel, 1);
                 m.burnLeft = fuelSeconds(fuel) * traits.fuelMult;
             }
             m.burnLeft = std::max(0.0f, m.burnLeft - kTickSeconds);
         }
+        m.crankBanked = 0.0f; // spent below (or there was nothing to spend)
 
-        // The manual tier's entire cost: the same recipe, times longer.
+        // What the recipe costs here. speedMult is the manual tier's price:
+        // for a cranked machine it buys rotations, not seconds.
         const float seconds = active->seconds * traits.speedMult;
         m.crafting = true;
         m.craftTime = seconds;
-        m.progress += kTickSeconds;
+        m.progress += step;
         if (m.progress >= seconds) {
             for (const ItemStack& in : active->inputs) m.input.remove(in.id, in.count);
             const ItemStack won = rollOutput(*active, seed, rngCounter);
@@ -350,7 +383,7 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
         const glm::ivec3 front = pos + b.facing;
         const auto mit = machines.find(front);
         if (mit != machines.end() && machineAccepts(mit->second, b.item)) {
-            mit->second.input.add(b.item, 1);
+            bufferFor(mit->second, b.item).add(b.item, 1);
             b.item = ItemId::None;
         }
     }

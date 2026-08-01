@@ -292,7 +292,7 @@ private:
     // its source at pickup and returned there on cancel/close (or to the
     // player if the source machine vanished), so items can't duplicate.
     struct Drag {
-        enum class Source { None, PlayerInv, MachineIn, MachineOut, PedestalIn };
+        enum class Source { None, PlayerInv, MachineIn, MachineFuel, MachineOut, PedestalIn };
         Source source = Source::None;
         ItemId id     = ItemId::None;
         int    count  = 0;
