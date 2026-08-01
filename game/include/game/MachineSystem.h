@@ -41,8 +41,12 @@ namespace MachineSystem {
                          bool raining);
 
     // Powered machines: miners harvest nearby nodes, processors run their
-    // recipe lists; both gate on the energized set.
-    void tickPowered(World& world, MachineMap& machines, const PowerState& power);
+    // recipe lists; both gate on the energized set (machines whose traits row
+    // demands no power — the manual and fuel-fired tiers — run regardless).
+    // `seed` + `rngCounter` drive weighted recipe outputs, sharing the world's
+    // saved roll sequence so a sifting line is deterministic across saves.
+    void tickPowered(World& world, MachineMap& machines, const PowerState& power,
+                     std::uint32_t seed, std::uint32_t& rngCounter);
 
     // Advance conduits one step: deliver into accepting machines ahead, hop
     // items belt -> belt (snapshot + claims prevent chaining/merging), pull

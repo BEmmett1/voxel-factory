@@ -76,7 +76,8 @@ namespace {
         // Rain collection (rain is the only water).
         {.id = I::RainBarrelItem, .name = "Rain Barrel", .placeable = true, .placesBlock = B::RainBarrel},
         // Combat.
-        {.id = I::CopperSword, .name = "Copper Sword", .atlasTile = 79},
+        {.id = I::CopperSword, .name = "Copper Sword", .atlasTile = 79,
+         .weaponDamage = 2.0f},
         // Boss tier.
         {.id = I::TeleportKey, .name = "Teleport Key", .atlasTile = 90},
         {.id = I::VoidCatalyst, .name = "Void Catalyst", .atlasTile = 91},
@@ -145,6 +146,63 @@ namespace {
          .placesBlock = B::RuneCore},
         {.id = I::PedestalItem, .name = "Pedestal", .placeable = true,
          .placesBlock = B::Pedestal},
+        // ---- The recipe overhaul ----------------------------------------
+        // Charcoal: the Furnace's own product and the best fuel in kFuels, so
+        // the first thing a new Bloomery does is make its own better fuel.
+        {.id = I::Charcoal, .name = "Charcoal", .atlasTile = 181},
+        // Sifted from sand. Four nuggets smelt into one ingot.
+        {.id = I::IronNugget, .name = "Iron Nugget", .atlasTile = 176},
+        {.id = I::CopperNugget, .name = "Copper Nugget", .atlasTile = 177},
+        // Iron: the structural metal, and the tool/armor tier above copper.
+        {.id = I::IronIngot, .name = "Iron Ingot", .atlasTile = 178},
+        {.id = I::IronPlate, .name = "Iron Plate", .atlasTile = 179},
+        {.id = I::IronRod, .name = "Iron Rod", .atlasTile = 180},
+        {.id = I::IronPickaxe, .name = "Iron Pickaxe", .atlasTile = 182,
+         .tool = ToolType::Pickaxe, .toolTier = kTierIron, .miningSpeed = 12.0f},
+        {.id = I::IronAxe, .name = "Iron Axe", .atlasTile = 183,
+         .tool = ToolType::Axe, .toolTier = kTierIron, .miningSpeed = 12.0f},
+        {.id = I::IronShovel, .name = "Iron Shovel", .atlasTile = 184,
+         .tool = ToolType::Shovel, .toolTier = kTierIron, .miningSpeed = 12.0f},
+        {.id = I::IronSword, .name = "Iron Sword", .atlasTile = 185,
+         .weaponDamage = 3.0f},
+        // The iron armor set totals 0.40 -- between Copper (0.30) and the
+        // boss-gated Aegis (0.50), so it is the set you EARN rather than loot.
+        {.id = I::IronHelm,  .name = "Iron Helm",  .atlasTile = 186,
+         .armorSlot = ArmorSlot::Head, .armor = 0.11f},
+        {.id = I::IronChest, .name = "Iron Chestplate", .atlasTile = 187,
+         .armorSlot = ArmorSlot::Body, .armor = 0.21f},
+        {.id = I::IronBoots, .name = "Iron Boots", .atlasTile = 188,
+         .armorSlot = ArmorSlot::Feet, .armor = 0.08f},
+        // The four new powered machines (placeables borrow their block's side
+        // tile for the icon, so none of these need an atlasTile).
+        {.id = I::FurnaceItem, .name = "Furnace", .placeable = true, .placesBlock = B::Furnace},
+        {.id = I::SifterItem, .name = "Sifter", .placeable = true, .placesBlock = B::Sifter},
+        {.id = I::GlassblowerItem, .name = "Glassblower", .placeable = true,
+         .placesBlock = B::Glassblower},
+        {.id = I::CompactorItem, .name = "Compactor", .placeable = true,
+         .placesBlock = B::Compactor},
+        // The manual tier: one hand-cranked twin per Processor. Each runs its
+        // powered counterpart's recipes (MachineTraits::recipeGroup) at
+        // MachineTraits::speedMult, and asks for no power at all.
+        {.id = I::BloomeryItem, .name = "Bloomery", .placeable = true, .placesBlock = B::Bloomery},
+        {.id = I::SieveItem, .name = "Sieve", .placeable = true, .placesBlock = B::Sieve},
+        {.id = I::BlowpipeItem, .name = "Blowpipe", .placeable = true, .placesBlock = B::Blowpipe},
+        {.id = I::TamperItem, .name = "Tamper", .placeable = true, .placesBlock = B::Tamper},
+        {.id = I::MortarItem, .name = "Mortar", .placeable = true, .placesBlock = B::Mortar},
+        {.id = I::HandPressItem, .name = "Hand Press", .placeable = true,
+         .placesBlock = B::HandPress},
+        {.id = I::AnvilItem, .name = "Anvil", .placeable = true, .placesBlock = B::Anvil},
+        {.id = I::CompostHeapItem, .name = "Compost Heap", .placeable = true,
+         .placesBlock = B::CompostHeap},
+        {.id = I::MixingBowlItem, .name = "Mixing Bowl", .placeable = true,
+         .placesBlock = B::MixingBowl},
+        {.id = I::InfusionStandItem, .name = "Infusion Stand", .placeable = true,
+         .placesBlock = B::InfusionStand},
+        {.id = I::StillItem, .name = "Still", .placeable = true, .placesBlock = B::Still},
+        {.id = I::HandDistillerItem, .name = "Hand Distiller", .placeable = true,
+         .placesBlock = B::HandDistiller},
+        {.id = I::HandTransmuterItem, .name = "Hand Transmuter", .placeable = true,
+         .placesBlock = B::HandTransmuter},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

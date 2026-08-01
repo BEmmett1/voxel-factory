@@ -6,16 +6,21 @@
 
 // Layout of the texture atlas: a grid of square tiles shared by the world
 // mesher and the UI icon renderer. The pixels come from assets/atlas.png when
-// present (hand-paintable, 256x128), otherwise from the procedural fallback in
+// present (hand-paintable, 256x256), otherwise from the procedural fallback in
 // VoxelGame::buildAtlas(). Tile indices are row * Cols + col; the full map
 // lives in assets/ATLAS.md. Rows: 0 terrain + trees, 1-2 machines, 3 nodes +
-// sources, 4-5 item icons, 6-7 spare.
+// sources, 4-7 item icons + tools, 8-10 more machines, 11 more item icons.
+//
+// The sheet grew from 8 rows to 16 when the recipe overhaul landed. Because a
+// tile index is `row * Cols + col` and Cols did not change, every existing
+// index kept its meaning -- growing DOWNWARD is the only free way to expand
+// this grid, and the reason to never widen it.
 namespace Atlas {
     constexpr int Cols   = 16;
-    constexpr int Rows   = 8;   // 128 tiles
+    constexpr int Rows   = 16;  // 256 tiles
     constexpr int TilePx = 16;
     constexpr int WidthPx  = Cols * TilePx;  // 256
-    constexpr int HeightPx = Rows * TilePx;  // 128
+    constexpr int HeightPx = Rows * TilePx;  // 256
 
     // Special tile: conduit top face with a direction arrow (drawn pointing
     // toward +v; the mesher rotates UVs to match each belt's facing).

@@ -117,11 +117,26 @@ stay in their file's anonymous namespace.
   Adding content = append the enum value + one row; enums are APPEND-ONLY because
   ordinals are the save encoding (see SCALABILITY.md).
 - Machine behavior is data too: `kMachineTraits` in Machine.h (one row per
-  machine — `MachineKind`, power demand/output, fuel + burn time, collection),
-  cross-`static_assert`ed against the BlockInfo machine flags. The sim tick,
-  `machineAccepts`, the power solve, and the panel UI dispatch on the kind, never
-  on BlockIds. A standard recipe machine = a Processor row; the Generator/Rain
-  Barrel knobs live in their rows (generator tiers = more rows).
+  machine — `MachineKind`, power demand/output, fuel, collection, plus
+  `recipeGroup`/`speedMult` for the manual tier), cross-`static_assert`ed
+  against the BlockInfo machine flags. The sim tick, `machineAccepts`, the
+  power solve, and the panel UI dispatch on the kind, never on BlockIds. A
+  standard recipe machine = a Processor row; the Generator/Rain Barrel knobs
+  live in their rows (generator tiers = more rows). What burns and for how
+  long is its own registry, `kFuels` — a better fuel is one row, not a code
+  change.
+- **Recipes are keyed, and the tables are freely editable.** Every row in
+  `kRecipes`/`kMachineRecipes`/`kCircleRecipes` carries a stable
+  `const char* key` ("press/plate"), and a machine's locked MAKE row is SAVED
+  as that key rather than as its position. Rows may therefore be reordered,
+  retimed, rebalanced, or deleted at will; a save whose locked recipe no
+  longer exists falls back to AUTO instead of silently making something else.
+  This is the one place the append-only rule does NOT apply — block/item enums
+  still do, because those ordinals really are the save encoding. Two things
+  replace it as the safety net, both in `--selftest`: a tech-tree
+  **reachability closure** (edit a recipe into a deadlock and it fails) and a
+  **circle-pattern shadowing check** (lay every pattern, prove the matcher
+  returns it). `RECIPES.md` is generated — `voxel-factory --dump-recipes`.
 - Block place/break side effects funnel through **`WorldEdit`**
   (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
   machine/belt/source/sapling registry sync and return facts (drop, handed-back
@@ -295,7 +310,7 @@ costs and per-second counts):
   frames are pacing-bound, not render-bound, at this world size.
 
 Textures:
-- **Paintable atlas** — `game/assets/atlas.png` (256×128, a 16×8 grid of 16px tiles;
+- **Paintable atlas** — `game/assets/atlas.png` (256×256, a 16×16 grid of 16px tiles;
   map in `game/assets/ATLAS.md`) is loaded at startup (`engine::loadImage`, vendored
   stb_image in `third_party/stb/`); if missing or mis-sized the game falls back to
   generated flat-color tiles, so the PNG is never required. Blocks map to tiles via
@@ -307,6 +322,11 @@ Textures:
   overwrites hand edits!). A SECOND sheet, `assets/shapes.png`, carries the 3D
   detailed blocks' textures as arbitrary regions rather than 16px tiles — it is
   generated, never hand-painted (see below).
+- The sheet grew 8 → 16 rows for the recipe overhaul. Because a tile index is
+  `row * Cols + col` and **Cols did not change**, every existing index kept its
+  meaning — which is exactly why this grid may only ever grow in ROWS. Nothing
+  but `Atlas::Rows`, `make_atlas.py`'s `ROWS`, and the map in ATLAS.md moved;
+  the loader's size check and the generated fallback read the constants.
 
 3D detailed blocks (sub-cube geometry, authored in Blockbench — July 2026):
 - **`isSolid` came apart first.** It used to mean four things at once (gets
@@ -683,10 +703,11 @@ The shared parts tier (crafting depth — the Alchemy Circle's foundation):
 - **The Press** — a `MachineKind::Processor` (`BlockId::Press`, built on the
   Alchemy Circle from `CopperIngot ×4 + Stone ×4`), so the sim tick, power
   solve, `machineAccepts`, and panel UI all dispatch on it unchanged. It presses
-  **Copper Plate** (Ingot → Plate) and forms the four shared parts — **Copper
-  Rod** (Ingot → Rod ×2), **Gear** (Rod ×2), **Machine Casing** (Plate ×4),
-  **Etched Plate** (Plate + Crystal Dust ×2) — and assembles `Casing + Gear ×2
-  + Etched Plate` into the **Machine Frame**.
+  plates and forms the shared parts — **Rod** (Ingot → Rod ×2), **Gear**
+  (Rod ×2), **Machine Casing** (Plate ×4), **Etched Plate** (Plate + Crystal
+  Dust ×2) — and assembles `Casing + Gear ×2 + Etched Plate` into the
+  **Machine Frame**. (Since the recipe overhaul the structural half of that
+  chain is IRON; see the overhaul section below.)
 - **MachineFrame is no longer hand-craftable.** Its `kRecipes` row is gone, so
   every machine now sits four machine stages behind raw ore instead of one menu
   click (6 ore + 1 crystal → 14 ore + 2 crystals). Intermediates coming out of
@@ -695,22 +716,23 @@ The shared parts tier (crafting depth — the Alchemy Circle's foundation):
   overflows short windows (`craftLayout` grows with the recipe count and
   `UiRenderer` has no scissor primitive).
 - **`Ingot → Plate` lives on the Press** (moved off the Grinder, July 2026 — a
-  press presses). That makes the Press the BOOTSTRAP machine, so its own circle
-  pattern must never cost a plate or the tree deadlocks behind a Press you
-  cannot build; the pattern is ingots opposite ingots, stone opposite stone (the
-  only fully-occupied 4-slot necklace, so it can collide with nothing), and
-  `--selftest` pins the no-plate invariant structurally. Ladder: hand Ingot →
-  circle → Press + Generator → Plates → parts → Frame. The Grinder stays on the
-  critical path via Crystal → Crystal Dust → Etched Plate.
+  press presses). Its own circle pattern must never cost a plate or the tree
+  deadlocks behind a Press you cannot build; the pattern is ingots opposite
+  ingots, stone opposite stone (a fully-occupied 4-slot necklace, so it can
+  collide with nothing). Ladder: smelt Ingot → circle → Press + Generator →
+  Plates → parts → Frame. The Grinder stays on the critical path via
+  Crystal → Crystal Dust → Etched Plate.
 - Atlas tiles 39/40 (block) and 112-115 (icons). F6 grants a Press plus stock at
   every link.
-- **Save v19** is the one non-append change in the file's history: the move
-  shifted the Grinder's and Press's recipe lists, and `Machine::selectedRecipe`
-  is a saved index into `recipesForMachine()` order, so `SaveSystem::load`
-  REMAPS a pre-v19 lock on either machine (Grinder −1, its plate lock → AUTO;
-  Press +1) rather than silently making the wrong thing. v18 and older still
-  load — the layout never changed.
-- Known-by-design: with six recipes, an AUTO Press fed mixed inputs makes
+- **Save v19** was the first non-append change in the file's history: the move
+  shifted two recipe lists under saved indices, so `load` had to remap them.
+  Save **v20** ended that whole class of problem by storing the recipe KEY
+  instead — v19's bespoke remap is gone, folded into a frozen v19-order
+  snapshot that translates any pre-v20 index through the key it named at the
+  time. `SaveSystem::legacyRecipeIndex` is exposed purely so `--selftest` can
+  pin it: it reads a format nothing can write any more, so a regression there
+  would mis-lock every old save silently rather than fail.
+- Known-by-design: with several recipes, an AUTO Press fed mixed inputs makes
   whichever recipe it can first. Lock a MAKE row, or dedicate a Press per part —
   that division of labour is the intended logistics pressure. Plate is listed
   FIRST so a fresh Press fed the player's only raw makes plates, not rods (both
@@ -748,12 +770,12 @@ The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world
   pedestals at their true compass bearings around the catalyst socket; missing
   pedestals draw as `+` ghosts. RMB on ANY part of the circle opens it —
   `openMachineUi` walks the ring offsets backwards from a pedestal to find its
-  core. Blueprint rows list only patterns the pack can lay and `layBlueprint`
-  auto-arranges one (sweeping the ring back into the pack first, then locking
-  `selectedRecipe`); hand-dragging a slot resets it to −1 (match whatever it
-  spells). The row list is **windowed to the window height** (`circleRows`) —
-  the hand menu's overflow trap, avoided properly since `UiRenderer` has no
-  scissor primitive.
+  core. There is deliberately **no blueprint list**: a pattern is laid BY
+  HAND, one drag per pedestal — a recipe you perform rather than a row you
+  click — so the panel's only action row is TAKE OUTPUTS and its height no
+  longer grows with the recipe table. Nothing locks a circle (`selectedRecipe`
+  stays −1 and every drop into a pedestal clears a lock left by an older
+  save); the necklace on the ground is the whole statement of intent.
 - **The hand menu is now a survival tier**: 13 rows (tool ramp, Stone, Ingot,
   Glass, Vial, Bucket, Scaffold + the circle's own two parts, which MUST stay
   hand-craftable or the tree deadlocks). 26 recipes moved to the Circle.
@@ -761,6 +783,77 @@ The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world
   version bump**. `--selftest` covers tier detection, arrangement disambiguation,
   rotation invariance, the Greater power gate, `consume`, and the
   registry-vs-world disagreement case.
+
+The recipe overhaul (keys, the manual tier, and iron — July 2026):
+- **Recipes are keyed.** `Machine::selectedRecipe` used to be a saved INDEX
+  into `recipesForMachine()` order, which is what made all three tables
+  append-only and what the v19 migration existed for. Every row now owns a
+  stable `const char* key` and the save stores THAT (save **v20**, a
+  length-prefixed string in the machine record). The tables are consequently
+  free: reorder, retime, rebalance, delete. A lock on a deleted recipe resolves
+  to AUTO — the honest answer, and the one thing an index could never give.
+  Pre-v20 saves are migrated through a **frozen v19 order snapshot** in
+  SaveSystem.cpp: history, not content, so it must never be edited to track the
+  live tables.
+- **The guardrails moved from ordering to meaning.** `--selftest` now proves
+  (a) keys are unique and round-trip, (b) every circle pattern, laid exactly,
+  matches ITSELF — the "holds at least this many" rule lets one pattern shadow
+  another, and this is what catches it, (c) a **tech-tree reachability
+  closure**: from world drops alone, every machine must be buildable and every
+  recipe input obtainable. Edit a recipe into a deadlock and the build fails.
+  It replaced an ad-hoc "Copper Plate has one producer" check that only knew
+  about one deadlock.
+- **`RECIPES.md` is generated** — `voxel-factory --dump-recipes > RECIPES.md`.
+  It used to be a hand-maintained mirror carrying an "update both together"
+  warning, which is a promise a repo cannot keep.
+- **The manual tier is pure data.** Thirteen hand-cranked twins (Bloomery,
+  Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap, Mixing
+  Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter) — one per
+  Processor. Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
+  build recipe; **no new code and no new `MachineKind`**. Two traits fields do
+  it: `recipeGroup` points at the powered twin so `recipesForMachine()` returns
+  its rows (a recipe stays authored exactly once, and a static_assert keeps the
+  delegation one hop), and `speedMult` (`kManualSlowdown` = 3) is the entire
+  price. `demand = 0` was already enough to bypass the power gate at
+  `tickPowered`'s one `traits.demand > 0 &&` and to keep them off the power
+  graph via `isPowerNode` — the Rain Barrel precedent. Only the panel header
+  needed a case, so a manual machine reads MANUAL/BURNING instead of NO POWER.
+- **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, Charcoal
+  60s) replaced the Generator's single `.fuel`/`.burnSeconds` pair, so a better
+  fuel is one row. A Processor with `burnsFuel` runs on heat instead of
+  electricity (the Furnace and Bloomery; `Machine::burnLeft`, appended in v20).
+  The non-obvious rule: **a machine never burns an item its own recipes
+  consume** (`pickFuel`), or a Furnace fed wood would eat the wood it is there
+  to char. It also lights fuel only when a craft is ready — the generator's
+  "hungry" rule applied to a recipe — and burns the SHORTEST fuel first.
+- **Weighted outputs.** `MachineRecipe::output` became
+  `std::vector<RecipeOutput>` (stack + weight); one entry is the ordinary
+  deterministic case and doesn't touch the RNG at all. More than one makes the
+  craft a roll, which is what a Sifter has to be. Randomness rides the existing
+  `hash2(...)` + saved `m_sourceRng` counter (the node-growth/weather
+  precedent), passed into `tickPowered`, so a sifting line replays identically
+  across a save/load.
+- **Four new machines.** **Furnace** (fuel-fired: ore/nuggets → ingots, sand →
+  glass, wood → charcoal), **Sifter** (sand → a weighted roll of nuggets),
+  **Glassblower** (glass → vials; the machine the glass Conduit/tube and
+  windows will land on), **Compactor** (dirt + sand → stone). Between them they
+  own what used to be four free clicks in the hand menu.
+- **Iron does two jobs.** It is the STRUCTURAL metal — Casing, Gear, and so the
+  Machine Frame are iron, while copper keeps electricity (Wire, Etched Plate) —
+  *and* the tool/armor tier above copper (`kTierIron`, gating the Resonant
+  Node). It enters the game **only** through sifting sand, so the Sifter never
+  becomes a curiosity: sand is renewable (Sand Source, Grinder Stone → Sand)
+  but rate-limited, which makes sand throughput the ceiling on how fast the
+  factory can build more factory.
+- **The bootstrap.** Smelting, glass, vials and dirt+sand→stone left the hand
+  menu, so two machines had to stay hand-craftable or the tree deadlocks (the
+  Rune Core costs ingots, and an ingot now costs a fire): **Bloomery**
+  (Stone ×8) and **Sieve** (Wood ×4 + Stick ×4). Ladder: sticks + pebbles →
+  wood/stone tools → Bloomery + Sieve → ingots and iron → hand-craft the Circle
+  → the manual tier → the powered tier. The reachability check pins all of it.
+- **Weapons are data.** `ItemInfo::weaponDamage` (0 = not a weapon) replaced
+  the two hardcoded `held == ItemId::CopperSword` tests, so the Iron Sword is a
+  registry row and the old `kSwordDamage` knob is gone.
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
@@ -781,9 +874,13 @@ Persistence:
   caller's defaults survive), as v9→v10 did for health, v11→v12 for the hotbar,
   v14→v15 for playtime, and v15→v16 for ground drops — any enum/layout change must
   drop that compatibility. The other way to keep it is to MIGRATE on read, which
-  v18→v19 does: moving `Ingot → Plate` between machines reordered two recipe
-  lists without touching the layout, so `load` rewrites the affected
-  `selectedRecipe` indices instead of discarding the file.
+  v19 and v20 both do. v19 remapped `selectedRecipe` indices after two recipe
+  lists were reordered. **v20 changed the machine record itself** — the lock is
+  a length-prefixed KEY now, plus a trailing `burnLeft` float — and reads the
+  old i32 when `version < 20`, translating it through a frozen v19 order
+  snapshot (`SaveSystem::legacyRecipeIndex`, `--selftest`-pinned). That is why
+  editing the recipe tables no longer needs a version bump at all: the format
+  stopped depending on their order.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /

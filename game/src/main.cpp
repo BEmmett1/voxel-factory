@@ -405,51 +405,354 @@ int runSelfTest() {
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
     }
 
-    // ---- Tech-tree bootstrap (the plate deadlock) -------------------------
-    // Copper Plate has exactly one producer and that producer's own build
-    // pattern must not cost a plate, or a fresh world can never make the first
-    // one -- a deadlock no amount of play recovers from and nothing else in
-    // the build catches. Checked structurally rather than against the current
-    // answer (the Press) so moving plates again re-checks itself.
+    // ---- Recipe keys ------------------------------------------------------
+    // The keys ARE the save format for a locked machine, so a duplicate makes
+    // two recipes indistinguishable on load and an empty one makes a lock
+    // unsaveable. Nothing else in the build catches either.
     {
-        BlockId plateMachine = BlockId::Air;
-        int plateSources = 0;
+        auto uniqueKeys = [](const std::vector<const char*>& keys) {
+            for (std::size_t i = 0; i < keys.size(); ++i) {
+                if (!keys[i] || !*keys[i]) return false;
+                for (std::size_t j = i + 1; j < keys.size(); ++j) {
+                    if (std::strcmp(keys[i], keys[j]) == 0) return false;
+                }
+            }
+            return true;
+        };
+        std::vector<const char*> hand, mach, circ;
+        for (const Recipe& r : handcraftRecipes()) hand.push_back(r.key);
+        for (const MachineRecipe& r : machineRecipes()) mach.push_back(r.key);
+        for (const CircleRecipe& r : circleRecipes()) circ.push_back(r.key);
+        SELFTEST_CHECK(uniqueKeys(hand));
+        SELFTEST_CHECK(uniqueKeys(mach));
+        SELFTEST_CHECK(uniqueKeys(circ));
+
+        // Round-trip: a key resolves back to the row it names, for every row
+        // of every machine -- including the manual twins, which reach their
+        // powered counterpart's list through MachineTraits::recipeGroup.
+        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
+            const BlockId type = static_cast<BlockId>(b);
+            if (!isMachine(type)) continue;
+            const auto rows = recipesForMachine(type);
+            for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
+                SELFTEST_CHECK(recipeIndexForKey(type, recipeKeyFor(type, i)) == i);
+            }
+            // A key that no longer names anything lands on AUTO, never on
+            // whatever row happens to sit at some index today. This is the
+            // whole promise that lets the tables be edited freely.
+            SELFTEST_CHECK(recipeIndexForKey(type, "no/such/recipe") == -1);
+            SELFTEST_CHECK(recipeIndexForKey(type, "") == -1);
+        }
+        for (int i = 0; i < static_cast<int>(circleRecipes().size()); ++i) {
+            SELFTEST_CHECK(circleIndexForKey(circleKeyFor(i)) == i);
+        }
+        SELFTEST_CHECK(circleIndexForKey("no/such/recipe") == -1);
+
+        // A manual twin must run EXACTLY its powered counterpart's rows, or
+        // the two tiers would drift and a lock would not survive an upgrade.
+        for (const MachineTraits& traits : kMachineTraits) {
+            if (traits.recipeGroup == BlockId::Air) continue;
+            const auto mine = recipesForMachine(traits.block);
+            const auto theirs = recipesForMachine(traits.recipeGroup);
+            SELFTEST_CHECK(mine.size() == theirs.size());
+            for (std::size_t i = 0; i < mine.size() && i < theirs.size(); ++i) {
+                SELFTEST_CHECK(mine[i] == theirs[i]);
+            }
+        }
+    }
+
+    // ---- Pre-v20 lock migration ------------------------------------------
+    // Old saves stored selectedRecipe as a POSITION. That format can no longer
+    // be written, so nothing else exercises this path -- and a regression here
+    // would not fail loudly, it would quietly point every old save's locked
+    // machine at the wrong recipe.
+    {
+        // A v19 Press's row 0 was the plate; it still is, wherever it sits now.
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(19, BlockId::Press, 0) ==
+                       recipeIndexForKey(BlockId::Press, "press/copper-plate"));
+        // v19 shifted the Press up by one and the Grinder down by one, so a
+        // v18 file has to be walked through that step first.
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(18, BlockId::Press, 0) ==
+                       recipeIndexForKey(BlockId::Press, "press/copper-rod"));
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(18, BlockId::Grinder, 1) ==
+                       recipeIndexForKey(BlockId::Grinder, "grinder/ground-herb"));
+        // The v18 Grinder's row 0 WAS the plate, which the Grinder no longer
+        // makes: AUTO, never a neighbouring row.
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(18, BlockId::Grinder, 0) == -1);
+        // AUTO stays AUTO; a position past the end of the old list is junk.
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(19, BlockId::Forge, -1) == -1);
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(19, BlockId::Grinder, 99) == -1);
+        // A Rune Core's index runs over the CIRCLE table, not a machine list.
+        SELFTEST_CHECK(SaveSystem::legacyRecipeIndex(19, BlockId::RuneCore, 0) ==
+                       circleIndexForKey("circle/grinder"));
+    }
+
+    // ---- Circle patterns are unambiguous ---------------------------------
+    // Ring slots match on "holds AT LEAST this many", so one pattern can be a
+    // superset of another and silently shadow it -- a recipe you can lay
+    // perfectly and never get. Order is the fix, and this is what checks it:
+    // lay each pattern exactly and confirm the matcher returns THAT recipe.
+    {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        const glm::ivec3 core{80, 30, 80};
+        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
+        cm[core].type = BlockId::RuneCore;
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            const glm::ivec3 p = AlchemyCircle::slotPos(core, sl);
+            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
+            cm[p].type = BlockId::Pedestal;
+        }
+
+        const auto& all = circleRecipes();
+        for (std::size_t k = 0; k < all.size(); ++k) {
+            const CircleRecipe& want = all[k];
+            for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+                cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
+            }
+            // A 4-slot pattern lists the CARDINALS (the even ring slots).
+            const int stride = want.ring.size() == 4 ? 2 : 1;
+            for (std::size_t ringIdx = 0; ringIdx < want.ring.size(); ++ringIdx) {
+                if (want.ring[ringIdx].id == ItemId::None) continue;
+                cm[AlchemyCircle::slotPos(core, static_cast<int>(ringIdx) * stride)]
+                    .input.add(want.ring[ringIdx].id, want.ring[ringIdx].count);
+            }
+            Inventory centre;
+            if (want.center.id != ItemId::None) centre.add(want.center.id, want.center.count);
+
+            const auto ring2 = AlchemyCircle::ringContents(cw, cm, core);
+            const auto got = AlchemyCircle::findMatch(ring2, centre,
+                                                      AlchemyCircle::Tier::Greater, true);
+            if (!got || got.recipe != &want) {
+                std::printf("selftest: circle pattern '%s' is shadowed by '%s'\n",
+                            want.key, got ? got.recipe->key : "(nothing)");
+                return 1;
+            }
+        }
+    }
+
+    // ---- Tech-tree reachability (the deadlock check) ----------------------
+    // This is what replaces "the recipe tables are append-only". They can now
+    // be edited freely, so the guardrail has to be about MEANING rather than
+    // ordering: starting from nothing but what the world hands you, the
+    // closure over all three recipe surfaces must reach every machine and
+    // every recipe input. Edit a recipe into a deadlock and this fails.
+    {
+        std::array<bool, static_cast<std::size_t>(ItemId::Count)> have{};
+        auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
+        auto gain = [&](ItemId id) {
+            if (id == ItemId::None || known(id)) return false;
+            have[static_cast<std::size_t>(id)] = true;
+            return true;
+        };
+
+        // Seed: everything the world yields to a bare hand or a tool -- block
+        // drops (ore, wood, sand, stone, leaves' sticks), plus the two rain
+        // items. Machines you PLACE drop themselves, so seeding block drops
+        // would beg the question; only naturally-occurring blocks count.
+        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
+            const BlockId id = static_cast<BlockId>(b);
+            if (isMachine(id) || isSource(id)) continue;
+            gain(blockDrop(id).id);
+        }
+        gain(ItemId::Stick);
+        gain(ItemId::Pebble);
+        gain(ItemId::SpringWater); // the Bucket in the rain, and the barrel
+        // Boss drops enter the economy through COMBAT rather than a recipe, so
+        // the closure has to be told about them (kSpecies is private to
+        // CreatureSystem.cpp). Anything gated on these is gated on a fight,
+        // which is the design, not a deadlock.
+        gain(ItemId::VoidCatalyst);
+        gain(ItemId::StormCore);
+
+        // Fixpoint over the three surfaces. A machine recipe is only usable
+        // once the machine ITSELF is reachable, which is the part that makes
+        // this a real bootstrap test rather than a shopping list.
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (const Recipe& r : handcraftRecipes()) {
+                bool ok = true;
+                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
+                if (ok) changed |= gain(r.output.id);
+            }
+            for (const CircleRecipe& r : circleRecipes()) {
+                bool ok = known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem) &&
+                          (r.center.id == ItemId::None || known(r.center.id));
+                for (const ItemStack& in : r.ring) ok = ok && (in.id == ItemId::None || known(in.id));
+                if (ok) changed |= gain(r.output.id);
+            }
+            for (const MachineRecipe& r : machineRecipes()) {
+                // ANY machine that runs this list will do. The manual twins
+                // are the whole point: a Bloomery smelts the Furnace's
+                // recipes, which is what breaks the circularity of "ingots
+                // need a Furnace, a Furnace needs ingots".
+                bool ok = false;
+                for (const MachineTraits& mt : kMachineTraits) {
+                    if (recipeGroupFor(mt.block) != r.machine) continue;
+                    if (known(blockDrop(mt.block).id)) { ok = true; break; }
+                }
+                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
+                if (!ok) continue;
+                for (const RecipeOutput& o : r.outputs) changed |= gain(o.stack.id);
+            }
+        }
+
+        // Every machine must be buildable, and every recipe input obtainable.
+        for (const MachineTraits& traits : kMachineTraits) {
+            if (known(blockDrop(traits.block).id)) continue;
+            std::printf("selftest: %s can never be built\n", blockName(traits.block));
+            return 1;
+        }
         for (const MachineRecipe& r : machineRecipes()) {
-            if (r.output.id != ItemId::CopperPlate) continue;
-            ++plateSources;
-            plateMachine = r.machine;
-        }
-        SELFTEST_CHECK(plateSources == 1);
-
-        // The placeable that builds that machine, and the circle pattern that
-        // makes the placeable.
-        ItemId plateMachineItem = ItemId::None;
-        for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
-            const ItemId id = static_cast<ItemId>(i);
-            if (itemInfo(id).placesBlock == plateMachine) plateMachineItem = id;
-        }
-        SELFTEST_CHECK(plateMachineItem != ItemId::None);
-
-        int patterns = 0;
-        for (const CircleRecipe& r : circleRecipes()) {
-            if (r.output.id != plateMachineItem) continue;
-            ++patterns;
-            SELFTEST_CHECK(r.center.id != ItemId::CopperPlate);
-            for (const ItemStack& ringSlot : r.ring) {
-                SELFTEST_CHECK(ringSlot.id != ItemId::CopperPlate);
-            }
-        }
-        for (const Recipe& r : handcraftRecipes()) {
-            if (r.output.id != plateMachineItem) continue;
-            ++patterns;
             for (const ItemStack& in : r.inputs) {
-                SELFTEST_CHECK(in.id != ItemId::CopperPlate);
+                if (known(in.id)) continue;
+                std::printf("selftest: recipe '%s' needs unreachable %s\n",
+                            r.key, itemName(in.id));
+                return 1;
             }
         }
-        SELFTEST_CHECK(patterns > 0); // buildable at all
+        for (const CircleRecipe& r : circleRecipes()) {
+            if (r.center.id != ItemId::None && !known(r.center.id)) {
+                std::printf("selftest: circle '%s' needs unreachable %s\n",
+                            r.key, itemName(r.center.id));
+                return 1;
+            }
+            for (const ItemStack& in : r.ring) {
+                if (in.id == ItemId::None || known(in.id)) continue;
+                std::printf("selftest: circle '%s' needs unreachable %s\n",
+                            r.key, itemName(in.id));
+                return 1;
+            }
+        }
+
+        // The bootstrap itself: the Alchemy Circle is where nearly every
+        // recipe now lives, and its two parts cost Copper Ingots, which cost
+        // a fire. So SOME machine that needs neither power nor a circle must
+        // be hand-craftable, or a fresh world is stuck at sticks and pebbles.
+        SELFTEST_CHECK(known(ItemId::CopperIngot));
+        SELFTEST_CHECK(known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem));
+        SELFTEST_CHECK(known(ItemId::MachineFrame));
     }
 
     std::printf("selftest OK\n");
+    return 0;
+}
+
+// ---- --dump-recipes ------------------------------------------------------
+// Emits RECIPES.md from the live tables. The doc used to be hand-maintained
+// beside Recipes.cpp with a "update both together" warning on it, which is
+// exactly the kind of promise a repo cannot keep -- so it is generated now:
+//
+//     voxel-factory.exe --dump-recipes > RECIPES.md
+//
+// Editing a recipe is one edit again, which was half the point of the keys.
+int dumpRecipes() {
+    auto stackList = [](const std::vector<ItemStack>& v) {
+        std::string s;
+        for (const ItemStack& i : v) {
+            if (i.id == ItemId::None) continue;
+            if (!s.empty()) s += " + ";
+            s += itemName(i.id);
+            if (i.count > 1) s += " x" + std::to_string(i.count);
+        }
+        return s.empty() ? std::string("-") : s;
+    };
+
+    std::printf("# Recipes\n\n");
+    std::printf("**Generated** by `voxel-factory --dump-recipes` from the tables in\n"
+                "`game/src/Recipes.cpp`. Do not hand-edit: edit the recipe and\n"
+                "regenerate. The `key` column is the recipe's stable identity -- it is\n"
+                "what a save stores for a machine locked to a MAKE row, which is why\n"
+                "the tables can be reordered and edited freely.\n\n");
+
+    std::printf("## Hand-craft (the survival tier)\n\n");
+    std::printf("Instant and free, so it deliberately cannot build the factory.\n\n");
+    std::printf("| key | inputs | output |\n|---|---|---|\n");
+    for (const Recipe& r : handcraftRecipes()) {
+        std::string out = itemName(r.output.id);
+        if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
+        std::printf("| `%s` | %s | %s |\n", r.key, stackList(r.inputs).c_str(), out.c_str());
+    }
+
+    std::printf("\n## Machines\n\n");
+    for (const MachineTraits& t : kMachineTraits) {
+        if (t.recipeGroup != BlockId::Air) continue; // twins share the rows below
+        const auto rows = recipesForMachine(t.block);
+
+        std::printf("\n### %s\n\n", blockName(t.block));
+        if (t.burnsFuel) std::printf("Burns fuel. ");
+        else if (t.demand > 0) std::printf("Draws %d power. ", t.demand);
+        else std::printf("Runs unpowered. ");
+        // Name the hand-cranked twin, if it has one: the two tiers run the
+        // same rows, so listing them twice would be a lie about the data.
+        for (const MachineTraits& twin : kMachineTraits) {
+            if (twin.recipeGroup != t.block) continue;
+            std::printf("Hand tier: **%s** (%.0fx slower). ",
+                        blockName(twin.block), static_cast<double>(twin.speedMult));
+        }
+        std::printf("\n\n");
+
+        if (rows.empty()) {
+            std::printf("_No recipes -- its behavior is code, not a table._\n");
+            continue;
+        }
+        std::printf("| key | inputs | output | seconds |\n|---|---|---|---|\n");
+        for (const MachineRecipe* r : rows) {
+            std::string out;
+            float total = 0.0f;
+            for (const RecipeOutput& o : r->outputs) total += o.weight;
+            for (const RecipeOutput& o : r->outputs) {
+                if (!out.empty()) out += ", ";
+                if (o.stack.id == ItemId::None) out += "nothing";
+                else {
+                    out += itemName(o.stack.id);
+                    if (o.stack.count > 1) out += " x" + std::to_string(o.stack.count);
+                }
+                if (r->outputs.size() > 1 && total > 0.0f) {
+                    out += " (" + std::to_string(
+                        static_cast<int>(o.weight / total * 100.0f + 0.5f)) + "%)";
+                }
+            }
+            std::printf("| `%s` | %s | %s | %.1f |\n", r->key,
+                        stackList(r->inputs).c_str(), out.c_str(),
+                        static_cast<double>(r->seconds));
+        }
+    }
+
+    std::printf("\n## Alchemy Circle\n\n");
+    std::printf("A `ring` of 4 entries is the CARDINAL pedestals clockwise from north\n"
+                "(a Lesser circle can run it); 8 entries is the full ring and needs a\n"
+                "powered Greater circle. `-` is a slot that must be EMPTY. Matching is\n"
+                "rotation-invariant and each slot matches \"holds at least this many\",\n"
+                "so one pattern can shadow another -- order is what disambiguates, and\n"
+                "`--selftest` lays every pattern to prove none is unreachable.\n\n");
+    std::printf("| key | centre | ring (clockwise from N) | output | seconds |\n"
+                "|---|---|---|---|---|\n");
+    for (const CircleRecipe& r : circleRecipes()) {
+        std::string ring;
+        for (const ItemStack& slot : r.ring) {
+            if (!ring.empty()) ring += ", ";
+            if (slot.id == ItemId::None) { ring += "-"; continue; }
+            ring += itemName(slot.id);
+            if (slot.count > 1) ring += " x" + std::to_string(slot.count);
+        }
+        std::string centre = "-";
+        if (r.center.id != ItemId::None) {
+            centre = itemName(r.center.id);
+            if (r.center.count > 1) centre += " x" + std::to_string(r.center.count);
+        }
+        std::string out = itemName(r.output.id);
+        if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
+        std::printf("| `%s` | %s | %s | %s | %.1f |\n", r.key, centre.c_str(),
+                    ring.c_str(), out.c_str(), static_cast<double>(r.seconds));
+    }
+
+    std::printf("\n## Fuels\n\n| item | seconds |\n|---|---|\n");
+    for (const FuelInfo& f : kFuels) {
+        std::printf("| %s | %.0f |\n", itemName(f.item), static_cast<double>(f.seconds));
+    }
+    std::printf("\nA machine never burns an item its own recipes consume, which is why\n"
+                "a Furnace fed wood chars it instead of eating it.\n");
     return 0;
 }
 
@@ -461,6 +764,10 @@ int main(int argc, char** argv) {
     // Headless save round-trip for CI; runs before any window/GL setup.
     if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0) {
         return runSelfTest();
+    }
+    // Regenerates RECIPES.md from the live tables; also headless.
+    if (argc > 1 && std::strcmp(argv[1], "--dump-recipes") == 0) {
+        return dumpRecipes();
     }
 
     // File logging + crash dumps live under the pref dir, next to the save, so

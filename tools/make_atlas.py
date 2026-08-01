@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Generate game/assets/atlas.png -- the starter texture atlas.
 
-Pure stdlib (hand-rolled PNG writer). The atlas is a 16x8 grid of 16px tiles
-(256x128); the tile map is documented in game/assets/ATLAS.md and must stay in
+Pure stdlib (hand-rolled PNG writer). The atlas is a 16x16 grid of 16px tiles
+(256x256); the tile map is documented in game/assets/ATLAS.md and must stay in
 sync with Atlas.cpp / Item.cpp. Rerun after editing:  python tools/make_atlas.py
+
+The sheet grew from 8 rows to 16 with the recipe overhaul. A tile index is
+`row * COLS + col`, so growing DOWNWARD left every existing index alone --
+never widen COLS.
 
 The output is a *starter* -- every tile can be repainted by hand in any editor;
 this script just guarantees a complete, coherent set to start from.
@@ -13,7 +17,7 @@ import struct
 import zlib
 from pathlib import Path
 
-COLS, ROWS, T = 16, 8, 16
+COLS, ROWS, T = 16, 16, 16
 W, H = COLS * T, ROWS * T
 
 buf = bytearray(W * H * 4)  # RGBA, transparent black
@@ -141,6 +145,16 @@ SOURCES = {  # tile -> glow color (matches the Source* block colors)
 
 BARREL = (102, 71, 38)  # rain-barrel staves
 
+# The smelting / sifting tier and its hand-cranked twins.
+FURNACE = (118, 96, 84)    # firebrick
+SIFTER = (156, 132, 92)    # timber frame + mesh
+GLASSWORKS = (92, 112, 124)  # glassblower's kiln shell
+COMPACTOR = (124, 122, 116)  # rammed-earth press
+CRUDEWOOD = (128, 96, 58)  # manual-tier timber
+CRUDESTONE = (112, 110, 104)  # manual-tier fieldstone
+IRON = (198, 200, 208)     # the structural metal
+CHARCOAL = (48, 44, 42)
+
 GOLD = (255, 214, 51)
 EMBER = (255, 140, 40)    # forge fire
 WOODHEAD = (150, 110, 66) # wood-tool head (tan)
@@ -203,6 +217,29 @@ def potion(t, liquid):
     t.disc(8, 11, 3.6, liquid)
     t.px(6, 9, GLASS_SHINE)
     t.px(7, 8, GLASS_SHINE)
+
+
+def crude(t, base):
+    """Manual-tier housing: rough timber/fieldstone, chipped, no rivets.
+
+    The whole hand-cranked tier shares this so it reads as one tier at a
+    glance -- rivets and clean plate belong to the powered machines.
+    """
+    t.fill(base, noise=0.18)
+    t.outline(shade(base, 0.5))
+    for k in range(7):
+        x = 1 + int(n2(k, 21, t.seed) * (T - 2))
+        y = 1 + int(n2(23, k, t.seed) * (T - 2))
+        t.px(x, y, shade(base, 0.68))
+
+
+def crank(t, c):
+    """The hand-crank stamped on every manual machine's SIDE tile."""
+    t.ring(8, 9, 4, shade(c, 0.75))
+    t.disc(8, 9, 2, shade(c, 1.15))
+    t.rect(11, 8, 14, 9, shade(c, 1.3))              # the arm
+    t.rect(13, 6, 14, 8, shade(LOG, 1.2))            # wooden grip
+    t.px(8, 9, shade(c, 1.5))
 
 
 def gem(t, c, big=False):
@@ -927,6 +964,188 @@ def parts():
     t.px(8, 8, shade(CRYSTAL, 1.6))
 
 
+def smelting_tier():
+    """Row 8: the four machines the recipe overhaul added (tiles 128-135)."""
+    t = paint(128)                                   # furnace top: capped flue
+    plate(t, FURNACE)
+    t.ring(8, 8, 5, shade(FURNACE, 0.5))             # the flue collar
+    t.disc(8, 8, 4, shade(FURNACE, 0.35))
+    t.disc(8, 8, 3, (190, 70, 20))                   # fire seen from above
+    t.disc(8, 8, 2, EMBER)
+    t.px(8, 8, (255, 240, 180))
+
+    t = paint(129)                                   # furnace side: brick + mouth
+    t.fill(FURNACE, noise=0.10)
+    for y in (2, 6, 10, 14):                         # brick courses
+        t.hline(y, 0, 15, shade(FURNACE, 0.6))
+    for y, off in ((4, 0), (8, 4), (12, 0)):         # staggered joints
+        for x in range(off, T, 8):
+            t.vline(x, y - 2, y + 1, shade(FURNACE, 0.6))
+    t.rect(5, 8, 10, 13, shade(FURNACE, 0.35))       # the mouth
+    t.rect(6, 9, 9, 12, (185, 65, 20))
+    t.rect(7, 10, 8, 12, EMBER)
+    t.px(7, 12, (255, 235, 165))
+
+    t = paint(130)                                   # sifter top: the mesh
+    plate(t, SIFTER)
+    t.rect(3, 3, 12, 12, shade(SIFTER, 0.55))        # the screen bed
+    for k in range(3, 13, 2):                        # woven wire
+        t.vline(k, 3, 12, shade(STONE, 1.2))
+        t.hline(k, 3, 12, shade(STONE, 0.95))
+    t.speckle(SAND, 6, seed=41)                      # sand caught in the weave
+    t.px(6, 6, shade(IRON, 1.2))                     # ...and something better
+    t.px(11, 10, shade(COPPER, 1.2))
+
+    t = paint(131)                                   # sifter side: hopper + tray
+    plate(t, SIFTER)
+    for k in range(5):                               # tapering hopper
+        t.hline(2 + k, 2 + k, 13 - k, shade(SIFTER, 1.2 - k * 0.06))
+    t.rect(6, 7, 9, 8, shade(SAND, 0.9))             # sand falling through
+    t.rect(3, 10, 12, 12, shade(SIFTER, 0.6))        # catch tray
+    t.speckle(shade(IRON, 1.1), 3, seed=42)
+
+    t = paint(132)                                   # glassblower top: gather
+    plate(t, GLASSWORKS)
+    t.ring(8, 8, 5, shade(GLASSWORKS, 0.5))
+    t.disc(8, 8, 4, (210, 120, 40))                  # molten gather
+    t.disc(8, 8, 2, (255, 200, 120))
+    t.px(8, 8, (255, 250, 225))
+    for dx, dy in ((-6, -3), (6, 3)):                # the pipe crossing it
+        t.px(8 + dx, 8 + dy, shade(STONE, 1.2))
+
+    t = paint(133)                                   # glassblower side: pipe + bulb
+    plate(t, GLASSWORKS)
+    t.rect(2, 12, 13, 13, shade(GLASSWORKS, 0.55))   # bench
+    for d in range(9):                               # blowpipe on the diagonal
+        t.px(2 + d, 11 - d, shade(STONE, 1.1))
+    t.disc(12, 4, 3, GLASS_EDGE, 200)                # the bulb being blown
+    t.disc(12, 4, 2, (215, 240, 250), 150)
+    t.px(11, 3, GLASS_SHINE)
+
+    t = paint(134)                                   # compactor top: the rammer
+    plate(t, COMPACTOR)
+    t.rect(4, 4, 11, 11, shade(COMPACTOR, 0.45))     # the mould
+    t.rect(5, 5, 10, 10, shade(DIRT, 0.85))          # soil charge
+    t.speckle(SAND, 5, seed=43)
+    t.rect(6, 6, 9, 9, shade(STONE, 1.05))           # stone forming under it
+    t.hline(4, 4, 11, shade(COMPACTOR, 1.4))
+
+    t = paint(135)                                   # compactor side: ram + bed
+    plate(t, COMPACTOR)
+    t.rect(5, 1, 10, 6, shade(COMPACTOR, 1.3))       # the falling ram
+    t.hline(6, 5, 10, shade(COMPACTOR, 1.55))
+    t.rect(3, 8, 12, 10, shade(DIRT, 0.8))           # charge on the bed
+    t.hline(9, 3, 12, shade(SAND, 0.95))
+    t.rect(2, 11, 13, 13, shade(STONE, 1.0))         # the slab it becomes
+    t.hline(13, 2, 13, shade(COMPACTOR, 0.5))
+
+
+# (top, side, housing, accent) -- the accent echoes the powered twin's palette
+# so a Mortar reads as "a Grinder you turn by hand".
+MANUAL_TIER = [
+    (136, 137, "bloomery",        FURNACE,    EMBER),
+    (138, 139, "sieve",           CRUDEWOOD,  SAND),
+    (140, 141, "blowpipe",        CRUDESTONE, GLASS_EDGE),
+    (142, 143, "tamper",          CRUDESTONE, DIRT),
+    (144, 145, "mortar",          CRUDESTONE, GRINDER),
+    (146, 147, "hand press",      CRUDEWOOD,  PRESS),
+    (148, 149, "anvil",           CRUDESTONE, FORGE),
+    (150, 151, "compost heap",    CRUDEWOOD,  COMPOST),
+    (152, 153, "mixing bowl",     CRUDESTONE, CAULDRON),
+    (154, 155, "infusion stand",  CRUDEWOOD,  INFUSER),
+    (156, 157, "still",           CRUDEWOOD,  ALEMBIC),
+    (158, 159, "hand distiller",  CRUDEWOOD,  DISTILLER),
+    (160, 161, "hand transmuter", CRUDESTONE, TRANSMUTER),
+]
+
+
+def manual_tier():
+    """Rows 8-10: the hand-cranked twins (tiles 136-161).
+
+    Painted from a table rather than one-by-one on purpose: the tier is
+    thirteen variations on one idea, and hand-painting each would let them
+    drift apart visually the way the data never can.
+    """
+    for top, side, _name, housing, accent in MANUAL_TIER:
+        t = paint(top)                               # top: the working surface
+        crude(t, housing)
+        t.rect(3, 3, 12, 12, shade(housing, 0.6))    # the worn-in work area
+        t.disc(8, 8, 4, shade(accent, 0.85))
+        t.disc(8, 8, 2, shade(accent, 1.2))
+        t.px(8, 8, shade(accent, 1.5))
+
+        t = paint(side)                              # side: housing + the crank
+        crude(t, housing)
+        t.rect(2, 2, 6, 6, shade(accent, 0.9))       # a glimpse of the works
+        crank(t, accent)
+
+
+def iron_tier():
+    """Row 11: iron, charcoal, and the tool/armor tier above copper (176-188)."""
+    t = paint(176)                                   # iron nugget (sifted)
+    t.disc(6, 9, 3, shade(IRON, 0.85))
+    t.disc(10, 6, 2, IRON)
+    t.disc(10, 11, 2, shade(IRON, 0.7))
+    t.px(5, 8, shade(IRON, 1.3))
+    t.px(10, 5, (255, 255, 255))
+
+    t = paint(177)                                   # copper nugget (sifted)
+    t.disc(6, 9, 3, shade(COPPER, 0.85))
+    t.disc(10, 6, 2, COPPER)
+    t.disc(10, 11, 2, shade(COPPER, 0.7))
+    t.px(5, 8, shade(COPPER, 1.35))
+    t.px(10, 5, (255, 230, 200))
+
+    t = paint(178)                                   # iron ingot
+    for y, m in ((7, 1.3), (8, 1.05), (9, 0.9), (10, 0.7)):
+        x0 = 3 + (10 - y) // 3
+        t.hline(y, x0, 15 - x0, shade(IRON, m))
+    t.hline(6, 5, 10, shade(IRON, 1.5))
+
+    t = paint(179)                                   # iron plate
+    t.rect(3, 4, 12, 12, IRON)
+    t.rect(3, 4, 12, 5, shade(IRON, 1.25))
+    for x, y in ((4, 6), (11, 6), (4, 11), (11, 11)):
+        t.px(x, y, shade(IRON, 0.5))
+
+    t = paint(180)                                   # iron rod
+    for d in range(11):
+        t.px(3 + d, 12 - d, shade(IRON, 1.25))
+        t.px(4 + d, 12 - d, IRON)
+        t.px(4 + d, 13 - d, shade(IRON, 0.7))
+    t.px(3, 13, shade(IRON, 0.5))
+    t.px(14, 2, (255, 255, 255))
+
+    t = paint(181)                                   # charcoal
+    t.disc(7, 9, 4, CHARCOAL)
+    t.disc(11, 6, 3, shade(CHARCOAL, 1.4))
+    t.disc(10, 12, 2, shade(CHARCOAL, 1.15))
+    for k in range(5):                               # a few live glints
+        x = 4 + int(n2(k, 31, t.seed) * 9)
+        y = 5 + int(n2(33, k, t.seed) * 8)
+        t.px(x, y, shade(EMBER, 0.8))
+    t.px(6, 7, (120, 115, 110))
+
+    tool_icon(paint(182), IRON, "pick")              # iron pickaxe
+    tool_icon(paint(183), IRON, "axe")               # iron axe
+    tool_icon(paint(184), IRON, "shovel")            # iron shovel
+
+    t = paint(185)                                   # iron sword
+    for d in range(8):
+        t.px(5 + d, 10 - d, shade(IRON, 1.25))
+        t.px(6 + d, 10 - d, shade(IRON, 0.95))
+    t.px(13, 2, (255, 255, 255))                     # gleaming tip
+    for d in range(-1, 3):                           # cross-guard
+        t.px(6 + d, 12 - d, shade(IRON, 0.6))
+        t.px(5 + d, 13 - d, shade(IRON, 0.6))
+    t.px(3, 13, shade(LOG, 1.1))                     # grip
+    t.px(4, 12, shade(LOG, 1.1))
+
+    armor_icon(paint(186), IRON, "helm")             # iron helm
+    armor_icon(paint(187), IRON, "chest")            # iron chestplate
+    armor_icon(paint(188), IRON, "boots")            # iron boots
+
+
 # --- PNG writer -------------------------------------------------------------
 
 def write_png(path, w, h, rgba):
@@ -950,6 +1169,9 @@ def main():
     boss_tier()
     tools_and_armor()
     parts()
+    smelting_tier()
+    manual_tier()
+    iron_tier()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

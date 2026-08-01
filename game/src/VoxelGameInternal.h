@@ -81,7 +81,8 @@ namespace vg {
     inline constexpr float kDropIconMax   = 100.0f; // px cap, up close
 
     // ---- Melee (the sword swings through the aim raycast) ----
-    inline constexpr float kSwordDamage    = 2.0f;   // per hit (creature hearts)
+    // (Per-hit damage is per WEAPON now: ItemInfo::weaponDamage in Item.cpp,
+    // which is also what makes an item swing instead of mine.)
     inline constexpr float kSwordCooldown  = 0.35f;  // seconds between swings
     inline constexpr float kKnockback      = 7.0f;   // horizontal shove, blocks/s
     inline constexpr float kKnockUp        = 4.5f;   // vertical pop, blocks/s
@@ -112,14 +113,17 @@ namespace vg {
     // The main menu offers this many independent save slots (save_0..N-1.vxf).
     inline constexpr int kSaveSlots = 3;
 
-    // Fresh games and pre-v12 saves seed the hotbar with the ten placeables
-    // the old auto-built hotbar put on keys 1-0, preserving muscle memory
-    // (and previewing the machine tech tree on a fresh island).
+    // Fresh games and pre-v12 saves seed the hotbar with ten placeables. These
+    // are ASSIGNMENTS, not stock -- a fresh island hands you nothing, so they
+    // start greyed out and light up as you build each one. Ordered as the tech
+    // tree is actually walked, so the empty hotbar doubles as a roadmap: the
+    // two hand-built bootstrap machines, the Circle that unlocks the rest, the
+    // hand-cranked tier, then the powered tier it buys you.
     inline constexpr std::array<ItemId, kHotbarSlots> kDefaultHotbar = {
-        ItemId::Conduit,      ItemId::WireItem,     ItemId::GeneratorItem,
-        ItemId::GrinderItem,  ItemId::CauldronItem, ItemId::InfuserItem,
-        ItemId::AlembicItem,  ItemId::DistillerItem, ItemId::TransmuterItem,
-        ItemId::MinerItem};
+        ItemId::BloomeryItem, ItemId::SieveItem,     ItemId::RuneCoreItem,
+        ItemId::PedestalItem, ItemId::MortarItem,    ItemId::HandPressItem,
+        ItemId::FurnaceItem,  ItemId::SifterItem,    ItemId::GeneratorItem,
+        ItemId::PressItem};
 
     inline constexpr float kReach = 8.0f;             // how far you can target blocks
     inline constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area

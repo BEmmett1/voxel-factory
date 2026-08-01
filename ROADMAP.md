@@ -70,12 +70,69 @@ the pillar slips to post-launch.
   sits behind the climb (raw → wood tool → stone → copper → ingots → generator).
   A **Composter** (plant matter → Dirt) and renewable Stone/Sand keep the finite
   island from bottlenecking. The starting kit is now empty. Tune costs in play.
+- [x] **The recipe overhaul** (July 2026): recipes carry stable keys and the
+  save stores the key rather than the row's position, so all three tables are
+  now freely editable — the append-only rule they inherited from the save
+  format is gone, replaced by a reachability closure and a pattern-shadowing
+  check in `--selftest`, and `RECIPES.md` is generated. Four machines
+  (Furnace / Sifter / Glassblower / Compactor) took over the last free clicks
+  in the hand menu, **iron** arrived as both the structural metal and the tier
+  above copper (sifted from sand, so the Sifter is permanent), and a thirteen-
+  machine **manual tier** — pure registry data, no new code — makes the whole
+  factory playable before electricity. `kFuels` made fuel a registry, which is
+  the charcoal half of the item below.
 - **Factory depth (Factorio/Satisfactory direction, user vision):** the game
   needs many more stages between "first machine" and "endgame". Staged
-  milestones: more machine/recipe tiers (charcoal/essence fuels, generator
-  tiers), multi-item / powered belts, machine output auto-eject, and richer
-  logistics (splitters/filters, buffered storage, maybe fluids). Each tier
-  should add a gating dependency so the tech tree deepens rather than widens.
+  milestones: **generator tiers** — the **Storm Core** has a sink in the Aegis
+  set but its original better-fuels role is still unbuilt, and now that
+  `kFuels` exists a new fuel really is one row (Charcoal already is); essence
+  fuels; and the logistics tier broken out below. Each tier should add a gating
+  dependency so the tech tree deepens rather than widens.
+- **Storage & logistics** — the logistics half of factory depth, staged in
+  dependency order because the costs are wildly uneven and the data model
+  already decides most of them:
+  - **The Storage Crate, and it is nearly free — so do it first.** There is no
+    storage block in the game at all, which is a strange hole in a factory
+    game, and `Inventory` is an unbounded count-per-`ItemId` array, so bulk
+    storage needs no new container type: a `MachineKind::Storage` row in
+    `kMachineTraits` (`demand = 0`, not a power node — the `Pedestal`
+    precedent), one block, one case per dispatch switch, and `machineAccepts`
+    taking anything below a `kChestCap`. The non-obvious bit is the belt
+    contract: `beltStep` pushes into a machine's `input` and pulls from its
+    `output`, so for a crate to be both feedable AND drainable its tick
+    migrates `input` → `output` each tick (before the power gate, like
+    `tickRuneCore`) — zero belt changes. Generic machine save records mean **no
+    save bump**, and the existing machine panel with its item cells and
+    dupe-safe `m_drag` machinery is already the UI.
+    The design lever to watch: with no stack or slot limits anywhere in the
+    game, that cap knob is the ONLY source of storage pressure. Slot-based
+    inventories are deliberately not planned — they would touch every panel and
+    the save format to buy a constraint one constant already provides
+  - **Belt filters.** `beltStep`'s pull step drains a machine's mixed output by
+    lowest `ItemId` — arbitrary, invisible, and impossible to teach. Give
+    `Belt` a filter `ItemId`, wrench-set exactly like `facing`, so a belt pulls
+    and carries only its filter item. One appended `Belt` field
+  - **Splitters / routers.** A block that round-robins one input across its
+    other faces, or routes by filter (so it depends on the filter above). This
+    is where multi-output logistics actually begins — today a machine feeds one
+    line and that is the whole vocabulary
+  - **Multi-item belts — do them WITH "belts become tubes" (Q1 2027).** `Belt`
+    carries one item and has no sub-cell progress. Slots plus a progress
+    fraction is the *same* `Belt` layout change the tube item already wants for
+    visibly flowing cargo, so bundling them buys one save bump and one visual
+    payoff instead of two of each
+  - **Powered belts: a tuning decision, not a build.** Making belts power nodes
+    would sharply change the early game (your first conveyor would need a
+    fueled generator). Decide it in play before writing any of it
+  - **Machine output auto-eject is mostly already done** — belts pull from the
+    machine directly behind them (`beltStep` step 3). What is genuinely missing
+    is a machine pushing into an *adjacent* belt that is not aligned behind it,
+    which is the smaller half of what this line used to claim
+  - **Fluids, still only "maybe."** The biggest of these by far and the only one
+    that is a new system rather than a field or a traits row: Rain Water is an
+    ITEM today, and every surface (belts, buffers, the circle, `Inventory`
+    itself) counts discrete items. Worth it only if a whole tier of recipes
+    wants pipes — otherwise it is a rewrite bought for flavour
 - [x] **Crafting overhaul — the Alchemy Circle** (July 2026, user vision): the
   flat ~40-row hand menu that was instant, free, and needed no world state is
   gone. The E menu is now a **13-row survival tier** (sticks/pebbles, the wood →
@@ -91,17 +148,19 @@ the pillar slips to post-launch.
   vs. one on each of two opposite ones), as do the Copper Pickaxe and Axe.
   RMB any part of the circle (pedestal included) opens a radial panel drawing
   the eight pedestals at their true compass bearings; drag from the inventory
-  grid into ring cells with the dupe-safe `m_drag` machinery, or activate a
-  blueprint row to auto-arrange. The 4-cardinal **Lesser Circle** runs
+  grid into ring cells with the dupe-safe `m_drag` machinery — every pattern
+  is laid BY HAND, one drag per pedestal, and the panel deliberately offers no
+  blueprint row to auto-arrange it. The 4-cardinal **Lesser Circle** runs
   UNPOWERED at `kLesserCircleSlowdown` speed — that is the bootstrap path, since
   it can build your first Generator — and the 8-pedestal **Greater Circle**
   draws power, runs at full speed, and unlocks the eight-slot patterns (the boss
   keys). Pedestals are `Machine` entities with a one-item-TYPE buffer, so belts
   feed them and the whole circle AUTOMATES. Two new `MachineKind`s + enum-tail
   blocks/items ride the existing machine save records: **no save-format break**.
-  The panel's blueprint list is filtered to what the pack can lay AND windowed
-  to the window height, so unlike the hand menu it cannot outgrow the screen.
-  Matching/tier/consume are covered by the headless `--selftest`.
+  With no recipe list at all, the panel's height is fixed apart from the
+  inventory grid, which windows itself — unlike the hand menu it cannot
+  outgrow the screen. Matching/tier/consume are covered by the headless
+  `--selftest`.
   Costs and the necklace arrangements want a play-tuning pass.
 - [x] **Deeper machine chains** (July 2026): the shared parts tier landed. A new
   **Press** (`MachineKind::Processor`, laid on the Alchemy Circle from Ingot ×4
@@ -123,6 +182,111 @@ the pillar slips to post-launch.
   one Press, AUTO picks the first recipe it has inputs for (Plate is listed
   first for the bootstrap's sake), so dedicating Presses per part is the
   intended logistics pressure. Tune costs in play.
+- **Farming (user vision).** The one renewable system the island doesn't have,
+  and it has a concrete economic job rather than being flavour: **plant inputs
+  are hard-capped today.** A Source grows at most 5 nodes within r=4 and a Miner
+  takes the nearest one every 4 s, so the entire Herb → Ground Herb → Tincture →
+  Healing Draught branch is bounded by patch regrowth no matter how much factory
+  you point at it. Farming is the answer that scales with **area and layout**
+  instead of with a point source — which is the game's stated difficulty axis
+  (logistics distance) applied to agriculture. It also gives two existing
+  systems a second customer: the **Composter** (plant matter → Dirt) becomes
+  part of a real loop (compost → soil → crops → compost), and **Rain Water**
+  stops being Cauldron-only.
+  - **Crops reuse the sapling machinery almost exactly.** `updateSaplings` is
+    already the pattern: a `pos → timer` registry, ticked at `kRainGrowthMult`
+    while raining, validated against the block still being there, and
+    retried-not-lost when growth is blocked. A crop is that plus a stage
+    counter, so the sim cost is one more `update*` call, not a system
+  - **Author the crop in Blockbench like the machines** (user preference) — same
+    `tools/bbmodel_to_shape.py` route as the Cauldron/Alembic/Miner/Infuser, not
+    hand-written quads. A crop is the classic crossed-plane model, and that is
+    an input the bake has never seen, so it needs three small changes first.
+    They are prerequisites, not polish — without them the model errors out at
+    bake time or draws as solid rectangles:
+    - **The bake drops flat boxes today.** `bbmodel_to_shape.py` rejects any
+      element with a zero extent on ANY axis as a "zero-area box", so a crop
+      plane is skipped and a two-plane model dies on the next line with
+      "nothing to bake". Loosen that guard to reject only boxes flat on TWO or
+      more axes (a line or a point is genuinely degenerate; a plane is not),
+      and then drop the four zero-area FACES of a flat box so a plane costs
+      exactly **2 quads** instead of 6 with four invisible slivers. Note this
+      is the opposite call from the existing zero-height *UV rect* case, which
+      is deliberately kept — thin geometry with a collapsed rect is real, and
+      the comment there explains why
+    - **Alpha cutout in `voxel.frag`.** It samples `texture(uAtlas, vUv).rgb`
+      and there is no `discard` or blending anywhere in the world pass, so a
+      crossed-plane crop would draw as two opaque rectangles. Sample `.a` and
+      `discard` below a threshold: cutout, NOT alpha blending, because cutout
+      is order-independent and needs no depth sorting or second pass. The bake
+      already decodes and carries RGBA, so the texture side works today — and
+      this is the same change CLAUDE.md predicted the glass Conduit/tube would
+      need, so farming pays for that item too
+    - **Quad budget is the real constraint on the model.** Farming is the first
+      feature to place shaped blocks in BULK, which is exactly what CLAUDE.md
+      warns against: the Infuser is 367 quads (~50× a plain block), so a field
+      of detailed plants would cost megabytes of chunk mesh. A 2-plane cross is
+      4 quads, which is fine at field scale — so the discipline is on the
+      model, not on the pipeline. The bake already prints a KB-of-chunk-mesh
+      estimate per model, so the budget is visible while authoring
+    - Either cross works: a **"+"** of two axis-aligned planes needs no rotation
+      at all, and a diagonal **"X"** needs ±45°, which the bake already supports
+  - **Crops collide at first, and that is not a regression.** `solid` bundles
+    physics AND raycasts, and a shape's `boxes` array feeds both, so a crop is
+    currently either fully collidable or impossible to aim at and break. Ship
+    collidable — today's Sapling is a full solid cube, so a shaped crop is
+    already strictly better. Walking through wheat is then a follow-on that
+    splits ray boxes from physics boxes, which is the same move the codebase
+    already made once when `isSolid` came apart into `solid` + `fullCube`
+  - **Growth stages cost append-only BlockIds.** The mesher picks a shape from
+    the BlockId alone and `Chunk` is a flat BlockId array with no per-cell
+    metadata, so each visible stage is its own permanent `kBlocks` row (the
+    timer can live in the side registry, but the *look* cannot). Ship **one crop
+    at 3-4 stages** first to prove the loop; each later crop is then N more
+    append-only rows and nothing else. `ShapeId` is free by comparison — it is
+    not a save encoding and may be reordered at will
+  - **Tilling: yes — decided July 2026.** Crops require a **Tilled Soil** block
+    rather than planting straight onto Dirt/Grass, so laying out a field is a
+    deliberate build step instead of a side effect of walking around. A new
+    **Copper Hoe** (hotbar tool) RMB'd at Dirt/Grass converts the aimed cell,
+    which is precisely the `WorldEdit::fuseSources` shape — a tool RMB
+    transmuting the cell it points at — so it routes through `WorldEdit` with
+    no new interaction model. Tools already can't place blocks (the place path
+    guards `itemInfo(held).placeable`), so the Hoe needs no special-casing
+    there. Reusable, and emphatically NOT a durability system: nothing in the
+    game has durability and farming is a bad reason to invent it.
+    - **Tilled Soil must survive harvest**, or automation dies: the Harvester
+      resets a cell to stage 0 to replant, and if harvesting untilled the soil
+      then every automated field would need re-tilling by hand forever. Till
+      once when you lay the field out; the loop runs on top of it
+    - **No water-adjacency rule** (Minecraft's farmland-needs-water). Rain and
+      the irrigation machine below are already the water story, and a proximity
+      rule would just fight them. Soil is the substrate; water is the RATE
+    - The Hoe's circle necklace has to be told apart from the three existing
+      copper tools, and there is a free arrangement: Plate ×2 + Wood ×2
+      **beside** each other, versus the Shovel's same two items **opposite**.
+      Watch the documented ordering trap — the Axe (Plate ×3 + Wood ×2 beside)
+      is a superset of that under "holds at least", so the Axe must stay listed
+      first, which it already is
+  - **The Harvester is the automation payoff**, and it is the Miner rewritten:
+    a machine that takes a RIPE crop in radius, drops the produce into its
+    output for belts, and resets the cell to stage 0 so the field replants
+    itself. Same shape as `MachineKind::Miner`, same reach-and-cadence knobs
+  - **Irrigation closes the weather loop.** Growth leaning on `kRainGrowthMult`
+    means a dry spell stalls the farm, which is either the tension or the
+    frustration depending on whether there's an answer to it. The answer should
+    be a machine that spends **Rain Water** to water a radius, giving the Rain
+    Barrel and Bucket a real sink and letting a player buy weather independence
+    with automation
+  - **No hunger — decided July 2026.** There is no hunger meter and there will
+    not be one: hardcore death already supplies all the pressure the game needs,
+    and a food bar would turn farming into compulsory chore-work rather than an
+    optional throughput play. Crops feed the **factory**, not the player:
+    alchemy inputs (Herb is already the chain's first link), soil supply through
+    the Composter, and fuel if a crop earns a burn time. Food that isn't
+    hunger-food still fits — a meal granting a **timed buff** reuses the
+    `m_vigorTimer` machinery the Elixir of Vigor already has, with no new
+    system and no meter to keep topped up
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
@@ -225,6 +389,45 @@ the pillar slips to post-launch.
   glass would fix. Display-name-only change on the `kBlocks` row —
   `BlockId::Conduit`'s ordinal must not move — and it opens vertical tube runs
   later
+- **Onboarding & the in-game guide.** Nothing in the game teaches the game: the
+  F1 overlay is the whole of it, and a new player meets a 13-row survival menu
+  and a rotation-invariant eight-pedestal necklace with no in-game recipe
+  reference (`RECIPES.md` is a repo doc, not a screen) and no sense of what to
+  do next. On a paid release that is a refund, not a rough edge. **This must
+  land before the Q2 closed beta**, or the beta measures confusion instead of
+  balance and the feedback is unusable:
+  - **An in-game recipe browser — the game's own `RECIPES.md`.** A new overlay
+    on a new `Action` keybind (the 12th; the KEYBINDS panel is data-driven, so
+    that is a row, not a redesign), built on `beginPanel`/`menuNav`/
+    `drawSimpleRow` with the row list **windowed the way `invWindow`/
+    `invSlice` window the inventory grid, never `craftLayout`** —
+    `UiRenderer` still has no scissor primitive, and the known-gaps note below
+    already says any long list copies that pattern. It
+    reads the live tables (`kRecipes`, `recipesForMachine()`,
+    `circleRecipes()`), so unlike a markdown mirror it cannot drift from
+    `Recipes.cpp`; circle patterns draw through the existing radial
+    `circleLayout` geometry, so a player sees the necklace instead of reading
+    prose about it. Include the reverse lookup — pick an item, see what makes
+    it and on which surface — because "how do I make this" is the actual
+    question. `--dump-recipes` (July 2026) already walks all three tables to
+    generate `RECIPES.md` and is the closest thing to a prototype of the
+    traversal; the browser is that data rendered instead of printed.
+  - **An objective chain + journal.** An ordered goal list (gather sticks →
+    wood pickaxe → lay a Lesser circle → build a Press → press your first
+    plate → …), each a cheap predicate evaluated in `onTick` against inventory
+    counts, placed blocks, or a machine having run. A HUD line for the current
+    objective plus a journal overlay. A completed-objective bitmask rides the
+    save as a **v20 append**; older saves load with none complete, so evaluate
+    every predicate once on load or a veteran factory gets handed the tutorial
+  - **The island is the tutorial — no scripted level.** The early objectives
+    exist to teach the verbs that currently surprise people: mining is HELD,
+    drops must be walked over, and a circle pattern ignores rotation but counts
+    every item
+  - **Say why, at the deny funnels.** Every rejection already funnels through a
+    site that plays the "deny" sound — wrong tool, no power, blocked placement,
+    unaffordable pattern. Surfacing a one-line reason at those same call sites
+    turns the existing funnels into teaching moments with no new system, which
+    makes it the cheapest onboarding win in the codebase and the one to do first
 - Steamworks integration (app id, overlay, achievements, cloud saves)
 - Packaging: installer or Steam depot layout; code signing decision
 - [x] Logging to a file + crash handling (July 2026): `engine::Log` tees every
@@ -256,8 +459,10 @@ Kept here so they don't get lost — none are architectural dead-ends:
 - `UiRenderer` still has no scissor/clipping primitive. The hand-craft menu's
   `craftLayout` panel height still grows with the recipe count, but the Alchemy
   Circle cut it to 13 rows so it no longer overflows; the circle panel avoids
-  the trap properly, by windowing its row list to the window height
-  (`circleRows`). Any future long list should copy the circle, not the menu
+  the trap properly — it has no recipe list at all now, and the one list it
+  does carry (the inventory grid, shared by every panel) is windowed to the
+  window height via `invWindow`/`invSlice`. Any future long list should copy
+  that, not the menu
 - ~~Only frame 0 of an animated block texture is sampled~~ **done, July 2026**
   — and it was a per-vertex bank flag plus a shader uniform exactly as
   predicted, with no remesh, no re-bake and no new art: all four models were
@@ -291,6 +496,14 @@ Kept here so they don't get lost — none are architectural dead-ends:
   nothing there opens a window or a GL context — the same blind spot as the
   other two platforms, since `--selftest` is deliberately headless. Every
   platform's window/GL/input path is still verified only by playing it
+- Nothing in the game teaches the game: there is no in-game recipe reference and
+  no objective/journal system, so all discoverability rests on the F1 overlay
+  plus out-of-game docs (`RECIPES.md`). Scheduled as the Q1 2027 onboarding item,
+  ahead of the closed beta
+- There is no storage block of any kind, and logistics is one-item unfiltered
+  belts — no crates, filters, or splitters. Staged under Q4 2026's storage &
+  logistics item; the crate itself is nearly free because `Inventory` is an
+  unbounded count map
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
 - **Multiplayer: explicitly deferred (decided July 2026).** Nothing in the
   architecture anticipates it — the sim is a single-process 20 Hz tick with

@@ -118,7 +118,9 @@ namespace {
         // code; the node is harvested like any other.
         {.id = B::ResonantNode, .name = "Resonant Node", .color = {0.95f, 0.55f, 0.95f},
          .node = true, .drop = {I::Resonance, 1}, .tiles = {61, 61, 61},
-         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone},
+         // Gated at IRON: the game's premium raw is what gives the tier above
+         // copper something to be for.
+         .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron},
         {.id = B::ResonantSource, .name = "Resonant Source", .color = {1.00f, 0.60f, 1.00f},
          .emissive = 0.7f, .source = true, .spawnsNode = B::ResonantNode,
          .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}, .hardness = 0.5f},
@@ -143,6 +145,65 @@ namespace {
          .tiles = {41, 42, 42}, .hardness = 0.5f},
         {.id = B::Pedestal, .name = "Pedestal", .color = {0.58f, 0.56f, 0.62f},
          .machine = true, .drop = {I::PedestalItem, 1}, .tiles = {43, 44, 44},
+         .hardness = 0.5f},
+        // ---- The recipe overhaul: four powered machines (atlas row 8) ----
+        // The Furnace glows: it is the only machine whose "on" state is a
+        // fire, and a lit furnace should read across the factory floor at
+        // night the way an energized network does.
+        {.id = B::Furnace, .name = "Furnace", .color = {0.46f, 0.38f, 0.33f},
+         .emissive = 0.20f, .machine = true, .drop = {I::FurnaceItem, 1},
+         .tiles = {128, 129, 129}, .hardness = 0.5f},
+        {.id = B::Sifter, .name = "Sifter", .color = {0.61f, 0.52f, 0.36f},
+         .machine = true, .drop = {I::SifterItem, 1}, .tiles = {130, 131, 131},
+         .hardness = 0.5f},
+        {.id = B::Glassblower, .name = "Glassblower", .color = {0.36f, 0.44f, 0.49f},
+         .machine = true, .drop = {I::GlassblowerItem, 1}, .tiles = {132, 133, 133},
+         .hardness = 0.5f},
+        {.id = B::Compactor, .name = "Compactor", .color = {0.49f, 0.48f, 0.45f},
+         .machine = true, .drop = {I::CompactorItem, 1}, .tiles = {134, 135, 135},
+         .hardness = 0.5f},
+        // ---- The manual tier (atlas tiles 136-161) -----------------------
+        // Thirteen rows of pure data. Each is soft (hardness 0.5) and drops
+        // itself, like every other machine, so relocating your hand-cranked
+        // starter kit stays free.
+        {.id = B::Bloomery, .name = "Bloomery", .color = {0.44f, 0.36f, 0.31f},
+         .emissive = 0.18f, .machine = true, .drop = {I::BloomeryItem, 1},
+         .tiles = {136, 137, 137}, .hardness = 0.5f},
+        {.id = B::Sieve, .name = "Sieve", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::SieveItem, 1}, .tiles = {138, 139, 139},
+         .hardness = 0.5f},
+        {.id = B::Blowpipe, .name = "Blowpipe", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::BlowpipeItem, 1}, .tiles = {140, 141, 141},
+         .hardness = 0.5f},
+        {.id = B::Tamper, .name = "Tamper", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::TamperItem, 1}, .tiles = {142, 143, 143},
+         .hardness = 0.5f},
+        {.id = B::Mortar, .name = "Mortar", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::MortarItem, 1}, .tiles = {144, 145, 145},
+         .hardness = 0.5f},
+        {.id = B::HandPress, .name = "Hand Press", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::HandPressItem, 1}, .tiles = {146, 147, 147},
+         .hardness = 0.5f},
+        {.id = B::Anvil, .name = "Anvil", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::AnvilItem, 1}, .tiles = {148, 149, 149},
+         .hardness = 0.5f},
+        {.id = B::CompostHeap, .name = "Compost Heap", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::CompostHeapItem, 1}, .tiles = {150, 151, 151},
+         .hardness = 0.5f},
+        {.id = B::MixingBowl, .name = "Mixing Bowl", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::MixingBowlItem, 1}, .tiles = {152, 153, 153},
+         .hardness = 0.5f},
+        {.id = B::InfusionStand, .name = "Infusion Stand", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::InfusionStandItem, 1}, .tiles = {154, 155, 155},
+         .hardness = 0.5f},
+        {.id = B::Still, .name = "Still", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::StillItem, 1}, .tiles = {156, 157, 157},
+         .hardness = 0.5f},
+        {.id = B::HandDistiller, .name = "Hand Distiller", .color = {0.50f, 0.38f, 0.23f},
+         .machine = true, .drop = {I::HandDistillerItem, 1}, .tiles = {158, 159, 159},
+         .hardness = 0.5f},
+        {.id = B::HandTransmuter, .name = "Hand Transmuter", .color = {0.44f, 0.43f, 0.41f},
+         .machine = true, .drop = {I::HandTransmuterItem, 1}, .tiles = {160, 161, 161},
          .hardness = 0.5f},
     };
 

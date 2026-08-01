@@ -127,6 +127,46 @@ enum class ItemId : std::uint8_t {
     // reachable from the survival tier or the tech tree deadlocks.
     RuneCoreItem,
     PedestalItem,
+    // ---- The recipe overhaul: smelting, sifting, and iron ----
+    // Charcoal is the second fuel (see kFuels in Machine.h) and the reason a
+    // Furnace burns wood into something rather than just burning wood.
+    Charcoal,
+    // Sifted from sand. Nuggets are the ONLY route to iron, which makes the
+    // Sifter permanent rather than an early-game curiosity: sand throughput is
+    // the ceiling on how fast the factory can build more factory.
+    IronNugget,
+    CopperNugget,
+    // Iron is the STRUCTURAL metal -- casings, gears, frames, and the tool and
+    // armor tier above copper. Copper keeps electricity (wire, etched plates).
+    IronIngot,
+    IronPlate,
+    IronRod,
+    IronPickaxe,
+    IronAxe,
+    IronShovel,
+    IronSword,
+    IronHelm,
+    IronChest,
+    IronBoots,
+    // The four machines the overhaul added, and the thirteen hand-cranked
+    // twins that let you run every one of them before electricity.
+    FurnaceItem,
+    SifterItem,
+    GlassblowerItem,
+    CompactorItem,
+    BloomeryItem,
+    SieveItem,
+    BlowpipeItem,
+    TamperItem,
+    MortarItem,
+    HandPressItem,
+    AnvilItem,
+    CompostHeapItem,
+    MixingBowlItem,
+    InfusionStandItem,
+    StillItem,
+    HandDistillerItem,
+    HandTransmuterItem,
     Count
 };
 
@@ -138,6 +178,7 @@ enum class ToolType : std::uint8_t { None, Pickaxe, Axe, Shovel };
 // Which equipment slot a piece of armor occupies (ItemInfo::armorSlot). None =
 // the item is not armor. The three slots index the player's m_armor array.
 enum class ArmorSlot : std::uint8_t { None, Head, Body, Feet };
+
 inline constexpr int kArmorSlots = 3; // head, body, feet
 
 // Tool tiers, low to high. A block's required tier (BlockInfo::toolTier) gates
@@ -146,6 +187,7 @@ inline constexpr int kArmorSlots = 3; // head, body, feet
 inline constexpr int kTierWood   = 1;
 inline constexpr int kTierStone  = 2;
 inline constexpr int kTierCopper = 3;
+inline constexpr int kTierIron   = 4;
 
 // The player's hotbar is a fixed strip of assigned slots (ItemId::None = an
 // empty slot). Lives here rather than in game internals because the save
@@ -164,6 +206,10 @@ struct ItemInfo {
     float       miningSpeed = 1.0f;        // break-speed divisor vs. the block's by-hand hardness
     ArmorSlot   armorSlot = ArmorSlot::None; // equip slot (None = not armor)
     float       armor = 0.0f;              // flat combat damage reduction, 0..1 (armor only)
+    // Melee damage per swing, in creature hearts. 0 = not a weapon. A weapon
+    // never mines: LMB swings it. Data rather than an ItemId check, so a new
+    // sword tier is a registry row like everything else.
+    float       weaponDamage = 0.0f;
 };
 
 struct ItemStack {
@@ -179,6 +225,10 @@ inline int         itemTier(ItemId id)        { return itemInfo(id).toolTier; }
 inline float       itemMiningSpeed(ItemId id) { return itemInfo(id).miningSpeed; }
 inline ArmorSlot   itemArmorSlot(ItemId id)   { return itemInfo(id).armorSlot; }
 inline float       itemArmor(ItemId id)       { return itemInfo(id).armor; }
+inline float       itemWeaponDamage(ItemId id) { return itemInfo(id).weaponDamage; }
+// A weapon SWINGS on LMB and never mines, so both the attack path and the
+// mining path test the same predicate.
+inline bool        isWeapon(ItemId id)        { return itemInfo(id).weaponDamage > 0.0f; }
 
 // The atlas tile to draw for this item in UI. Placeable items borrow their
 // block's side tile so icons always match the world; materials own an icon.

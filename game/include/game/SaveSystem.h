@@ -74,6 +74,16 @@ namespace SaveSystem {
     bool save(const std::string& path, const SaveData& d);
     bool load(const std::string& path, SaveData& d);
 
+    // Translate a PRE-v20 Machine::selectedRecipe (a position in the recipe
+    // list as it stood then) into a runtime index today, by way of the key it
+    // named at the time. -1 = AUTO, which is also where a recipe that has
+    // since been deleted lands.
+    //
+    // Exposed only so --selftest can pin it: it is the one piece of the load
+    // path that reads a format nothing can write any more, so a regression
+    // here would silently mis-lock every old save rather than fail loudly.
+    int legacyRecipeIndex(std::uint32_t version, BlockId machine, std::int32_t saved);
+
     // The sidecar path for a save path ("<path>.meta").
     std::string metaPath(const std::string& savePath);
     // Read a slot's sidecar. Returns false (out left default) if absent/foreign.

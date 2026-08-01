@@ -96,15 +96,12 @@ private:
     void updateMachineUi();      // keyboard + mouse interaction with the panel
     void drawMachineUi();
     // The Alchemy Circle's own panel: the eight pedestals drawn in their true
-    // compass positions around the core, plus auto-arranging blueprint rows.
+    // compass positions around the core. Every pattern is laid BY HAND, one
+    // drag per pedestal -- the panel deliberately offers no blueprint list.
     // Reached through the machine panel's open/close plumbing (a Rune Core
     // dispatches here) so Esc, the cursor grab, and the drag all behave.
     void updateCircleUi();
     void drawCircleUi();
-    // Auto-arrange: sweep the ring back into the pack, then lay circleRecipes()
-    // [index] onto the pedestals (and its catalyst into the core) and lock the
-    // core to it. The panel's answer to "I know the recipe, just set it up".
-    void layBlueprint(int index);
     void openInventoryUi();      // Tab: full inventory + hotbar assignment
     void closeInventoryUi();
     void updateInventoryUi();    // drag items onto hotbar / armor slots
@@ -285,6 +282,11 @@ private:
     bool       m_machineUiOpen = false;  // machine panel (RMB on a machine)
     glm::ivec3 m_machineUiPos{0};
     int        m_machineUiSel = 0;
+    // Scroll offset (in grid ROWS) of the panel inventory grid, which is
+    // windowed rather than drawn whole -- see InvWindow in VoxelGameUi.cpp.
+    // Transient and shared by every panel that shows the grid; reset whenever
+    // one opens so a panel never comes up scrolled somewhere unexpected.
+    int        m_invScroll = 0;
 
     // Item being dragged inside the machine panel. The payload is removed from
     // its source at pickup and returned there on cancel/close (or to the

@@ -22,6 +22,59 @@ namespace MachineSystem {
 
 namespace {
 
+    // What this machine should light next: the SHORTEST burn it holds, so
+    // cheap fuel (sticks) is spent before the good stuff (charcoal) and a
+    // stockpile of the latter survives idle chores.
+    //
+    // A machine never burns an item its own recipes consume. A Furnace fed
+    // wood is there to CHAR that wood, not to eat it, and without this rule a
+    // fuel-fired machine quietly devours its own feedstock. Generators have no
+    // recipes, so nothing is excluded and they burn whatever they are handed.
+    ItemId pickFuel(const Machine& mac) {
+        const auto recipes = recipesForMachine(mac.type);
+        auto isIngredient = [&](ItemId item) {
+            for (const MachineRecipe* r : recipes) {
+                for (const ItemStack& in : r->inputs) {
+                    if (in.id == item) return true;
+                }
+            }
+            return false;
+        };
+
+        ItemId best = ItemId::None;
+        float  bestSeconds = 0.0f;
+        for (const FuelInfo& f : kFuels) {
+            if (mac.input.count(f.item) <= 0) continue;
+            if (best != ItemId::None && f.seconds >= bestSeconds) continue;
+            if (isIngredient(f.item)) continue;
+            best = f.item;
+            bestSeconds = f.seconds;
+        }
+        return best;
+    }
+
+    // Draw this craft's product. One output is the ordinary case and doesn't
+    // touch the counter at all, so only a genuinely random machine (the Sifter)
+    // perturbs the world's roll sequence. Randomness rides the same
+    // seed + saved counter as node growth and weather, so a sifting line
+    // replays identically across a save/load.
+    ItemStack rollOutput(const MachineRecipe& r, std::uint32_t seed,
+                         std::uint32_t& rngCounter) {
+        if (r.outputs.size() <= 1) return primaryOutput(r);
+
+        float total = 0.0f;
+        for (const RecipeOutput& o : r.outputs) total += std::max(0.0f, o.weight);
+        if (total <= 0.0f) return primaryOutput(r);
+
+        const std::uint32_t h = hash2(static_cast<int>(rngCounter++), 4409, seed);
+        float pick = total * static_cast<float>(h % 4096u) / 4096.0f;
+        for (const RecipeOutput& o : r.outputs) {
+            pick -= std::max(0.0f, o.weight);
+            if (pick < 0.0f) return o.stack;
+        }
+        return r.outputs.back().stack;
+    }
+
     // A generator burns fuel; a new unit is lit only when the network wants
     // power (`hungry`, from the last solve), but a lit one burns out fully.
     // Machine::progress holds the burn seconds LEFT. Returns true when the
@@ -31,12 +84,17 @@ namespace {
         if (m.progress > 0.0f) {
             m.progress = std::max(0.0f, m.progress - kTickSeconds);
         }
-        if (m.progress <= 0.0f && hungry && m.input.count(t.fuel) > 0) {
-            m.input.remove(t.fuel, 1);
-            m.progress = t.burnSeconds;
+        if (m.progress <= 0.0f && hungry) {
+            if (const ItemId fuel = pickFuel(m); fuel != ItemId::None) {
+                m.input.remove(fuel, 1);
+                m.progress = fuelSeconds(fuel) * t.fuelMult;
+                m.craftTime = m.progress; // the gauge's full scale is THIS fuel
+            }
         }
         m.crafting = m.progress > 0.0f;
-        m.craftTime = t.burnSeconds;
+        // craftTime isn't saved, so after a load widen it to whatever is still
+        // burning -- otherwise the gauge would read past full until it goes out.
+        if (m.progress > m.craftTime) m.craftTime = m.progress;
         return (m.progress > 0.0f) != wasBurning;
     }
 
@@ -150,7 +208,7 @@ namespace {
 bool machineAccepts(const Machine& mac, ItemId item) {
     const MachineTraits& t = machineTraits(mac.type);
     switch (t.kind) {
-        case MachineKind::Generator: return item == t.fuel;
+        case MachineKind::Generator: return fuelSeconds(item) > 0.0f;
         case MachineKind::Collector: return false; // the environment fills it
         case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
                                      // raws are filters (not consumed)
@@ -174,6 +232,10 @@ bool machineAccepts(const Machine& mac, ItemId item) {
         }
         case MachineKind::Processor: break;
     }
+    // A fuel-fired processor takes fuel as well as ingredients, so a belt can
+    // keep the fire going. (An item that is BOTH is still just an ingredient —
+    // see pickFuel.)
+    if (t.burnsFuel && fuelSeconds(item) > 0.0f) return true;
     const auto recipes = recipesForMachine(mac.type);
     for (std::size_t i = 0; i < recipes.size(); ++i) {
         if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
@@ -212,7 +274,8 @@ bool tickSelfPowered(const World& world, MachineMap& machines,
     return powerChanged;
 }
 
-void tickPowered(World& world, MachineMap& machines, const PowerState& power) {
+void tickPowered(World& world, MachineMap& machines, const PowerState& power,
+                 std::uint32_t seed, std::uint32_t& rngCounter) {
     for (auto& [pos, m] : machines) {
         const MachineTraits& traits = machineTraits(m.type);
         // Generators and collectors ran in tickSelfPowered (their state does
@@ -251,12 +314,30 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power) {
         }
         if (!active) { m.progress = 0.0f; continue; }
 
+        // Fuel-fired machines: heat is their power. Fuel is lit only once there
+        // is something to make, so a loaded Furnace doesn't burn its stock down
+        // while idle -- the generator's "hungry" rule applied to a recipe. Out
+        // of fuel HOLDS progress rather than losing it, exactly like the
+        // unpowered case above.
+        if (traits.burnsFuel) {
+            if (m.burnLeft <= 0.0f) {
+                const ItemId fuel = pickFuel(m);
+                if (fuel == ItemId::None) continue;
+                m.input.remove(fuel, 1);
+                m.burnLeft = fuelSeconds(fuel) * traits.fuelMult;
+            }
+            m.burnLeft = std::max(0.0f, m.burnLeft - kTickSeconds);
+        }
+
+        // The manual tier's entire cost: the same recipe, times longer.
+        const float seconds = active->seconds * traits.speedMult;
         m.crafting = true;
-        m.craftTime = active->seconds;
+        m.craftTime = seconds;
         m.progress += kTickSeconds;
-        if (m.progress >= active->seconds) {
+        if (m.progress >= seconds) {
             for (const ItemStack& in : active->inputs) m.input.remove(in.id, in.count);
-            m.output.add(active->output.id, active->output.count);
+            const ItemStack won = rollOutput(*active, seed, rngCounter);
+            if (won.id != ItemId::None && won.count > 0) m.output.add(won.id, won.count);
             m.progress = 0.0f;
         }
     }

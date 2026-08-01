@@ -113,7 +113,7 @@ void VoxelGame::onUpdate(float dt) {
     }
 
     // F6 is a dev key (the F4 precedent): the boss-testing kit — a Teleport
-    // Key + Copper Sword + Fusion Catalyst, plus two different source blocks so
+    // Key + Iron Sword + Fusion Catalyst, plus two different source blocks so
     // fusion is testable straight away (place them adjacent, RMB the catalyst).
     // All assigned onto the hotbar so they are usable at once (the default
     // hotbar is full; the last slots are sacrificed).
@@ -141,7 +141,7 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::EssenceSourceItem, 4);
         give(ItemId::TeleportKey, 1, kHotbarSlots - 4);
         give(ItemId::StormKey, 1, kHotbarSlots - 3);
-        give(ItemId::CopperSword, 1, kHotbarSlots - 2);
+        give(ItemId::IronSword, 1, kHotbarSlots - 2);
         give(ItemId::FusionCatalyst, 1, kHotbarSlots - 1);
         // Combat pillar: usable gear on the hotbar (Forge to place, Mana Vials
         // to cast, Elixirs to drink) plus the mats + boss drops to forge armor
@@ -167,10 +167,27 @@ void VoxelGame::onUpdate(float dt) {
         give(ItemId::PedestalItem, 8, kHotbarSlots - 5);
         m_inventory.add(ItemId::CopperIngot, 16);
         m_inventory.add(ItemId::CrystalDust, 12);
-        m_inventory.add(ItemId::CopperRod, 8);
+        m_inventory.add(ItemId::IronRod, 8);
         m_inventory.add(ItemId::Gear, 4);
         m_inventory.add(ItemId::MachineCasing, 2);
         m_inventory.add(ItemId::EtchedPlate, 2);
+        // The smelting/sifting tier: both halves of each pair, so the manual
+        // twin can be watched running the SAME recipe three times slower
+        // right next to its powered counterpart.
+        give(ItemId::BloomeryItem, 1, kHotbarSlots - 1);
+        give(ItemId::FurnaceItem, 1, kHotbarSlots - 2);
+        give(ItemId::SieveItem, 1, kHotbarSlots - 3);
+        m_inventory.add(ItemId::SifterItem, 1);
+        m_inventory.add(ItemId::GlassblowerItem, 1);
+        m_inventory.add(ItemId::CompactorItem, 1);
+        m_inventory.add(ItemId::MortarItem, 1);
+        m_inventory.add(ItemId::HandPressItem, 1);
+        // Iron: stock at every link of the sand -> nugget -> ingot -> plate
+        // chain, plus the fuel to run it.
+        m_inventory.add(ItemId::Charcoal, 32);
+        m_inventory.add(ItemId::IronNugget, 32);
+        m_inventory.add(ItemId::IronIngot, 16);
+        m_inventory.add(ItemId::IronPlate, 24);
         // Raw stock so the Circle's blueprint rows actually light up -- the
         // panel only lists patterns the pack can lay.
         m_inventory.add(ItemId::Wood, 32);
@@ -179,6 +196,8 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::Crystal, 12);
         m_inventory.add(ItemId::Glass, 12);
         m_inventory.add(ItemId::Essence, 12);
+        m_inventory.add(ItemId::Sand, 32);
+        m_inventory.add(ItemId::DirtItem, 32);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }
@@ -229,6 +248,7 @@ void VoxelGame::onUpdate(float dt) {
     // the world; the cursor is released for hover/click.
     if (input().wasKeyPressed(key(Action::CraftMenu))) {
         m_menuOpen = !m_menuOpen;
+        m_invScroll = 0; // never open a panel already scrolled somewhere
         window().setRelativeMouse(!m_menuOpen);
         audio().play(m_menuOpen ? "open" : "close", kUiVolume);
         if (m_invOpen) { // the overlays are mutually exclusive
@@ -367,17 +387,18 @@ void VoxelGame::onUpdate(float dt) {
         audio().play("craft", kCraftVolume);
     };
 
-    // Sword: LMB swings along the aim ray, creatures first (needs no block
+    // A weapon: LMB swings along the aim ray, creatures first (needs no block
     // under the crosshair). A connected swing consumes the click; a miss
-    // whooshes and falls through to mining.
+    // whooshes and falls through to mining. Which items are weapons, and how
+    // hard they hit, is registry data (ItemInfo::weaponDamage).
     bool swordHit = false;
     if (input().wasMousePressed(SDL_BUTTON_LEFT) && m_attackCooldown <= 0.0f &&
-        held == ItemId::CopperSword && m_inventory.has(held)) {
+        isWeapon(held) && m_inventory.has(held)) {
         m_attackCooldown = kSwordCooldown;
         audio().play("swing", kUiVolume);
         const CreatureSystem::MeleeResult mr = m_creatures.tryMeleeAttack(
             *m_world, audio(), cam.position, cam.front(), m_dimension,
-            kSwordDamage * vigorMult);
+            itemWeaponDamage(held) * vigorMult);
         swordHit = mr.hit;
         if (mr.bossDied) awardBossKill(mr);
     }
@@ -480,7 +501,7 @@ void VoxelGame::onUpdate(float dt) {
     // sword) swings on press instead — it never mines. When the aim leaves the
     // cell or the button releases, progress resets.
     const bool canMine = aim.hit && m_dimension == DimensionId::Overworld &&
-                         !swordHit && held != ItemId::CopperSword &&
+                         !swordHit && !isWeapon(held) &&
                          held != ItemId::ManaVial &&
                          input().isMouseDown(SDL_BUTTON_LEFT);
     if (canMine) {

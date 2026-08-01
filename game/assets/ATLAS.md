@@ -1,10 +1,15 @@
 # atlas.png tile map
 
-The atlas is **256x128**: a **16x8 grid of 16px tiles**. Tile index =
+The atlas is **256x256**: a **16x16 grid of 16px tiles**. Tile index =
 `row * 16 + col`. Repaint any tile in any pixel editor and rebuild
 (`cmake --build out/build/x64-Debug` copies it next to the exe) — no code
 changes needed unless you *move* a tile. World tiles must stay fully opaque;
-item icons (rows 4-5) may use transparency.
+item icons (rows 4-7, 11) may use transparency.
+
+The sheet was 8 rows until the recipe overhaul. Because the index is
+`row * 16 + col` and the **column count never changed**, growing downward left
+every existing tile exactly where it was — which is why this grid may only
+ever grow in rows, never in columns.
 
 The mapping lives in code at `game/src/Block.cpp` (the `tiles` field on each
 kBlocks row: per-block top/side/bottom, surfaced by the inline
@@ -98,10 +103,53 @@ you want to *discard* hand edits and start over.
 | 114 | machine casing | 115 | etched plate |
 | 116-127 | spare | | |
 
-All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63, and
-116-127) are free for new blocks/items. Claim a tile here, add a painter to
-`make_atlas.py`, and point the code at it (the `tiles` field on the kBlocks row
-for blocks, `atlasTile` on the kItems row for material items).
+## Row 8 — the smelting & sifting tier (tiles 128-135)
+
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 128 | furnace top (flue + fire) | 129 | furnace side (brick + mouth) |
+| 130 | sifter top (wire mesh) | 131 | sifter side (hopper + tray) |
+| 132 | glassblower top (gather) | 133 | glassblower side (pipe + bulb) |
+| 134 | compactor top (mould) | 135 | compactor side (ram + bed) |
+
+## Rows 8-10 — the manual tier (tiles 136-161)
+
+Thirteen hand-cranked twins, painted from the `MANUAL_TIER` table in
+`make_atlas.py` rather than one at a time: every top tile is a worn work
+surface in the powered twin's accent color, every side tile carries the same
+**hand crank**, so the whole tier reads as one tier.
+
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 136/137 | bloomery (← furnace) | 138/139 | sieve (← sifter) |
+| 140/141 | blowpipe (← glassblower) | 142/143 | tamper (← compactor) |
+| 144/145 | mortar (← grinder) | 146/147 | hand press (← press) |
+| 148/149 | anvil (← forge) | 150/151 | compost heap (← composter) |
+| 152/153 | mixing bowl (← cauldron) | 154/155 | infusion stand (← infuser) |
+| 156/157 | still (← alembic) | 158/159 | hand distiller (← distiller) |
+| 160/161 | hand transmuter (← transmuter) | 162-175 | spare |
+
+## Row 11 — iron & charcoal (tiles 176-188)
+
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 176 | iron nugget | 177 | copper nugget |
+| 178 | iron ingot | 179 | iron plate |
+| 180 | iron rod | 181 | charcoal |
+| 182 | iron pickaxe | 183 | iron axe |
+| 184 | iron shovel | 185 | iron sword |
+| 186 | iron helm | 187 | iron chestplate |
+| 188 | iron boots | 189-191 | spare |
+
+## Rows 12-15 — spare (tiles 192-255)
+
+Empty. This is the headroom the 8→16 row growth bought.
+
+All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63,
+116-127, 162-175, 189-255) are free for new blocks/items. Claim a tile here,
+add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
+on the kBlocks row for blocks, `atlasTile` on the kItems row for material
+items).
 
 ## shapes.png — the other sheet
 

@@ -73,6 +73,34 @@ enum class BlockId : std::uint8_t {
     // now occupies factory floor and can be belt-fed. See AlchemyCircle.h.
     RuneCore,
     Pedestal,
+    // ---- The recipe overhaul ------------------------------------------
+    // Four powered machines. The Furnace burns FUEL rather than drawing
+    // power (heat is its own resource); the other three are ordinary
+    // Processors. Between them they own what used to be four free clicks in
+    // the hand-craft menu: smelting, glass, vials, and dirt+sand -> stone.
+    Furnace,
+    Sifter,
+    Glassblower,
+    Compactor,
+    // The MANUAL tier: one hand-cranked twin per Processor. Every one of
+    // these is pure data -- a kBlocks row, a kMachineTraits row pointing at
+    // its powered counterpart's recipes, and a build recipe. No new code,
+    // no new MachineKind. They ask for no power and run at
+    // MachineTraits::speedMult, which is the entire cost of playing before
+    // you have electricity.
+    Bloomery,       // Furnace
+    Sieve,          // Sifter
+    Blowpipe,       // Glassblower
+    Tamper,         // Compactor
+    Mortar,         // Grinder
+    HandPress,      // Press
+    Anvil,          // Forge
+    CompostHeap,    // Composter
+    MixingBowl,     // Cauldron
+    InfusionStand,  // Infuser
+    Still,          // Alembic
+    HandDistiller,  // Distiller
+    HandTransmuter, // Transmuter
     Count
 };
 

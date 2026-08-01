@@ -4,16 +4,21 @@
 #include "game/Chunk.h"
 #include "game/Block.h"
 #include "game/Item.h"
+#include "game/Machine.h"
+#include "game/Recipes.h"
 
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <string>
+#include <string_view>
 
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 19;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 20;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -23,14 +28,19 @@ namespace {
     // (Composter block + stick/pebble/tool items) — no layout change, so old
     // saves still load. v18 appended the three equipped-armor slot ids at the
     // tail (older saves default to unarmored) and GREW the enums (Forge block +
-    // armor/Forge items). v19 is the one entry here that is NOT a tail append:
-    // Ingot -> Copper Plate moved off the Grinder onto the Press, so the
-    // Grinder lost a row and the Press gained one ahead of its existing rows.
-    // The file layout is untouched, so v18 saves still parse -- but
-    // Machine::selectedRecipe is an index into those lists, so a v<19 Grinder
-    // or Press with a locked MAKE row is REMAPPED on load (see below) instead
-    // of silently making the wrong thing. Any REORDERING or non-tail change
-    // must drop this compatibility or carry a migration like that one.
+    // armor/Forge items). v19 was the first entry that was NOT a tail append:
+    // Ingot -> Copper Plate moved off the Grinder onto the Press, shifting both
+    // machines' recipe lists under saved locks, and had to be migrated by
+    // shuffling indices on load.
+    //
+    // v20 ends that whole class of problem. A machine's locked recipe is now
+    // stored as the recipe's KEY (a length-prefixed string; empty = AUTO)
+    // instead of its position, so the recipe tables can be reordered, edited,
+    // and deleted freely -- see Recipes.h. Pre-v20 saves still carry an index,
+    // which is migrated through the frozen v19 order snapshot below, so v19's
+    // bespoke remap is gone with it. v20 also appends `burnLeft` to each
+    // machine record (fuel-fired Processors); older saves default it to 0,
+    // which just means the burner relights on its next craft.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -71,13 +81,113 @@ namespace {
         return true;
     }
 
+    // Length-prefixed UTF-8. Only used for recipe keys, which are short by
+    // construction, so the cap doubles as corruption detection.
+    void writeString(std::ofstream& out, std::string_view s) {
+        writePod(out, static_cast<std::uint32_t>(s.size()));
+        if (!s.empty()) out.write(s.data(), static_cast<std::streamsize>(s.size()));
+    }
+
+    bool readString(std::ifstream& in, std::string& s) {
+        std::uint32_t n = 0;
+        if (!readPod(in, n) || n > 256u) return false;
+        s.assign(n, '\0');
+        if (n > 0) in.read(s.data(), static_cast<std::streamsize>(n));
+        return in.good();
+    }
+
     bool validBlock(std::uint8_t b) {
         return b < static_cast<std::uint8_t>(BlockId::Count);
     }
 
+    // ---- Frozen v19 recipe order ----------------------------------------
+    // Saves before v20 stored Machine::selectedRecipe as a POSITION in these
+    // lists. This is a snapshot of that order taken when v20 landed, so an old
+    // lock can be translated into the key it meant at the time. It is HISTORY,
+    // not content: never edit it to track kMachineRecipes / kCircleRecipes.
+    // A position naming a recipe that no longer exists resolves to AUTO.
+    constexpr const char* kV19Grinder[] = {
+        "grinder/ground-herb", "grinder/crystal-dust", "grinder/sand"};
+    constexpr const char* kV19Composter[] = {
+        "composter/dirt-from-sticks", "composter/dirt-from-sapling"};
+    constexpr const char* kV19Cauldron[] = {
+        "cauldron/herbal-tincture", "cauldron/mineral-solution"};
+    constexpr const char* kV19Infuser[] = {
+        "infuser/healing-draught", "infuser/mana-vial"};
+    constexpr const char* kV19Alembic[] = {"alembic/elixir-of-vigor"};
+    constexpr const char* kV19Distiller[] = {"distiller/refined-elixir"};
+    constexpr const char* kV19Transmuter[] = {
+        "transmuter/philosophers-catalyst", "transmuter/philosophers-stone"};
+    constexpr const char* kV19Forge[] = {
+        "forge/copper-helm", "forge/copper-chest", "forge/copper-boots",
+        "forge/aegis-helm", "forge/aegis-chest", "forge/aegis-boots"};
+    constexpr const char* kV19Press[] = {
+        "press/copper-plate", "press/copper-rod", "press/gear",
+        "press/machine-casing", "press/etched-plate", "press/machine-frame"};
+
+    struct LegacyList {
+        BlockId            machine;
+        const char* const* keys;
+        std::size_t        count;
+    };
+
+    constexpr LegacyList kV19Lists[] = {
+        {BlockId::Grinder,    kV19Grinder,    std::size(kV19Grinder)},
+        {BlockId::Composter,  kV19Composter,  std::size(kV19Composter)},
+        {BlockId::Cauldron,   kV19Cauldron,   std::size(kV19Cauldron)},
+        {BlockId::Infuser,    kV19Infuser,    std::size(kV19Infuser)},
+        {BlockId::Alembic,    kV19Alembic,    std::size(kV19Alembic)},
+        {BlockId::Distiller,  kV19Distiller,  std::size(kV19Distiller)},
+        {BlockId::Transmuter, kV19Transmuter, std::size(kV19Transmuter)},
+        {BlockId::Forge,      kV19Forge,      std::size(kV19Forge)},
+        {BlockId::Press,      kV19Press,      std::size(kV19Press)},
+    };
+
+    constexpr const char* kV19Circle[] = {
+        "circle/grinder", "circle/generator", "circle/composter",
+        "circle/rain-barrel", "circle/wire", "circle/press",
+        "circle/copper-axe", "circle/copper-pickaxe", "circle/copper-shovel",
+        "circle/copper-sword", "circle/conduit", "circle/wrench",
+        "circle/miner", "circle/distiller", "circle/transmuter",
+        "circle/infuser", "circle/cauldron", "circle/forge", "circle/alembic",
+        "circle/herb-source", "circle/crystal-source", "circle/copper-source",
+        "circle/sand-source", "circle/essence-source",
+        "circle/fusion-catalyst-from-resonance",
+        "circle/philosophers-catalyst-from-resonance",
+        "circle/teleport-key", "circle/storm-key",
+        "circle/fusion-catalyst-from-stone",
+    };
+
 } // namespace
 
 namespace SaveSystem {
+
+    // Translate a pre-v20 index into the current runtime index, via the key it
+    // named back then. Unknown -> -1 (AUTO), which is the honest answer: better
+    // no lock than the wrong one.
+    int legacyRecipeIndex(std::uint32_t version, BlockId machine, std::int32_t sel) {
+        if (sel < 0) return -1;
+
+        // v19 moved Ingot -> Copper Plate off the Grinder onto the Press, so a
+        // v<19 index has to be walked forward into v19 order first. The Grinder
+        // lost its row 0 (rows shift down; the plate lock itself has nowhere to
+        // go), the Press gained one ahead of its rows.
+        if (version < 19) {
+            if (machine == BlockId::Grinder) sel = sel > 0 ? sel - 1 : -1;
+            else if (machine == BlockId::Press) sel += 1;
+            if (sel < 0) return -1;
+        }
+
+        const std::size_t at = static_cast<std::size_t>(sel);
+        if (machineTraits(machine).kind == MachineKind::RuneCore) {
+            return at < std::size(kV19Circle) ? circleIndexForKey(kV19Circle[at]) : -1;
+        }
+        for (const LegacyList& l : kV19Lists) {
+            if (l.machine != machine) continue;
+            return at < l.count ? recipeIndexForKey(machine, l.keys[at]) : -1;
+        }
+        return -1;
+    }
 
 bool save(const std::string& path, const SaveData& d) {
     // Write to a sibling temp file, then rotate it in (current file -> .bak),
@@ -121,8 +231,13 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::int32_t>(pos.y));
         writePod(out, static_cast<std::int32_t>(pos.z));
         writePod(out, static_cast<std::uint8_t>(m.type));
-        writePod(out, static_cast<std::int32_t>(m.selectedRecipe));
+        // The lock travels as the recipe's KEY, so editing the recipe tables
+        // can never repoint it (Recipes.h). Empty = AUTO.
+        writeString(out, machineTraits(m.type).kind == MachineKind::RuneCore
+                             ? circleKeyFor(m.selectedRecipe)
+                             : recipeKeyFor(m.type, m.selectedRecipe));
         writePod(out, m.progress);
+        writePod(out, m.burnLeft);
         writeInventory(out, m.input);
         writeInventory(out, m.output);
     }
@@ -284,20 +399,23 @@ bool load(const std::string& path, SaveData& d) {
         if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
         if (!readPod(in, type) || !validBlock(type) || !isMachine(static_cast<BlockId>(type))) return false;
         m.type = static_cast<BlockId>(type);
-        std::int32_t sel = -1;
-        if (!readPod(in, sel)) return false;
-        // v19 moved Ingot -> Copper Plate from the Grinder to the Press, which
-        // shifted BOTH machines' recipe lists, so a pre-v19 lock on either
-        // points at the wrong row. The Grinder lost its row 0: rows 1..3 shift
-        // down, and the plate lock itself has nowhere to go, so it falls back
-        // to AUTO rather than quietly becoming "grind herb". The Press gained
-        // a new row 0: everything it had shifts up one.
-        if (version < 19 && sel >= 0) {
-            if (m.type == BlockId::Grinder) sel = sel > 0 ? sel - 1 : -1;
-            else if (m.type == BlockId::Press) sel += 1;
+        if (version >= 20) {
+            // The lock is a key. A key that no longer names a recipe -- because
+            // it was renamed or deleted -- lands on AUTO instead of on whatever
+            // row happens to sit at some index today.
+            std::string key;
+            if (!readString(in, key)) return false;
+            m.selectedRecipe = machineTraits(m.type).kind == MachineKind::RuneCore
+                                   ? circleIndexForKey(key)
+                                   : recipeIndexForKey(m.type, key);
+        } else {
+            std::int32_t sel = -1;
+            if (!readPod(in, sel)) return false;
+            m.selectedRecipe = legacyRecipeIndex(version, m.type, sel);
         }
-        m.selectedRecipe = sel;
         if (!readPod(in, m.progress)) return false;
+        // burnLeft appended in v20; older saves relight on the next craft.
+        if (version >= 20 && !readPod(in, m.burnLeft)) return false;
         if (!readInventory(in, m.input) || !readInventory(in, m.output)) return false;
         d.registries.machines[{x, y, z}] = std::move(m);
     }

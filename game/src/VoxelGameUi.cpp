@@ -32,8 +32,19 @@ namespace {
         static constexpr float RowH = 26.0f;   // action row height
         static constexpr float Cell = 40.0f;   // item cell size
         static constexpr float Gap  = 6.0f;    // between cells
+        static constexpr float CellPitch = Cell + Gap;
         static constexpr float StripH = Cell + 12.0f; // IN / OUT band height
         static constexpr int   InvCols = 10;
+        // The fixed bands, named so the height math and the "does it fit"
+        // math read from the same numbers instead of two copies drifting.
+        static constexpr float HeaderH  = 44.0f;
+        static constexpr float BarH     = 20.0f;
+        static constexpr float LabelH   = 20.0f;
+        static constexpr float TooltipH = 18.0f;
+        static constexpr float FooterH  = 24.0f;
+        static constexpr float Pad      = 12.0f;
+        // No panel may come within this of the window edge.
+        static constexpr float Margin   = 24.0f;
 
         float px = 0, py = 0, panelW = 640.0f, panelH = 0;
         int   rows = 0;      // action rows (AUTO + recipes + TAKE)
@@ -49,26 +60,97 @@ namespace {
         float footerY = 0;
     };
 
-    PanelLayout panelLayout(int w, int h, int actionRows, int invCount) {
+    // ---- The windowed inventory grid ------------------------------------
+    // The grid holds one cell per item TYPE the player owns, so it is the one
+    // part of a panel that grows without bound and only ever upward -- adding
+    // content to kItems makes every panel taller. Left alone it eventually
+    // pushes the panel past the window and the header scrolls off the top,
+    // which is what the recipe overhaul's ~30 new items made visible.
+    //
+    // `UiRenderer` still has no scissor primitive, so the fix is to draw the
+    // rows that FIT and scroll the rest. Update and draw both take the same
+    // slice, so hit-testing and drawing cannot disagree about which cell is
+    // which.
+    struct InvWindow {
+        int rows = 0;      // grid rows actually drawn
+        int totalRows = 0; // rows the full list would need
+        int first = 0;     // topmost drawn row
+        int hidden = 0;    // item cells scrolled out of view
+        bool scrollable() const { return totalRows > rows; }
+    };
+
+    InvWindow invWindow(int itemCount, int rowsThatFit, int scroll) {
+        InvWindow v;
+        v.totalRows = std::max(1, (itemCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+        v.rows = std::clamp(rowsThatFit, 1, v.totalRows);
+        v.first = std::clamp(scroll, 0, v.totalRows - v.rows);
+        v.hidden = itemCount - std::min(itemCount, v.rows * PanelLayout::InvCols);
+        return v;
+    }
+
+    // The visible slice of an item list. Callers index THIS, so a cell index
+    // means the same thing in the layout, the draw, and the drag pickup.
+    std::vector<std::pair<ItemId, int>> invSlice(
+            const std::vector<std::pair<ItemId, int>>& items, const InvWindow& v) {
+        const int n = static_cast<int>(items.size());
+        const int from = std::min(n, v.first * PanelLayout::InvCols);
+        const int to   = std::min(n, from + v.rows * PanelLayout::InvCols);
+        return {items.begin() + from, items.begin() + to};
+    }
+
+    // Suffix for an INVENTORY label when part of the grid is scrolled away.
+    std::string invMoreLabel(const InvWindow& v) {
+        if (!v.scrollable()) return {};
+        return "   ( " + std::to_string(v.hidden) + " MORE - WHEEL )";
+    }
+
+    // Wheel over the grid scrolls it. Returns true when the wheel was spent
+    // here, so a panel that also drives row selection with the wheel leaves
+    // its rows alone while the cursor is over the grid. The new offset lands
+    // next frame, which is what keeps the cells hit-tested this frame the same
+    // ones the player was looking at when they clicked.
+    bool scrollInvGrid(engine::Input& in, int& scroll, const InvWindow& v,
+                       float gridX, float gridY, float mx, float my) {
+        if (!v.scrollable()) return false;
+        const float gw = PanelLayout::InvCols * PanelLayout::CellPitch;
+        const float gh = v.rows * PanelLayout::CellPitch;
+        if (mx < gridX || mx >= gridX + gw || my < gridY || my >= gridY + gh) return false;
+        const int wheel = in.wheelSteps();
+        if (wheel == 0) return false;
+        scroll = std::clamp(v.first - wheel, 0, v.totalRows - v.rows);
+        return true;
+    }
+
+    // Everything in the machine panel that is not the inventory grid.
+    float panelFixedHeight(int actionRows) {
+        return PanelLayout::HeaderH + actionRows * PanelLayout::RowH +
+               2.0f * PanelLayout::StripH + PanelLayout::BarH + PanelLayout::LabelH +
+               PanelLayout::TooltipH + PanelLayout::FooterH + PanelLayout::Pad;
+    }
+
+    int panelInvRowsThatFit(int windowH, int actionRows) {
+        const float avail = static_cast<float>(windowH) - PanelLayout::Margin -
+                            panelFixedHeight(actionRows);
+        return static_cast<int>(avail / PanelLayout::CellPitch);
+    }
+
+    PanelLayout panelLayout(int w, int h, int actionRows, int invRows) {
         PanelLayout L;
         L.rows = actionRows;
-        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
-        const float headerH = 44.0f, barH = 20.0f, invLabelH = 20.0f;
-        const float tooltipH = 18.0f, footerH = 24.0f;
-        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        L.panelH = headerH + actionRows * PanelLayout::RowH + 2.0f * PanelLayout::StripH +
-                   barH + invLabelH + invH + tooltipH + footerH + 12.0f;
+        L.invRows = std::max(1, invRows);
+        const float invH = L.invRows * PanelLayout::CellPitch;
+        L.panelH = panelFixedHeight(actionRows) + invH;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
-        L.rowsY = L.py + headerH;
+        L.rowsY = L.py + PanelLayout::HeaderH;
         L.inY = L.rowsY + actionRows * PanelLayout::RowH + 6.0f;
         L.outY = L.inY + PanelLayout::StripH;
         L.stripCellsX = L.px + 64.0f;
         L.barY = L.outY + PanelLayout::StripH + 2.0f;
-        L.invLabelY = L.barY + barH;
-        L.invY = L.invLabelY + invLabelH;
+        L.invLabelY = L.barY + PanelLayout::BarH;
+        L.invY = L.invLabelY + PanelLayout::LabelH;
         L.tooltipY = L.invY + invH + 2.0f;
-        L.footerY = L.py + L.panelH - footerH + 2.0f;
+        L.footerY = L.py + L.panelH - PanelLayout::FooterH + 2.0f;
         return L;
     }
 
@@ -78,14 +160,14 @@ namespace {
     // the panel is the thing you built on the ground. Rotation-invariant
     // matching is what makes that honest -- north on the panel is north in the
     // world, and the pattern would still match if it weren't.
-    // The blueprint list is WINDOWED. `UiRenderer` has no scissor primitive, so
-    // a list that grows with the recipe table is how the hand-craft menu ended
-    // up taller than the window; here the panel height is fixed and the drawn
-    // rows scroll with the selection instead.
-    // Every fixed band of the circle panel, so the row window can be sized
-    // from what is actually left over instead of a guessed constant.
+    // There is deliberately NO blueprint list. The circle is laid BY HAND, one
+    // drag per pedestal -- a recipe you PERFORM rather than a row you click --
+    // so the panel shows the ring, what it currently spells, and nothing that
+    // would arrange it for you. The only action row left is TAKE OUTPUTS, which
+    // every machine panel has, so the panel's height no longer grows with the
+    // recipe table at all and only the inventory grid needs windowing.
     namespace circleMetrics {
-        inline constexpr float RowH    = 22.0f;
+        inline constexpr float RowH    = 22.0f;  // the lone TAKE OUTPUTS row
         inline constexpr float HeaderH = 44.0f;
         inline constexpr float RingH   = 196.0f;
         inline constexpr float StatusH = 22.0f;
@@ -94,39 +176,21 @@ namespace {
         inline constexpr float TooltipH = 18.0f;
         inline constexpr float FooterH = 24.0f;
         inline constexpr float Pad     = 10.0f;
-        inline constexpr int   MaxRows = 9;  // never taller than this
-        inline constexpr int   MinRows = 3;  // ...nor less usable than this
 
-        // Everything except the blueprint rows themselves.
-        inline float fixedHeight(int invRows) {
-            return HeaderH + RingH + StatusH + BarH + LabelH + PanelLayout::StripH +
-                   LabelH + static_cast<float>(invRows) *
-                       (PanelLayout::Cell + PanelLayout::Gap) +
-                   TooltipH + FooterH + Pad;
+        // Everything except the inventory grid -- the one part that still
+        // grows with content, and so the one part that scrolls.
+        inline float fixedHeight() {
+            return HeaderH + RingH + StatusH + RowH + BarH + LabelH +
+                   PanelLayout::StripH + LabelH + TooltipH + FooterH + Pad;
         }
-    }
 
-    struct CircleRows {
-        int total = 0;   // blueprint rows + TAKE OUTPUTS
-        int visible = 0; // how many are drawn at once
-        int first = 0;   // index of the topmost drawn row
-    };
-
-    // How many rows fit in THIS window, given how tall the inventory grid is.
-    // The hand-craft menu overflows because its height grows with the recipe
-    // count; this panel instead scrolls, so it fits at any window size.
-    CircleRows circleRows(int total, int sel, int windowH, int invRows) {
-        const float avail = static_cast<float>(windowH) - 24.0f -
-                            circleMetrics::fixedHeight(invRows);
-        const int fits = static_cast<int>(avail / circleMetrics::RowH);
-        const int cap = std::clamp(fits, circleMetrics::MinRows, circleMetrics::MaxRows);
-        CircleRows r;
-        r.total = std::max(1, total);
-        r.visible = std::min(r.total, cap);
-        if (r.total > r.visible) {
-            r.first = std::max(0, std::min(sel - r.visible / 2, r.total - r.visible));
+        // The ring widget alone is 196px, so this panel runs out of room before
+        // the others do: a short window loses GRID rows, and nothing else.
+        inline int invRowsThatFit(int windowH) {
+            const float avail =
+                static_cast<float>(windowH) - PanelLayout::Margin - fixedHeight();
+            return static_cast<int>(avail / PanelLayout::CellPitch);
         }
-        return r;
     }
 
     struct CircleLayout {
@@ -135,8 +199,7 @@ namespace {
         float ringCx = 0, ringCy = 0;   // centre of the radial widget
         float ringR = 80.0f;            // orbit radius of the eight cells
         float statusY = 0;              // "WILL MAKE ..." line
-        float rowsY = 0;                // blueprint rows
-        int   rows = 0;
+        float rowY = 0;                 // the TAKE OUTPUTS row
         float barY = 0;
         float outLabelY = 0, outY = 0;  // the core's output strip
         float invLabelY = 0, invY = 0;
@@ -144,29 +207,25 @@ namespace {
         float tooltipY = 0, footerY = 0;
     };
 
-    CircleLayout circleLayout(int w, int h, int nRows, int invCount) {
+    CircleLayout circleLayout(int w, int h, int invRows) {
         CircleLayout L;
-        L.rows = nRows;
-        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+        L.invRows = std::max(1, invRows);
         using namespace circleMetrics;
-        const float headerH = HeaderH, ringH = RingH, statusH = StatusH;
-        const float barH = BarH, stripH = PanelLayout::StripH, labelH = LabelH;
-        const float footerH = FooterH;
-        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        L.panelH = fixedHeight(L.invRows) + nRows * CircleLayout::RowH;
+        const float invH = L.invRows * PanelLayout::CellPitch;
+        L.panelH = fixedHeight() + invH;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.ringCx = L.px + L.panelW * 0.5f;
-        L.ringCy = L.py + headerH + ringH * 0.5f;
-        L.statusY = L.py + headerH + ringH;
-        L.rowsY = L.statusY + statusH;
-        L.barY = L.rowsY + nRows * CircleLayout::RowH + 2.0f;
-        L.outLabelY = L.barY + barH;
-        L.outY = L.outLabelY + labelH;
-        L.invLabelY = L.outY + stripH;
-        L.invY = L.invLabelY + labelH;
+        L.ringCy = L.py + HeaderH + RingH * 0.5f;
+        L.statusY = L.py + HeaderH + RingH;
+        L.rowY = L.statusY + StatusH;
+        L.barY = L.rowY + CircleLayout::RowH + 2.0f;
+        L.outLabelY = L.barY + BarH;
+        L.outY = L.outLabelY + LabelH;
+        L.invLabelY = L.outY + PanelLayout::StripH;
+        L.invY = L.invLabelY + LabelH;
         L.tooltipY = L.invY + invH + 2.0f;
-        L.footerY = L.py + L.panelH - footerH + 2.0f;
+        L.footerY = L.py + L.panelH - FooterH + 2.0f;
         return L;
     }
 
@@ -190,22 +249,6 @@ namespace {
             }
         }
         return -2;
-    }
-
-    // A blueprint the player can actually lay right now: every ring slot and
-    // the catalyst are covered by what they carry. Listing only these keeps
-    // the panel short -- the hand menu's unscrolled overflow is a known trap.
-    bool canLay(const CircleRecipe& r, const Inventory& inv) {
-        Inventory need;
-        for (const ItemStack& s : r.ring) {
-            if (s.id != ItemId::None) need.add(s.id, s.count);
-        }
-        if (r.center.id != ItemId::None) need.add(r.center.id, r.center.count);
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
-            const ItemId id = static_cast<ItemId>(i);
-            if (need.count(id) > 0 && !inv.has(id, need.count(id))) return false;
-        }
-        return true;
     }
 
     // The item types present in an inventory, with counts, in enum order.
@@ -354,14 +397,25 @@ namespace {
         float tooltipY = 0, footerY = 0;
     };
 
-    CraftLayout craftLayout(int w, int h, int nRecipes, int invCount) {
+    float craftFixedHeight(int nRecipes) {
+        const float headerH = 40.0f, invLabelH = 20.0f, tooltipH = 16.0f, footerH = 22.0f;
+        return headerH + nRecipes * CraftLayout::RowH + invLabelH +
+               tooltipH + footerH + 8.0f;
+    }
+
+    int craftInvRowsThatFit(int windowH, int nRecipes) {
+        const float avail = static_cast<float>(windowH) - PanelLayout::Margin -
+                            craftFixedHeight(nRecipes);
+        return static_cast<int>(avail / PanelLayout::CellPitch);
+    }
+
+    CraftLayout craftLayout(int w, int h, int nRecipes, int invRows) {
         CraftLayout L;
         L.rows = nRecipes;
-        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
-        const float headerH = 40.0f, invLabelH = 20.0f, tooltipH = 16.0f, footerH = 22.0f;
-        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        L.panelH = headerH + nRecipes * CraftLayout::RowH + invLabelH + invH +
-                   tooltipH + footerH + 8.0f;
+        L.invRows = std::max(1, invRows);
+        const float invLabelH = 20.0f, footerH = 22.0f, headerH = 40.0f;
+        const float invH = L.invRows * PanelLayout::CellPitch;
+        L.panelH = craftFixedHeight(nRecipes) + invH;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.rowsY = L.py + headerH;
@@ -384,13 +438,26 @@ namespace {
         float footerY = 0;
     };
 
-    InvLayout invLayout(int w, int h, int invCount) {
-        InvLayout L;
-        L.invRows = std::max(1, (invCount + PanelLayout::InvCols - 1) / PanelLayout::InvCols);
+    // The overlay's own fixed bands (it has no action rows, but it does carry
+    // the armor and hotbar strips below the grid).
+    float overlayFixedHeight() {
         const float headerH = 40.0f, tooltipH = 18.0f, labelH = 20.0f, footerH = 24.0f;
-        const float invH = L.invRows * (PanelLayout::Cell + PanelLayout::Gap);
-        const float stripH = PanelLayout::Cell + PanelLayout::Gap;
-        L.panelH = headerH + invH + tooltipH + 2 * (labelH + stripH) + footerH + 12.0f;
+        return headerH + tooltipH + 2 * (labelH + PanelLayout::CellPitch) + footerH + 12.0f;
+    }
+
+    int overlayInvRowsThatFit(int windowH) {
+        const float avail = static_cast<float>(windowH) - PanelLayout::Margin -
+                            overlayFixedHeight();
+        return static_cast<int>(avail / PanelLayout::CellPitch);
+    }
+
+    InvLayout invLayout(int w, int h, int invRows) {
+        InvLayout L;
+        L.invRows = std::max(1, invRows);
+        const float headerH = 40.0f, tooltipH = 18.0f, labelH = 20.0f, footerH = 24.0f;
+        const float invH = L.invRows * PanelLayout::CellPitch;
+        const float stripH = PanelLayout::CellPitch;
+        L.panelH = overlayFixedHeight() + invH;
         L.px = (static_cast<float>(w) - L.panelW) * 0.5f;
         L.py = (static_cast<float>(h) - L.panelH) * 0.5f;
         L.invY = L.py + headerH;
@@ -444,13 +511,16 @@ void VoxelGame::drawMachineUi() {
 
     const auto recipes = recipesForMachine(mac.type);
     const int rows = static_cast<int>(recipes.size()) + 2;
-    const auto invItems = itemsOf(m_inventory);
+    const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
     const auto outItems = itemsOf(mac.output);
 
     const int w = window().width();
     const int h = window().height();
-    const PanelLayout L = panelLayout(w, h, rows, static_cast<int>(invItems.size()));
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   panelInvRowsThatFit(h, rows), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const PanelLayout L = panelLayout(w, h, rows, iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
 
     beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, blockName(mac.type), 0.45f);
@@ -481,6 +551,26 @@ void VoxelGame::drawMachineUi() {
         case MachineKind::Pedestal:
             break; // a pedestal draws no power, so "NO POWER" would be a lie
         default: {
+            // A machine that asks for no power must never be told it has none.
+            // Fuel-fired ones report their fire instead; the manual tier is
+            // simply working, slowly, by hand.
+            if (traits.burnsFuel) {
+                // The fire is this machine's power, so the header carries the
+                // seconds left the way the network status carries POWERED.
+                const bool burning = mac.burnLeft > 0.0f;
+                const std::string status =
+                    burning ? "BURNING " + std::to_string(static_cast<int>(mac.burnLeft)) + "S"
+                            : std::string("OUT OF FUEL");
+                m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status,
+                          burning ? glm::vec4(0.95f, 0.6f, 0.25f, 1.0f)
+                                  : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+                break;
+            }
+            if (traits.demand == 0) {
+                m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, "MANUAL",
+                          glm::vec4(0.75f, 0.7f, 0.55f, 1.0f));
+                break;
+            }
             const bool powered = m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
             m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, powered ? "POWERED" : "NO POWER",
                       powered ? glm::vec4(0.4f, 0.95f, 0.45f, 1.0f) : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
@@ -503,12 +593,17 @@ void VoxelGame::drawMachineUi() {
             // bespoke kinds, the AUTO selector for recipe machines.
             actionable = true;
             switch (traits.kind) {
-                case MachineKind::Generator:
-                    label = std::string("  BURNS ") + itemName(traits.fuel) + " ( " +
-                            std::to_string(static_cast<int>(traits.burnSeconds)) +
-                            "S PER " + itemName(traits.fuel) +
-                            ", ONLY WHILE A NETWORK NEEDS POWER )";
+                case MachineKind::Generator: {
+                    // Fuel is a shared registry now, so list it rather than
+                    // naming one item the row would go stale on.
+                    std::string fuels;
+                    for (const FuelInfo& f : kFuels) {
+                        fuels += fuels.empty() ? " " : " / ";
+                        fuels += itemName(f.item);
+                    }
+                    label = "  BURNS" + fuels + " ( ONLY WHILE A NETWORK NEEDS POWER )";
                     break;
+                }
                 case MachineKind::Collector:
                     label = std::string("  COLLECTS ") + itemName(traits.collects) +
                             " ( NEEDS OPEN SKY ABOVE )";
@@ -535,8 +630,16 @@ void VoxelGame::drawMachineUi() {
             }
         } else if (i <= static_cast<int>(recipes.size())) {
             const MachineRecipe& r = *recipes[i - 1];
+            // A weighted recipe names every product it can roll -- the row is
+            // the only place a player learns a Sifter is a gamble.
+            std::string product;
+            for (const RecipeOutput& o : r.outputs) {
+                if (o.stack.id == ItemId::None) continue;
+                product += product.empty() ? "" : " / ";
+                product += itemName(o.stack.id);
+            }
             label = std::string(mac.selectedRecipe == i - 1 ? "> " : "  ") +
-                    "MAKE " + itemName(r.output.id) + "  (";
+                    "MAKE " + product + "  (";
             actionable = false; // white if the player can contribute anything
             for (const ItemStack& in : r.inputs) {
                 label += " " + std::string(itemName(in.id));
@@ -574,8 +677,8 @@ void VoxelGame::drawMachineUi() {
         m_ui.rect(L.px + 16, L.barY, (L.panelW - 32) * frac, 10, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
     }
 
-    // Inventory grid.
-    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    // Inventory grid (windowed; the label says so when it is scrolled).
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY" + invMoreLabel(iv), kTextHeader);
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
     // Tooltip: name of the hovered cell (any of the three regions).
@@ -610,6 +713,7 @@ void VoxelGame::drawMachineUi() {
 void VoxelGame::openMachineUi(const glm::ivec3& pos) {
     m_machineUiOpen = true;
     m_machineUiPos = pos;
+    m_invScroll = 0; // never open a panel already scrolled somewhere
     // Opening any PART of a circle opens the circle: a pedestal is a socket in
     // a 5x5 multiblock, not a machine you tune on its own, and walking to the
     // core just to look at the ring would be busywork. An orphan pedestal (no
@@ -678,13 +782,17 @@ void VoxelGame::updateMachineUi() {
     // Action rows: AUTO, one MAKE row per recipe, then TAKE OUTPUTS.
     const auto recipes = recipesForMachine(mac.type);
     const int rows = static_cast<int>(recipes.size()) + 2;
-    const auto invItems = itemsOf(m_inventory);
+    const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
     const auto outItems = itemsOf(mac.output);
-    const PanelLayout L = panelLayout(window().width(), window().height(), rows,
-                                      static_cast<int>(invItems.size()));
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   panelInvRowsThatFit(window().height(), rows), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const PanelLayout L = panelLayout(window().width(), window().height(), rows, iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
     const bool inPanelX = mx >= L.px && mx <= L.px + L.panelW;
+
+    scrollInvGrid(input(), m_invScroll, iv, L.px + 16.0f, L.invY, mx, my);
 
     const MenuNav nav = menuNav(input(), m_machineUiSel, rows, L.px, L.panelW,
                                 L.rowsY, PanelLayout::RowH);
@@ -789,33 +897,18 @@ void VoxelGame::updateMachineUi() {
     }
 }
 
-// The blueprint rows the circle panel lists: every pattern the player can lay
-// from what they carry, in table order. Shared by update (activation) and draw.
-namespace {
-    std::vector<int> layableBlueprints(const Inventory& inv) {
-        std::vector<int> out;
-        const auto& all = circleRecipes();
-        for (std::size_t i = 0; i < all.size(); ++i) {
-            if (canLay(all[i], inv)) out.push_back(static_cast<int>(i));
-        }
-        return out;
-    }
-}
-
 void VoxelGame::drawCircleUi() {
     const auto mit = m_machines.find(m_machineUiPos);
     if (mit == m_machines.end()) return;
     const Machine& core = mit->second;
 
-    const auto blueprints = layableBlueprints(m_inventory);
-    const int total = static_cast<int>(blueprints.size()) + 1;
-    const auto invItems = itemsOf(m_inventory);
+    const auto allItems = itemsOf(m_inventory);
     const auto outItems = itemsOf(core.output);
     const int w = window().width(), h = window().height();
-    const int invRows = std::max(1, (static_cast<int>(invItems.size()) +
-                                     PanelLayout::InvCols - 1) / PanelLayout::InvCols);
-    const CircleRows RW = circleRows(total, m_machineUiSel, h, invRows);
-    const CircleLayout L = circleLayout(w, h, RW.visible, static_cast<int>(invItems.size()));
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   circleMetrics::invRowsThatFit(h), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const CircleLayout L = circleLayout(w, h, iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
 
     const AlchemyCircle::Tier tier =
@@ -893,38 +986,12 @@ void VoxelGame::drawCircleUi() {
         status = "NO PATTERN -- LAY INGREDIENTS ON THE PEDESTALS";
     }
     m_ui.text(L.px + 16, L.statusY, 13.0f, status, statusCol);
-    if (RW.total > RW.visible) { // the list scrolls -- say where you are in it
-        const std::string pos = std::to_string(m_machineUiSel + 1) + "/" +
-                                std::to_string(RW.total);
-        m_ui.text(L.px + L.panelW - m_ui.textWidth(12.0f, pos) - 16, L.statusY, 12.0f,
-                  pos, kTextDim);
-    }
 
-    // Blueprint rows: only the window around the selection is drawn, and only
-    // patterns the pack can lay are listed at all.
-    for (int v = 0; v < RW.visible; ++v) {
-        const int i = RW.first + v;
-        if (i >= total) break;
-        const float ry = L.rowsY + v * CircleLayout::RowH;
-        const bool selected = (i == m_machineUiSel);
-        if (selected) m_ui.rect(L.px + 6, ry, L.panelW - 12, CircleLayout::RowH - 2, kRowSelBg);
-        std::string label;
-        bool dim = false;
-        if (i < static_cast<int>(blueprints.size())) {
-            const int idx = blueprints[static_cast<std::size_t>(i)];
-            const CircleRecipe& r = circleRecipes()[static_cast<std::size_t>(idx)];
-            const bool greater = r.ring.size() == AlchemyCircle::kRingSlots;
-            label = std::string(core.selectedRecipe == idx ? "> " : "  ") + "LAY " +
-                    itemName(r.output.id);
-            if (r.output.count > 1) label += " x" + std::to_string(r.output.count);
-            if (greater) label += "   ( GREATER )";
-            dim = greater && tier != AlchemyCircle::Tier::Greater;
-        } else {
-            label = "  TAKE OUTPUTS";
-            dim = outItems.empty();
-        }
-        m_ui.text(L.px + 16, ry + 4, 13.0f, label, rowColor(selected, dim));
-    }
+    // The one action row. Laying the pattern is the player's job, so this is
+    // all that is left to click.
+    m_ui.rect(L.px + 6, L.rowY, L.panelW - 12, CircleLayout::RowH - 2, kRowSelBg);
+    m_ui.text(L.px + 16, L.rowY + 4, 13.0f, "  TAKE OUTPUTS",
+              rowColor(true, outItems.empty()));
 
     // Progress + the core's output strip.
     m_ui.rect(L.px + 16, L.barY, L.panelW - 32, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
@@ -937,7 +1004,7 @@ void VoxelGame::drawCircleUi() {
     m_ui.text(L.px + 16, L.outY + 16, 13.0f, "OUT:", glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
     drawItemGrid(m_ui, m_atlas, L.px + 64.0f, L.outY + 6.0f, outItems, /*cols=*/99);
 
-    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY" + invMoreLabel(iv), kTextHeader);
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
     // Tooltip across all three regions (ring cells included).
@@ -955,7 +1022,7 @@ void VoxelGame::drawCircleUi() {
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
-              "DRAG ONTO THE RING: LMB STACK / RMB ONE   ROWS: CLICK OR W/S + ENTER   ESC CLOSE",
+              "DRAG ONTO THE RING: LMB STACK / RMB ONE   ENTER TAKE OUTPUTS   ESC CLOSE",
               kTextFooter);
 
     if (m_drag.active()) {
@@ -970,103 +1037,29 @@ void VoxelGame::drawCircleUi() {
     m_ui.end();
 }
 
-void VoxelGame::layBlueprint(int index) {
-    const auto mit = m_machines.find(m_machineUiPos);
-    if (mit == m_machines.end()) return;
-    Machine& core = mit->second;
-    const auto& all = circleRecipes();
-    if (index < 0 || index >= static_cast<int>(all.size())) return;
-    const CircleRecipe& r = all[static_cast<std::size_t>(index)];
-
-    // An 8-slot pattern needs the full ring; every pattern needs the cardinals.
-    const AlchemyCircle::Tier tier =
-        AlchemyCircle::tierAt(*m_world, m_machines, m_machineUiPos);
-    const bool bigEnough = r.ring.size() == 4 ? tier != AlchemyCircle::Tier::None
-                                              : tier == AlchemyCircle::Tier::Greater;
-    if (!bigEnough || !canLay(r, m_inventory)) {
-        audio().play("deny", kCraftVolume);
-        return;
-    }
-
-    // Sweep the ring (and the catalyst cell) back into the pack first, so
-    // re-laying over a half-built pattern is one click and never eats items.
-    for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
-        const auto pit = m_machines.find(AlchemyCircle::slotPos(m_machineUiPos, s));
-        if (pit == m_machines.end()) continue;
-        for (const auto& [id, cnt] : itemsOf(pit->second.input)) {
-            pit->second.input.remove(id, cnt);
-            m_inventory.add(id, cnt);
-        }
-    }
-    for (const auto& [id, cnt] : itemsOf(core.input)) {
-        core.input.remove(id, cnt);
-        m_inventory.add(id, cnt);
-    }
-
-    // Lay the pattern at rotation 0: a 4-slot pattern lands on the cardinals
-    // (the even ring slots), an 8-slot one on every slot.
-    const int stride = r.ring.size() == 4 ? 2 : 1;
-    for (std::size_t i = 0; i < r.ring.size(); ++i) {
-        const ItemStack& want = r.ring[i];
-        if (want.id == ItemId::None) continue;
-        const auto pit = m_machines.find(
-            AlchemyCircle::slotPos(m_machineUiPos, static_cast<int>(i) * stride));
-        if (pit == m_machines.end()) continue;
-        m_inventory.remove(want.id, want.count);
-        pit->second.input.add(want.id, want.count);
-    }
-    if (r.center.id != ItemId::None) {
-        m_inventory.remove(r.center.id, r.center.count);
-        core.input.add(r.center.id, r.center.count);
-    }
-    core.selectedRecipe = index; // the laid pattern is the intended one
-    core.progress = 0.0f;
-    audio().play("craft", kCraftVolume);
-    updateTitle();
-}
-
 void VoxelGame::updateCircleUi() {
     const auto mit = m_machines.find(m_machineUiPos);
     if (mit == m_machines.end()) { cancelDrag(); closeMachineUi(); return; }
     Machine& core = mit->second;
 
-    const auto blueprints = layableBlueprints(m_inventory);
-    const int total = static_cast<int>(blueprints.size()) + 1; // + TAKE OUTPUTS
-    m_machineUiSel = std::clamp(m_machineUiSel, 0, total - 1);
-    const auto invItems = itemsOf(m_inventory);
-    const int invRows = std::max(1, (static_cast<int>(invItems.size()) +
-                                     PanelLayout::InvCols - 1) / PanelLayout::InvCols);
-    const CircleRows RW = circleRows(total, m_machineUiSel, window().height(), invRows);
-    const CircleLayout L = circleLayout(window().width(), window().height(), RW.visible,
-                                        static_cast<int>(invItems.size()));
+    m_machineUiSel = 0; // the panel has exactly one row: TAKE OUTPUTS
+    const auto allItems = itemsOf(m_inventory);
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   circleMetrics::invRowsThatFit(window().height()),
+                                   m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const CircleLayout L = circleLayout(window().width(), window().height(), iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
 
-    // Nav walks the FULL list while only a window of it is drawn, so W/S at the
-    // window edge scrolls rather than wrapping inside the visible slice.
-    const int before = m_machineUiSel;
-    if (input().wasKeyPressed(SDL_SCANCODE_W) || input().wasKeyPressed(SDL_SCANCODE_UP)) {
-        m_machineUiSel = (m_machineUiSel - 1 + total) % total;
-    }
-    if (input().wasKeyPressed(SDL_SCANCODE_S) || input().wasKeyPressed(SDL_SCANCODE_DOWN)) {
-        m_machineUiSel = (m_machineUiSel + 1) % total;
-    }
-    const int wheel = input().wheelSteps();
-    if (wheel != 0) m_machineUiSel = ((m_machineUiSel - wheel) % total + total) % total;
+    // The grid is the only list left here, so the wheel always belongs to it.
+    scrollInvGrid(input(), m_invScroll, iv, L.px + 16.0f, L.invY, mx, my);
 
-    int hoverRow = -1;
-    if (mx >= L.px && mx <= L.px + L.panelW && my >= L.rowsY &&
-        my < L.rowsY + RW.visible * CircleLayout::RowH) {
-        hoverRow = RW.first + static_cast<int>((my - L.rowsY) / CircleLayout::RowH);
-        if (hoverRow >= total) hoverRow = -1;
-    }
-    if ((input().mouseRelX() != 0.0f || input().mouseRelY() != 0.0f) && hoverRow >= 0) {
-        m_machineUiSel = hoverRow;
-    }
+    const bool overRow = mx >= L.px && mx <= L.px + L.panelW && my >= L.rowY &&
+                         my < L.rowY + CircleLayout::RowH;
     struct { bool enter, clickedRows; } nav{
         input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
             input().wasKeyPressed(SDL_SCANCODE_KP_ENTER),
-        input().wasMousePressed(SDL_BUTTON_LEFT) && hoverRow >= 0};
-    if (m_machineUiSel != before) audio().play("click", kUiVolume);
+        input().wasMousePressed(SDL_BUTTON_LEFT) && overRow};
 
     const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
     const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
@@ -1136,7 +1129,10 @@ void VoxelGame::updateCircleUi() {
                     buf.add(m_drag.id, m_drag.count);
                     m_drag = Drag{};
                     placed = true;
-                    core.selectedRecipe = -1; // hand-laid: match whatever it spells
+                    // Hand-laid: match whatever the necklace spells. (Nothing
+                    // locks a circle any more; this clears a pre-existing lock
+                    // loaded from a save written when blueprints existed.)
+                    core.selectedRecipe = -1;
                 }
             }
         } else if (cell == -1 && MachineSystem::machineAccepts(core, m_drag.id)) {
@@ -1155,19 +1151,14 @@ void VoxelGame::updateCircleUi() {
         clickConsumed = true;
     }
 
-    // --- Row activation: a blueprint row AUTO-ARRANGES its pattern onto the
-    // pedestals; the last row empties the core's output. ---
+    // --- Row activation: empty the core's output into the pack. ---
     if (!m_drag.active() && (nav.enter || (nav.clickedRows && !clickConsumed))) {
-        if (m_machineUiSel < static_cast<int>(blueprints.size())) {
-            layBlueprint(blueprints[static_cast<std::size_t>(m_machineUiSel)]);
-        } else {
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
-                const ItemId id = static_cast<ItemId>(i);
-                const int c = core.output.count(id);
-                if (c > 0) { core.output.remove(id, c); m_inventory.add(id, c); }
-            }
-            audio().play("click", kUiVolume);
+        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            const ItemId id = static_cast<ItemId>(i);
+            const int c = core.output.count(id);
+            if (c > 0) { core.output.remove(id, c); m_inventory.add(id, c); }
         }
+        audio().play("click", kUiVolume);
         updateTitle();
     }
 
@@ -1202,12 +1193,17 @@ void VoxelGame::updateMenu() {
     const int n = static_cast<int>(recipes.size());
     if (n == 0) return;
 
-    const auto invItems = itemsOf(m_inventory);
-    const CraftLayout L = craftLayout(window().width(), window().height(), n,
-                                      static_cast<int>(invItems.size()));
+    const auto allItems = itemsOf(m_inventory);
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   craftInvRowsThatFit(window().height(), n), m_invScroll);
+    const CraftLayout L = craftLayout(window().width(), window().height(), n, iv.rows);
+    const float mx = input().mouseX(), my = input().mouseY();
 
+    // The wheel drives the recipe rows unless the cursor is over the grid.
+    const bool scrolled = scrollInvGrid(input(), m_invScroll, iv,
+                                        L.px + 16.0f, L.invY, mx, my);
     const MenuNav nav = menuNav(input(), m_menuSelection, n, L.px, L.panelW,
-                                L.rowsY, CraftLayout::RowH, /*useWheel=*/true);
+                                L.rowsY, CraftLayout::RowH, /*useWheel=*/!scrolled);
     if (nav.changed) audio().play("click", kUiVolume);
 
     // Enter always crafts the selection; LMB crafts the row it lands on.
@@ -1228,6 +1224,7 @@ void VoxelGame::updateMenu() {
 
 void VoxelGame::openInventoryUi() {
     m_invOpen = true;
+    m_invScroll = 0; // never open a panel already scrolled somewhere
     window().setRelativeMouse(false); // release the cursor for drag/hover
     audio().play("open", kUiVolume);
 }
@@ -1246,10 +1243,14 @@ void VoxelGame::recomputeArmor() {
 }
 
 void VoxelGame::updateInventoryUi() {
-    const auto invItems = itemsOf(m_inventory);
-    const InvLayout L = invLayout(window().width(), window().height(),
-                                  static_cast<int>(invItems.size()));
+    const auto allItems = itemsOf(m_inventory);
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   overlayInvRowsThatFit(window().height()), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const InvLayout L = invLayout(window().width(), window().height(), iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
+
+    scrollInvGrid(input(), m_invScroll, iv, L.px + 16.0f, L.invY, mx, my);
 
     const int gridHit = hitCell(mx, my, L.px + 16.0f, L.invY,
                                 static_cast<int>(invItems.size()), PanelLayout::InvCols);
@@ -1320,13 +1321,17 @@ void VoxelGame::updateInventoryUi() {
 void VoxelGame::drawInventoryUi() {
     const int w = window().width();
     const int h = window().height();
-    const auto invItems = itemsOf(m_inventory);
-    const InvLayout L = invLayout(w, h, static_cast<int>(invItems.size()));
+    const auto allItems = itemsOf(m_inventory);
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   overlayInvRowsThatFit(h), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const InvLayout L = invLayout(w, h, iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
 
-    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "INVENTORY", 0.5f);
+    beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH,
+               ("INVENTORY" + invMoreLabel(iv)).c_str(), 0.5f);
 
-    // Everything the player owns, with counts.
+    // Everything the player owns, with counts (windowed; see InvWindow).
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
 
     // The armor strip: head/body/feet equip slots. Drag a matching piece here
@@ -1622,8 +1627,11 @@ void VoxelGame::drawCraftMenu() {
     const int h = window().height();
     const auto& recipes = handcraftRecipes();
     const int n = static_cast<int>(recipes.size());
-    const auto invItems = itemsOf(m_inventory);
-    const CraftLayout L = craftLayout(w, h, n, static_cast<int>(invItems.size()));
+    const auto allItems = itemsOf(m_inventory);
+    const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
+                                   craftInvRowsThatFit(h, n), m_invScroll);
+    const auto invItems = invSlice(allItems, iv);
+    const CraftLayout L = craftLayout(w, h, n, iv.rows);
     const float mx = input().mouseX(), my = input().mouseY();
 
     beginPanel(m_ui, w, h, L.px, L.py, L.panelW, L.panelH, "CRAFTING", 0.5f);
@@ -1651,7 +1659,7 @@ void VoxelGame::drawCraftMenu() {
     }
 
     // Materials on hand, with a hover tooltip.
-    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY", kTextHeader);
+    m_ui.text(L.px + 16, L.invLabelY + 2, 13.0f, "INVENTORY" + invMoreLabel(iv), kTextHeader);
     drawItemGrid(m_ui, m_atlas, L.px + 16.0f, L.invY, invItems);
     const ItemId hovered = hoveredItemIn(invItems, mx, my, L.px + 16.0f, L.invY);
     if (hovered != ItemId::None) {
