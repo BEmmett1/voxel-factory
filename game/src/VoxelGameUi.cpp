@@ -263,7 +263,7 @@ namespace {
     // The item types present in an inventory, with counts, in enum order.
     std::vector<std::pair<ItemId, int>> itemsOf(const Inventory& inv) {
         std::vector<std::pair<ItemId, int>> out;
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             if (inv.count(id) > 0) out.emplace_back(id, inv.count(id));
         }
@@ -632,7 +632,7 @@ void VoxelGame::drawMachineUi() {
                     // Fuel is a shared registry now, so list it rather than
                     // naming one item the row would go stale on.
                     std::string fuels;
-                    for (const FuelInfo& f : kFuels) {
+                    for (const FuelInfo& f : fuelRows()) {
                         fuels += fuels.empty() ? " " : " / ";
                         fuels += itemName(f.item);
                     }
@@ -684,7 +684,7 @@ void VoxelGame::drawMachineUi() {
             label += " )";
         } else {
             label = "  TAKE OUTPUTS";
-            for (int k = 1; k < static_cast<int>(ItemId::Count); ++k) {
+            for (int k = 1; k < static_cast<int>(itemCount()); ++k) {
                 if (mac.output.count(static_cast<ItemId>(k)) > 0) { actionable = true; break; }
             }
         }
@@ -994,7 +994,7 @@ void VoxelGame::updateMachineUi() {
             }
         } else {
             // Take all outputs.
-            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 const int c = mac.output.count(id);
                 if (c > 0) {
@@ -1269,7 +1269,7 @@ void VoxelGame::updateCircleUi() {
 
     // --- Row activation: empty the core's output into the pack. ---
     if (!m_drag.active() && (nav.enter || (nav.clickedRows && !clickConsumed))) {
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             const int c = core.output.count(id);
             if (c > 0) { core.output.remove(id, c); m_inventory.add(id, c); }
@@ -1725,7 +1725,7 @@ void VoxelGame::drawHud() {
             std::string in = "IN:";
             std::string fuel = "FUEL:";
             std::string out = "OUT:";
-            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 if (m.input.count(id) > 0)
                     in += " " + std::string(itemName(id)) + " x" + std::to_string(m.input.count(id));

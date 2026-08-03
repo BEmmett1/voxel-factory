@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -227,7 +228,7 @@ namespace {
          .name = "Pedestal", .placeable = true,
          .placesBlock = B::Pedestal},
         // ---- The recipe overhaul ----------------------------------------
-        // Charcoal: the Furnace's own product and the best fuel in kFuels, so
+        // Charcoal: the Furnace's own product and the best fuel in kFuelSeed, so
         // the first thing a new Bloomery does is make its own better fuel.
         {.id = I::Charcoal, .key = "core:charcoal",
          .name = "Charcoal", .atlasTile = 181},
@@ -339,10 +340,32 @@ namespace {
         return true;
     }(), "kItems keys must be unique and non-empty");
 
+    // Seeded from kItems, grown by content packs -- the blockTable() note in
+    // Block.cpp applies here word for word.
+    std::vector<ItemInfo>& itemTable() {
+        static std::vector<ItemInfo> table(std::begin(kItems), std::end(kItems));
+        return table;
+    }
+
 } // namespace
 
 const ItemInfo& itemInfo(ItemId id) {
-    return kItems[static_cast<std::size_t>(id)];
+    return itemTable()[static_cast<std::size_t>(id)];
+}
+
+std::size_t itemCount() {
+    return itemTable().size();
+}
+
+const std::vector<ItemInfo>& itemRows() {
+    return itemTable();
+}
+
+ItemId addItem(const ItemInfo& row) {
+    const auto id = static_cast<ItemId>(itemTable().size());
+    itemTable().push_back(row);
+    itemTable().back().id = id;
+    return id;
 }
 
 int iconTile(ItemId id) {

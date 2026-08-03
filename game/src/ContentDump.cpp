@@ -122,7 +122,7 @@ namespace {
 
     json dumpBlocks() {
         json a = json::array();
-        for (int b = 0; b < static_cast<int>(BlockId::Count); ++b) {
+        for (int b = 0; b < static_cast<int>(blockCount()); ++b) {
             const BlockId id = static_cast<BlockId>(b);
             const BlockInfo& info = blockInfo(id);
             json j;
@@ -152,7 +152,7 @@ namespace {
 
     json dumpItems() {
         json a = json::array();
-        for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+        for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             const ItemInfo& info = itemInfo(id);
             json j;
@@ -175,7 +175,7 @@ namespace {
 
     json dumpMachines() {
         json a = json::array();
-        for (const MachineTraits& t : kMachineTraits) {
+        for (const MachineTraits& t : machineTraitRows()) {
             json j;
             j["block"] = blockKey(t.block);
             put(j, "kind", std::string(kindName(t.kind)), std::string("processor"));
@@ -200,7 +200,7 @@ namespace {
 
     json dumpFuels() {
         json a = json::array();
-        for (const FuelInfo& f : kFuels) {
+        for (const FuelInfo& f : fuelRows()) {
             a.push_back(json::object({{"item", itemKey(f.item)}, {"seconds", num(f.seconds)}}));
         }
         return a;

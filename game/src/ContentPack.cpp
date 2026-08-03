@@ -73,7 +73,7 @@ namespace {
         ItemId item(const std::string& key) {
             if (key.empty()) return ItemId::None;
             const ItemId id = content::itemFromKey(key);
-            if (id == ItemId::Count) {
+            if (id == content::kNoItem) {
                 bad("names item '" + key + "', which this build does not have");
                 return ItemId::None;
             }
@@ -83,7 +83,7 @@ namespace {
         BlockId block(const std::string& key) {
             if (key.empty()) return BlockId::Air;
             const BlockId id = content::blockFromKey(key);
-            if (id == BlockId::Count) {
+            if (id == content::kNoBlock) {
                 bad("names block '" + key + "', which this build does not have");
                 return BlockId::Air;
             }

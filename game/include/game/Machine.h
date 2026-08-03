@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <vector>
 
 // Runtime state for a placed machine block. Ingredients wait in `input`,
 // finished goods collect in `output`, and `progress` counts seconds into the
@@ -67,20 +68,22 @@ struct FuelInfo {
     float  seconds; // base burn time for one item
 };
 
-inline constexpr FuelInfo kFuels[] = {
+inline constexpr FuelInfo kFuelSeed[] = {
     {ItemId::Stick, 5.0f},
     {ItemId::SaplingItem, 5.0f},
     {ItemId::Wood, 20.0f},
     {ItemId::Charcoal, 60.0f},
 };
 
-// Base burn seconds for one of `item`; 0 = not a fuel.
-inline constexpr float fuelSeconds(ItemId item) {
-    for (const FuelInfo& f : kFuels) {
-        if (f.item == item) return f.seconds;
-    }
-    return 0.0f;
-}
+// Base burn seconds for one of `item`; 0 = not a fuel. Reads the RUNTIME fuel
+// table (kFuelSeed above is its seed), so a pack can add a fuel.
+float fuelSeconds(ItemId item);
+
+// Every fuel, compiled and loaded.
+const std::vector<FuelInfo>& fuelRows();
+
+// Startup only, like the other registries -- see blockCount() in Block.h.
+void addFuel(const FuelInfo& row);
 
 // Static per-machine-type properties: one registry row per machine block,
 // like kBlocks/kItems. Block.cpp cross-static_asserts this table against the
@@ -93,7 +96,7 @@ struct MachineTraits {
     MachineKind kind = MachineKind::Processor;
     int         demand = 5;              // power drawn from its network (0 = runs unpowered)
     int         powerOutput = 0;         // power produced while burning (Generator)
-    bool        burnsFuel = false;       // consumes kFuels items to run
+    bool        burnsFuel = false;       // consumes kFuelSeed items to run
     float       fuelMult = 1.0f;         // burn-time multiplier (efficiency)
     ItemId      collects = ItemId::None; // what a Collector gathers
     int         collectCap = 0;          // Collector stops when output holds this many
@@ -121,7 +124,7 @@ struct MachineTraits {
 // like the rest of this table.
 inline constexpr float kManualSlowdown = 3.0f;
 
-inline constexpr MachineTraits kMachineTraits[] = {
+inline constexpr MachineTraits kMachineTraitSeed[] = {
     {.block = BlockId::Generator, .kind = MachineKind::Generator, .demand = 0,
      .powerOutput = 10, .burnsFuel = true},
     {.block = BlockId::Grinder},
@@ -192,53 +195,58 @@ inline constexpr MachineTraits kMachineTraits[] = {
 // The two travel together by design -- if they ever come apart, the panel and
 // the tick would disagree about what "manual" means.
 static_assert([] {
-    for (const MachineTraits& t : kMachineTraits) {
+    for (const MachineTraits& t : kMachineTraitSeed) {
         if (t.handCranked != (t.recipeGroup != BlockId::Air)) return false;
     }
     return true;
 }(), "handCranked and the manual tier (recipeGroup) must agree");
 
 static_assert([] {
-    for (std::size_t i = 0; i < std::size(kMachineTraits); ++i) {
-        for (std::size_t j = i + 1; j < std::size(kMachineTraits); ++j) {
-            if (kMachineTraits[i].block == kMachineTraits[j].block) return false;
+    for (std::size_t i = 0; i < std::size(kMachineTraitSeed); ++i) {
+        for (std::size_t j = i + 1; j < std::size(kMachineTraitSeed); ++j) {
+            if (kMachineTraitSeed[i].block == kMachineTraitSeed[j].block) return false;
         }
     }
     return true;
-}(), "kMachineTraits has a duplicate row");
-
-namespace detail {
-    inline constexpr auto kMachineTraitIndex = [] {
-        std::array<std::int8_t, static_cast<std::size_t>(BlockId::Count)> idx{};
-        for (auto& v : idx) v = -1;
-        for (std::size_t i = 0; i < std::size(kMachineTraits); ++i) {
-            idx[static_cast<std::size_t>(kMachineTraits[i].block)] =
-                static_cast<std::int8_t>(i);
-        }
-        return idx;
-    }();
-}
+}(), "kMachineTraitSeed has a duplicate row");
 
 // A recipeGroup must name a real machine that is itself ungrouped, so
 // recipeGroupFor() stays a single hop and two manual twins can never chain
-// into a cycle.
+// into a cycle. (Over the compiled seed; content::validate() re-asks it of the
+// whole runtime table, which is where a pack's row would show up.)
 static_assert([] {
-    for (const MachineTraits& t : kMachineTraits) {
+    for (const MachineTraits& t : kMachineTraitSeed) {
         if (t.recipeGroup == BlockId::Air) continue;
-        const std::int8_t at =
-            detail::kMachineTraitIndex[static_cast<std::size_t>(t.recipeGroup)];
-        if (at < 0) return false;
-        if (kMachineTraits[at].recipeGroup != BlockId::Air) return false;
+        const MachineTraits* group = nullptr;
+        for (const MachineTraits& g : kMachineTraitSeed) {
+            if (g.block == t.recipeGroup) group = &g;
+        }
+        if (!group || group->recipeGroup != BlockId::Air) return false;
     }
     return true;
-}(), "a kMachineTraits recipeGroup must point at an ungrouped machine block");
+}(), "a kMachineTraitSeed recipeGroup must point at an ungrouped machine block");
 
 // The traits row for a machine block. Only valid when isMachine(id) — every
 // call site is naturally guarded (machines are looked up via the machine map
 // or behind an isMachine() check).
-inline const MachineTraits& machineTraits(BlockId id) {
-    return kMachineTraits[detail::kMachineTraitIndex[static_cast<std::size_t>(id)]];
-}
+//
+// Backed by a runtime table seeded from kMachineTraitSeed, with a block-id -> row
+// index built beside it. That index used to be a `constexpr` array of
+// `std::int8_t` sized by `BlockId::Count`, which silently capped the game at
+// 127 machines; it is now a vector of int sized by blockCount(), so the cap is
+// gone along with the fixed size.
+const MachineTraits& machineTraits(BlockId id);
+
+// Does this block have a traits row at all? The static_assert above pins
+// `machine` and "has a row" together for compiled content, but a pack is
+// checked at runtime, and a caller that is ASKING cannot assume the answer.
+bool hasMachineTraits(BlockId id);
+
+// Every machine's traits, compiled and loaded.
+const std::vector<MachineTraits>& machineTraitRows();
+
+// Startup only, like the other registries -- see blockCount() in Block.h.
+void addMachineTraits(const MachineTraits& row);
 
 // Whose recipe rows this machine runs: itself, unless its row delegates to a
 // powered counterpart. One hop only -- a manual twin never points at another

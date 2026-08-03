@@ -295,7 +295,7 @@ void VoxelGame::onUpdate(float dt) {
         // the void, and any death in the transient arena, still fully wipes.
         if (!mv.fellOff && m_dimension == DimensionId::Overworld) {
             const glm::vec3 feet = preMoveEye - glm::vec3(0.0f, kEyeHeight, 0.0f);
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 const int c = m_inventory.count(id);
                 if (c > 0) {
@@ -524,7 +524,7 @@ void VoxelGame::onUpdate(float dt) {
             }
             // Machine buffers / belt cargo handed back are the player's own,
             // gated or not — they always drop.
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 const int c = r.returned.count(id);
                 if (c > 0) spawnDrop(dropPos, id, c);

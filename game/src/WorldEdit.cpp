@@ -17,7 +17,7 @@ BreakResult breakBlock(World& world, const Registries& regs, const glm::ivec3& p
         if (it != regs.machines.end()) {
             // Hand every buffered item back so nothing is lost -- including the
             // fuel slot, or the charcoal in a broken Furnace burns for nobody.
-            for (int i = 0; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 r.returned.add(id, it->second.input.count(id));
                 r.returned.add(id, it->second.output.count(id));

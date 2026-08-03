@@ -81,7 +81,7 @@ namespace {
     }
 
     void writeInventory(std::ofstream& out, const Inventory& inv) {
-        const std::uint32_t n = static_cast<std::uint32_t>(ItemId::Count);
+        const std::uint32_t n = static_cast<std::uint32_t>(itemCount());
         writePod(out, n);
         for (std::uint32_t i = 0; i < n; ++i) {
             writePod(out, static_cast<std::int32_t>(inv.count(static_cast<ItemId>(i))));
@@ -96,7 +96,7 @@ namespace {
             // v22+: the writer told us exactly how many items it had, so any
             // other length is a truncated or corrupt record, not an old one.
             if (n != declared) return false;
-        } else if (n > static_cast<std::uint32_t>(ItemId::Count)) {
+        } else if (n > static_cast<std::uint32_t>(itemCount())) {
             // Pre-v22: entry i IS ItemId(i) because the enum only ever grew at
             // its tail, so a shorter run is an older file and the missing tail
             // defaults to zero. More slots than we know = a newer build = reject.
@@ -472,10 +472,10 @@ bool load(const std::string& path, SaveData& d) {
     // bounds it is that set's size, not ours.
     const std::uint32_t blockLimit =
         map.foreignBlockCount() > 0 ? static_cast<std::uint32_t>(map.foreignBlockCount())
-                                    : static_cast<std::uint32_t>(BlockId::Count);
+                                    : static_cast<std::uint32_t>(blockCount());
     const std::uint32_t itemLimit =
         map.foreignItemCount() > 0 ? static_cast<std::uint32_t>(map.foreignItemCount())
-                                   : static_cast<std::uint32_t>(ItemId::Count);
+                                   : static_cast<std::uint32_t>(itemCount());
     std::uint32_t chunkCount = 0;
     if (!readPod(in, chunkCount) || chunkCount > 4096u) return false;
     for (std::uint32_t c = 0; c < chunkCount; ++c) {
@@ -530,7 +530,7 @@ bool load(const std::string& path, SaveData& d) {
             // the rule the old pickFuel used to apply every tick -- fuel that
             // is ALSO an ingredient here was feedstock and stays put. Applied
             // once, at the boundary, and then the rule is retired for good.
-            for (const FuelInfo& f : kFuels) {
+            for (const FuelInfo& f : fuelRows()) {
                 const int held = m.input.count(f.item);
                 if (held <= 0) continue;
                 bool ingredient = false;

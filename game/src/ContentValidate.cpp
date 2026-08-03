@@ -75,7 +75,7 @@ namespace {
         // Round-trip: a key resolves back to the row it names, for every row of
         // every machine -- including the manual twins, which reach their
         // powered counterpart's list through MachineTraits::recipeGroup.
-        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
+        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
             const BlockId type = static_cast<BlockId>(b);
             if (!isMachine(type)) continue;
             const auto rows = recipesForMachine(type);
@@ -107,7 +107,7 @@ namespace {
 
         // A manual twin must run EXACTLY its powered counterpart's rows, or the
         // two tiers would drift and a lock would not survive an upgrade.
-        for (const MachineTraits& traits : kMachineTraits) {
+        for (const MachineTraits& traits : machineTraitRows()) {
             if (traits.recipeGroup == BlockId::Air) continue;
             const auto mine = recipesForMachine(traits.block);
             const auto theirs = recipesForMachine(traits.recipeGroup);
@@ -176,7 +176,7 @@ namespace {
     // over all three recipe surfaces must reach every machine and every recipe
     // input. Edit a recipe into a deadlock and this says so.
     void checkReachability(std::vector<std::string>& out) {
-        std::vector<bool> have(static_cast<std::size_t>(ItemId::Count), false);
+        std::vector<bool> have(itemCount(), false);
         auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
         auto gain = [&](ItemId id) {
             if (id == ItemId::None || known(id)) return false;
@@ -188,7 +188,7 @@ namespace {
         // drops (ore, wood, sand, stone, leaves' sticks), plus the two rain
         // items. Machines you PLACE drop themselves, so seeding block drops
         // would beg the question; only naturally-occurring blocks count.
-        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
+        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
             const BlockId id = static_cast<BlockId>(b);
             if (isMachine(id) || isSource(id)) continue;
             gain(blockDrop(id).id);
@@ -225,7 +225,7 @@ namespace {
                 // which is what breaks the circularity of "ingots need a
                 // Furnace, a Furnace needs ingots".
                 bool ok = false;
-                for (const MachineTraits& mt : kMachineTraits) {
+                for (const MachineTraits& mt : machineTraitRows()) {
                     if (recipeGroupFor(mt.block) != r.machine) continue;
                     if (known(blockDrop(mt.block).id)) { ok = true; break; }
                 }
@@ -236,7 +236,7 @@ namespace {
         }
 
         // Every machine must be buildable, and every recipe input obtainable.
-        for (const MachineTraits& traits : kMachineTraits) {
+        for (const MachineTraits& traits : machineTraitRows()) {
             if (known(blockDrop(traits.block).id)) continue;
             out.push_back(std::string(blockName(traits.block)) + " can never be built");
         }

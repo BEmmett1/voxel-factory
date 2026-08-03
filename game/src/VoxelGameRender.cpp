@@ -117,7 +117,7 @@ void VoxelGame::buildAtlas() {
 
     // Block tiles: every face tile gets the block's color (a tile shared by
     // several faces or blocks is just filled more than once).
-    for (int id = 1; id < static_cast<int>(BlockId::Count); ++id) {
+    for (int id = 1; id < static_cast<int>(blockCount()); ++id) {
         const Atlas::BlockTiles& t = Atlas::tilesForBlock(static_cast<BlockId>(id));
         const glm::vec3 color = blockInfo(static_cast<BlockId>(id)).color;
         fillTile(t.top, color);
@@ -127,7 +127,7 @@ void VoxelGame::buildAtlas() {
 
     // Material icon tiles get a distinct hue spaced around the wheel
     // (placeables have no tile of their own; iconTile() borrows the block's).
-    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+    for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
         const ItemInfo& info = itemInfo(static_cast<ItemId>(i));
         if (info.atlasTile < 0) continue;
         fillTile(info.atlasTile,

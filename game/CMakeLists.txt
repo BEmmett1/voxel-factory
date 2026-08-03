@@ -6,6 +6,7 @@ add_executable(voxel-factory
     src/ContentValidate.cpp
     src/ContentDump.cpp
     src/ContentPack.cpp
+    src/Machine.cpp
     src/Recipes.cpp
     src/Chunk.cpp
     src/World.cpp

@@ -33,8 +33,21 @@ namespace content {
     std::string_view blockKey(BlockId id);
     std::string_view itemKey(ItemId id);
 
-    // BlockId::Count / ItemId::Count when the key is unknown to this build --
-    // a distinguishable "no such content" rather than a wrong guess.
+    // ---- "No such content" ----------------------------------------------
+    // This used to be BlockId::Count / ItemId::Count, and that was right while
+    // Count was one past the last block there could be. It is not any more:
+    // Count is one past the last COMPILED block, so the moment a pack appends
+    // one, the old sentinel IS a real id -- and "unknown key" would come back
+    // as somebody's content.
+    //
+    // The top of the underlying type cannot collide with a row, because a
+    // registry that reached it would have no room for the sentinel at all --
+    // which content::validate() checks rather than assumes.
+    inline constexpr BlockId kNoBlock = static_cast<BlockId>(0xFFFFu);
+    inline constexpr ItemId  kNoItem  = static_cast<ItemId>(0xFFFFu);
+
+    // kNoBlock / kNoItem when the key is unknown to this build -- a
+    // distinguishable "no such content" rather than a wrong guess.
     BlockId blockFromKey(std::string_view key);
     ItemId  itemFromKey(std::string_view key);
 

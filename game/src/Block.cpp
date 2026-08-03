@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -328,16 +329,47 @@ namespace {
     static_assert([] {
         for (const BlockInfo& b : kBlocks) {
             bool hasTraits = false;
-            for (const MachineTraits& t : kMachineTraits) {
+            for (const MachineTraits& t : kMachineTraitSeed) {
                 if (t.block == b.id) hasTraits = true;
             }
             if (b.machine != hasTraits) return false;
         }
         return true;
-    }(), "kMachineTraits must have one row per machine block (and only machine blocks)");
+    }(), "kMachineTraitSeed must have one row per machine block (and only machine blocks)");
+
+    // The registry proper: seeded from kBlocks above, grown by content packs.
+    //
+    // Every static_assert in this file still guards kBlocks, because kBlocks is
+    // still a compile-time table -- moving the REGISTRY to runtime storage cost
+    // none of that. What a loaded row gets instead is content::validate(),
+    // which re-asks the same questions of the whole table.
+    //
+    // A function-local static rather than a namespace-scope one: this is read
+    // from other translation units' code, and a Meyers singleton has no
+    // initialization-order hazard. blockInfo() was already an out-of-line call,
+    // so the lookup costs what it always did.
+    std::vector<BlockInfo>& blockTable() {
+        static std::vector<BlockInfo> table(std::begin(kBlocks), std::end(kBlocks));
+        return table;
+    }
 
 } // namespace
 
 const BlockInfo& blockInfo(BlockId id) {
-    return kBlocks[static_cast<std::size_t>(id)];
+    return blockTable()[static_cast<std::size_t>(id)];
+}
+
+std::size_t blockCount() {
+    return blockTable().size();
+}
+
+const std::vector<BlockInfo>& blockRows() {
+    return blockTable();
+}
+
+BlockId addBlock(const BlockInfo& row) {
+    const auto id = static_cast<BlockId>(blockTable().size());
+    blockTable().push_back(row);
+    blockTable().back().id = id; // the row's id IS its position, always
+    return id;
 }

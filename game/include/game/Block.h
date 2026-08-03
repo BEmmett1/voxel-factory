@@ -1,7 +1,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 // The set of block types. Air is the empty block.
 //  - Terrain:    Grass / Dirt / Stone
@@ -184,6 +186,36 @@ struct BlockInfo {
 
 // Static properties for a block type.
 const BlockInfo& blockInfo(BlockId id);
+
+// ---- The registry is a RUNTIME table ---------------------------------------
+// kBlocks in Block.cpp is the SEED, not the registry: it is copied into a
+// vector at first use, and content loaded from a pack is appended past it. So
+// `BlockId::Count` no longer means "how many blocks there are" -- it means how
+// many were COMPILED IN, which is a different and much narrower claim.
+//
+// Anything iterating all content wants blockCount(); anything sizing an array
+// by content wants it too. `BlockId::Count` survives as the boundary between
+// compiled and loaded content, and as the "no such block" sentinel that
+// content::blockFromKey() returns.
+//
+// An ordinal past BlockId::Count is still a perfectly good BlockId: the enum
+// has a fixed underlying type, so every value in its range is valid, which is
+// what lets a loaded block ride every path a compiled one does -- including
+// the raw bytes of a chunk and a save's id table.
+std::size_t blockCount();
+
+// Every row, compiled and loaded. Iterating this is the same as walking
+// 0..blockCount(), and is what the validators and the content dump use.
+const std::vector<BlockInfo>& blockRows();
+
+// Append a row loaded from a content pack, and return its new ordinal. The
+// caller owns proving the row is coherent (content::validate()); this only
+// promises the id it hands back is the row's position.
+//
+// STARTUP ONLY, and for the same reason the recipe tables are: existing
+// BlockIds must not move, and nothing may already be holding a BlockInfo& --
+// growing the vector invalidates every one of them.
+BlockId addBlock(const BlockInfo& row);
 
 inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
 inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }

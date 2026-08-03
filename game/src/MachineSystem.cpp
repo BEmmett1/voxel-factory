@@ -1,5 +1,5 @@
 // The 20 Hz machine + conduit simulation. Kind dispatch comes from the
-// kMachineTraits registry (Machine.h): generators burn fuel into power,
+// kMachineTraitSeed registry (Machine.h): generators burn fuel into power,
 // collectors gather from the environment, miners harvest nodes, processors
 // run their MachineRecipe lists. World mutations rely on the caller's
 // per-frame dirty sweep to update meshes.
@@ -59,7 +59,7 @@ namespace {
         const Inventory& from = fuelBuffer(mac);
         ItemId best = ItemId::None;
         float  bestSeconds = 0.0f;
-        for (const FuelInfo& f : kFuels) {
+        for (const FuelInfo& f : fuelRows()) {
             if (from.count(f.item) <= 0) continue;
             if (best != ItemId::None && f.seconds >= bestSeconds) continue;
             best = f.item;
@@ -240,7 +240,7 @@ bool machineAccepts(const Machine& mac, ItemId item) {
             // more of the same, up to the cap. Belts can therefore keep a
             // pattern topped up but can never contaminate a laid slot.
             if (mac.input.count(item) > 0) return mac.input.count(item) < kPedestalCap;
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
                 if (mac.input.count(static_cast<ItemId>(i)) > 0) return false;
             }
             return true;
@@ -262,7 +262,7 @@ bool machineAccepts(const Machine& mac, ItemId item) {
 }
 
 ItemId minerFilter(const Machine& mac) {
-    for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+    for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
         const ItemId id = static_cast<ItemId>(i);
         if (mac.input.count(id) > 0 && nodeForRaw(id) != BlockId::Air) return id;
     }
@@ -415,7 +415,7 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
         const auto mit = machines.find(back);
         if (mit == machines.end()) continue;
         Inventory& out = mit->second.output;
-        for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+        for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             if (out.count(id) > 0) {
                 out.remove(id, 1);

@@ -8,26 +8,26 @@ namespace content {
     std::string_view itemKey(ItemId id)   { return itemInfo(id).key; }
 
     BlockId blockFromKey(std::string_view key) {
-        const auto n = static_cast<std::uint32_t>(BlockId::Count);
+        const auto n = static_cast<std::uint32_t>(blockCount());
         for (std::uint32_t i = 0; i < n; ++i) {
             const auto id = static_cast<BlockId>(i);
             if (blockKey(id) == key) return id;
         }
-        return BlockId::Count;
+        return kNoBlock;
     }
 
     ItemId itemFromKey(std::string_view key) {
-        const auto n = static_cast<std::uint32_t>(ItemId::Count);
+        const auto n = static_cast<std::uint32_t>(itemCount());
         for (std::uint32_t i = 0; i < n; ++i) {
             const auto id = static_cast<ItemId>(i);
             if (itemKey(id) == key) return id;
         }
-        return ItemId::Count;
+        return kNoItem;
     }
 
     std::vector<std::string> blockKeyTable() {
         std::vector<std::string> keys;
-        const auto n = static_cast<std::uint32_t>(BlockId::Count);
+        const auto n = static_cast<std::uint32_t>(blockCount());
         keys.reserve(n);
         for (std::uint32_t i = 0; i < n; ++i) {
             keys.emplace_back(blockKey(static_cast<BlockId>(i)));
@@ -37,7 +37,7 @@ namespace content {
 
     std::vector<std::string> itemKeyTable() {
         std::vector<std::string> keys;
-        const auto n = static_cast<std::uint32_t>(ItemId::Count);
+        const auto n = static_cast<std::uint32_t>(itemCount());
         keys.reserve(n);
         for (std::uint32_t i = 0; i < n; ++i) {
             keys.emplace_back(itemKey(static_cast<ItemId>(i)));
@@ -60,7 +60,7 @@ namespace content {
             // Unknown content becomes Air: the cell empties, which is the only
             // honest answer when we have no geometry, no drop and no behaviour
             // for it. missing() is what turns that into a message.
-            if (id == BlockId::Count) {
+            if (id == kNoBlock) {
                 m.m_missing.push_back(k);
                 m.m_blocks.push_back(BlockId::Air);
             } else {
@@ -70,7 +70,7 @@ namespace content {
         m.m_items.reserve(itemKeys.size());
         for (const std::string& k : itemKeys) {
             const ItemId id = itemFromKey(k);
-            if (id == ItemId::Count) {
+            if (id == kNoItem) {
                 m.m_missing.push_back(k);
                 m.m_items.push_back(ItemId::None);
             } else {
@@ -80,8 +80,7 @@ namespace content {
         // A table that already matches ours position-for-position costs nothing
         // to translate, which is the common case (same build, no mods).
         m.m_identity = m.m_missing.empty() &&
-            blockKeys.size() == static_cast<std::size_t>(BlockId::Count) &&
-            itemKeys.size() == static_cast<std::size_t>(ItemId::Count);
+            blockKeys.size() == blockCount() && itemKeys.size() == itemCount();
         if (m.m_identity) {
             for (std::size_t i = 0; i < m.m_blocks.size(); ++i) {
                 if (m.m_blocks[i] != static_cast<BlockId>(i)) { m.m_identity = false; break; }
@@ -97,7 +96,7 @@ namespace content {
 
     BlockId ContentMap::block(std::uint32_t foreign) const {
         if (m_identity) {
-            return foreign < static_cast<std::uint32_t>(BlockId::Count)
+            return foreign < static_cast<std::uint32_t>(blockCount())
                        ? static_cast<BlockId>(foreign) : BlockId::Air;
         }
         return foreign < m_blocks.size() ? m_blocks[foreign] : BlockId::Air;
@@ -105,7 +104,7 @@ namespace content {
 
     ItemId ContentMap::item(std::uint32_t foreign) const {
         if (m_identity) {
-            return foreign < static_cast<std::uint32_t>(ItemId::Count)
+            return foreign < static_cast<std::uint32_t>(itemCount())
                        ? static_cast<ItemId>(foreign) : ItemId::None;
         }
         return foreign < m_items.size() ? m_items[foreign] : ItemId::None;

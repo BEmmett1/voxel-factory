@@ -2,7 +2,9 @@
 
 #include "game/Block.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 // Things the player can hold in their inventory. Distinct from BlockId: some
 // items are placeable (they place a block when used), most are materials.
@@ -224,6 +226,14 @@ struct ItemStack {
 };
 
 const ItemInfo& itemInfo(ItemId id);
+
+// The item registry is a RUNTIME table, exactly like the block one -- see the
+// note on blockCount() in Block.h for what that costs and what it buys.
+// `ItemId::Count` is the number of items COMPILED IN (and the "no such item"
+// sentinel); itemCount() is how many there are.
+std::size_t itemCount();
+const std::vector<ItemInfo>& itemRows();
+ItemId addItem(const ItemInfo& row);
 
 inline const char* itemName(ItemId id) { return itemInfo(id).name; }
 inline ToolType    itemTool(ItemId id)        { return itemInfo(id).tool; }

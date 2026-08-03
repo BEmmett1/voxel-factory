@@ -839,7 +839,7 @@ int dumpRecipes() {
     }
 
     std::printf("\n## Machines\n\n");
-    for (const MachineTraits& t : kMachineTraits) {
+    for (const MachineTraits& t : machineTraitRows()) {
         if (t.recipeGroup != BlockId::Air) continue; // twins share the rows below
         const auto rows = recipesForMachine(t.block);
 
@@ -849,7 +849,7 @@ int dumpRecipes() {
         else std::printf("Runs unpowered. ");
         // Name the hand-cranked twin, if it has one: the two tiers run the
         // same rows, so listing them twice would be a lie about the data.
-        for (const MachineTraits& twin : kMachineTraits) {
+        for (const MachineTraits& twin : machineTraitRows()) {
             if (twin.recipeGroup != t.block) continue;
             std::printf("Hand tier: **%s** (%.0fx slower). ",
                         blockName(twin.block), static_cast<double>(twin.speedMult));
@@ -912,7 +912,7 @@ int dumpRecipes() {
     }
 
     std::printf("\n## Fuels\n\n| item | seconds |\n|---|---|\n");
-    for (const FuelInfo& f : kFuels) {
+    for (const FuelInfo& f : fuelRows()) {
         std::printf("| %s | %.0f |\n", itemName(f.item), static_cast<double>(f.seconds));
     }
     std::printf("\nA machine that both burns fuel and runs recipes has a FUEL buffer of its\n"
