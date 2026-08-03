@@ -3,6 +3,7 @@ add_executable(voxel-factory
     src/Block.cpp
     src/Item.cpp
     src/ContentRegistry.cpp
+    src/ContentValidate.cpp
     src/Recipes.cpp
     src/Chunk.cpp
     src/World.cpp
