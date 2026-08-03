@@ -4,6 +4,7 @@ add_executable(voxel-factory
     src/Item.cpp
     src/ContentRegistry.cpp
     src/ContentValidate.cpp
+    src/ContentDump.cpp
     src/Recipes.cpp
     src/Chunk.cpp
     src/World.cpp
@@ -30,6 +31,11 @@ add_executable(voxel-factory
 )
 
 target_include_directories(voxel-factory PRIVATE include)
+# The content pack format is JSON. nlohmann is already vendored (the engine's
+# Blockbench loader uses it); SYSTEM + the angle-bracket include convention is
+# what keeps it out of /W4. Included from ContentDump.cpp and ContentPack.cpp
+# only -- it is a big header, and every other TU should stay clear of it.
+target_include_directories(voxel-factory SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/json)
 target_link_libraries(voxel-factory PRIVATE engine)
 
 # Same warning stance as the engine (see engine/CMakeLists.txt).

@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/ContentPack.h"
 #include "game/ContentValidate.h"
 #include "game/MachineSystem.h"
 #include "game/Recipes.h"
@@ -867,6 +868,13 @@ int main(int argc, char** argv) {
     // Regenerates RECIPES.md from the live tables; also headless.
     if (argc > 1 && std::strcmp(argv[1], "--dump-recipes") == 0) {
         return dumpRecipes();
+    }
+    // The whole content set as JSON, by key. The pack format's own spec, its
+    // vocabulary, and a worked example -- see ContentPack.h.
+    if (argc > 1 && std::strcmp(argv[1], "--dump-content") == 0) {
+        const std::string doc = content::dumpContent();
+        std::fwrite(doc.data(), 1, doc.size(), stdout);
+        return 0;
     }
     // Is the content set coherent? The --selftest checks that are about
     // CONTENT rather than about code, on their own and without the save
