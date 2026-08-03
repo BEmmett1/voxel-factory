@@ -2,6 +2,7 @@
 
 #include "game/Item.h"
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -20,19 +21,25 @@
 // lock on a recipe that no longer exists resolves to -1 (AUTO) on load rather
 // than to whatever row inherited its index.
 //
-// Two rules remain, and they are unrelated to ordering:
-//   * keys must be unique within their table (--selftest checks this), and
-//   * BlockId/ItemId enums are still APPEND-ONLY -- those ordinals really are
-//     the save encoding for blocks and inventories.
+// One rule remains, and it is unrelated to ordering: keys must be unique within
+// their table (content::validate() checks this). The enums used to be
+// append-only for the same family of reasons; save v22's key tables retired
+// that too, so ordinals are now an encoding everywhere and keys are the
+// identity everywhere.
 //
 // Convention: "<surface>/<output>", e.g. "hand/wood-pickaxe", "press/plate",
 // "circle/teleport-key". A key is never shown to the player, so rename it only
 // when you mean "this is a different recipe now".
+//
+// The key is an owned std::string rather than a literal because a row no longer
+// has to come from a compiler: a content pack (ContentPack.h) may replace,
+// append to, or delete from these tables at startup. That is also why the
+// tables stopped being const -- see the note on the accessors below.
 // ---------------------------------------------------------------------------
 
 // A crafting recipe: consume `inputs`, produce `output`.
 struct Recipe {
-    const char*            key;
+    std::string            key;
     std::vector<ItemStack> inputs;
     ItemStack              output;
 };
@@ -55,7 +62,7 @@ struct RecipeOutput {
 };
 
 struct MachineRecipe {
-    const char*               key;
+    std::string               key;
     BlockId                   machine;
     std::vector<ItemStack>    inputs;
     std::vector<RecipeOutput> outputs;
@@ -96,7 +103,7 @@ const char* recipeKeyFor(BlockId type, int index);
 // superset of another must be listed first, so rebalancing one recipe often
 // means moving it.
 struct CircleRecipe {
-    const char*            key;
+    std::string            key;
     ItemStack              center{};  // catalyst in the core; {None, 0} = none
     std::vector<ItemStack> ring;      // 4 or 8 slots, clockwise
     ItemStack              output;
@@ -116,3 +123,18 @@ const std::vector<CircleRecipe>& circleRecipes();
 // Key <-> index for the circle table, same contract as the machine pair above.
 int         circleIndexForKey(std::string_view key);
 const char* circleKeyFor(int index);
+
+// ---- Editing the tables (content packs) -----------------------------------
+// The three tables are seeded from the rows compiled into Recipes.cpp and may
+// then be rewritten by a content pack. Only ContentPack.cpp does that, and only
+// at startup, BEFORE a world exists -- which is what makes the borrowed
+// `const char*` from recipeKeyFor/circleKeyFor safe to hold for a frame, and
+// what keeps a machine's runtime selectedRecipe index meaningful (it is
+// re-resolved from the saved key when a world loads, which happens after).
+//
+// Rewriting them mid-game would invalidate every one of those, so don't.
+namespace recipes {
+    std::vector<Recipe>&        handTable();
+    std::vector<MachineRecipe>& machineTable();
+    std::vector<CircleRecipe>&  circleTable();
+}

@@ -17,7 +17,7 @@ namespace {
     // and can be belt-fed. What stays here is what you need to get off the
     // ground with nothing -- plus the Circle's own two parts, or the tech tree
     // would deadlock behind a circle you cannot build.
-    const std::vector<Recipe> kRecipes = {
+    std::vector<Recipe> kRecipes = {
         // ---- Early-game ladder (the hard start) ----
         // The two lowest tool tiers. Wood tools come from hand-gathered sticks
         // (leaves) + pebbles (sifting dirt/grass) and gate Stone + Logs; Stone
@@ -63,7 +63,7 @@ namespace {
     // the inputs for. Rows may be reordered or removed freely (saves store the
     // key), but ORDER IS STILL GAMEPLAY: AUTO runs the first row whose inputs
     // are present, so a row that is a prefix of another must come after it.
-    const std::vector<MachineRecipe> kMachineRecipes = {
+    std::vector<MachineRecipe> kMachineRecipes = {
         // Grinder: grinds raws to powder. Also crushes Stone back into Sand,
         // so Sand is renewable from Stone (which is renewable from dirt+sand).
         {"grinder/ground-herb",  B::Grinder, {{I::Herb, 1}},    {{{I::GroundHerb, 1}}},  2.0f},
@@ -209,7 +209,7 @@ namespace {
     // listed first and AUTO takes the first match. Locking a MAKE row in the
     // panel is the escape hatch -- the same known-by-design bargain the Press
     // makes with its rows.
-    const std::vector<CircleRecipe> kCircleRecipes = {
+    std::vector<CircleRecipe> kCircleRecipes = {
         // -- Bootstrap tier: no plates, so a Lesser circle can build the
         // machines that make plates. This is the whole reason the Lesser
         // circle runs unpowered.
@@ -398,7 +398,7 @@ const char* recipeKeyFor(BlockId type, int index) {
     if (index < 0) return "";
     const auto rows = recipesForMachine(type);
     if (static_cast<std::size_t>(index) >= rows.size()) return "";
-    return rows[static_cast<std::size_t>(index)]->key;
+    return rows[static_cast<std::size_t>(index)]->key.c_str();
 }
 
 int circleIndexForKey(std::string_view key) {
@@ -411,5 +411,14 @@ int circleIndexForKey(std::string_view key) {
 
 const char* circleKeyFor(int index) {
     if (index < 0 || static_cast<std::size_t>(index) >= kCircleRecipes.size()) return "";
-    return kCircleRecipes[static_cast<std::size_t>(index)].key;
+    return kCircleRecipes[static_cast<std::size_t>(index)].key.c_str();
+}
+
+// The pack loader's handles on the tables. Seeded above with the compiled rows;
+// a pack may replace, append to, or delete from them at startup. See the note
+// in Recipes.h about why that must happen before a world exists.
+namespace recipes {
+    std::vector<Recipe>&        handTable()    { return kRecipes; }
+    std::vector<MachineRecipe>& machineTable() { return kMachineRecipes; }
+    std::vector<CircleRecipe>&  circleTable()  { return kCircleRecipes; }
 }

@@ -28,4 +28,19 @@ namespace content {
     // The whole content set as a JSON document (trailing newline included).
     std::string dumpContent();
 
+    // Every *.json in `dir`, sorted, so a folder of packs applies in a stable
+    // order. An unreadable or absent folder is simply no packs.
+    std::vector<std::string> findPacks(const std::string& dir);
+
+    // Apply packs, in order, then check the result with content::validate().
+    //
+    // ALL OR NOTHING: if any pack fails to parse, or if the content set they
+    // produce between them is incoherent, the tables are restored to exactly
+    // what they were and the problems are returned. A pack may make the game
+    // different; it may not make it broken, and it may never leave it half
+    // converted.
+    //
+    // Startup only -- see the note on recipes::handTable() in Recipes.h.
+    std::vector<std::string> applyPacks(const std::vector<std::string>& paths);
+
 } // namespace content

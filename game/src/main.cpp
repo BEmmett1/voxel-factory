@@ -652,6 +652,71 @@ int runSelfTest() {
         SELFTEST_CHECK(problems.empty());
     }
 
+    // ---- The pack format reads back what it writes -------------------------
+    // --dump-content is the format's specification, which is only true while
+    // the loader accepts it exactly. Feed the dump back and dump again: any
+    // field the writer emits and the reader drops (or rounds, or reorders)
+    // shows up here as a difference, and nowhere else.
+    {
+        const std::string packPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-pack.json").string();
+        const std::string before = content::dumpContent();
+        {
+            std::ofstream out(packPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << before;
+        }
+        const std::vector<std::string> problems = content::applyPacks({packPath});
+        for (const std::string& msg : problems) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(problems.empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // ---- A pack that deadlocks the tech tree is refused, WHOLE ---------
+        // The generate -> validate -> repair loop rests on this: content that
+        // parses perfectly can still describe an unplayable game, and the
+        // reachability closure is what notices. Deleting the only recipe that
+        // presses a Copper Plate strands every machine behind it.
+        //
+        // What is actually under test is the rollback. A pack is applied before
+        // it can be judged -- there is no way to ask "would this close?" of a
+        // table it is not in -- so a refusal has to put back exactly what was
+        // there, or a bad pack would half-convert the game on its way out.
+        const std::string badPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-badpack.json").string();
+        {
+            std::ofstream out(badPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"remove": ["press/copper-plate"]}})";
+        }
+        const std::vector<std::string> refused = content::applyPacks({badPath});
+        SELFTEST_CHECK(!refused.empty());
+        SELFTEST_CHECK(content::validate().empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
+        SELFTEST_CHECK(recipeIndexForKey(BlockId::Press, "press/copper-plate") >= 0);
+
+        // A pack naming content this build lacks is refused the same way, and
+        // says which key -- the difference between a fixable complaint and a
+        // shrug.
+        const std::string unknownPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-unknownpack.json").string();
+        {
+            std::ofstream out(unknownPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"hand": [{"key": "hand/x",
+                 "inputs": [{"item": "mod:unobtainium"}],
+                 "output": {"item": "core:stone"}}]}})";
+        }
+        const std::vector<std::string> unknown = content::applyPacks({unknownPath});
+        SELFTEST_CHECK(unknown.size() == 1);
+        SELFTEST_CHECK(unknown.front().find("mod:unobtainium") != std::string::npos);
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        std::error_code rmErr;
+        fs::remove(packPath, rmErr);
+        fs::remove(badPath, rmErr);
+        fs::remove(unknownPath, rmErr);
+    }
+
     // ---- Pre-v20 lock migration ------------------------------------------
     // Old saves stored selectedRecipe as a POSITION. That format can no longer
     // be written, so nothing else exercises this path -- and a regression here
@@ -769,7 +834,8 @@ int dumpRecipes() {
     for (const Recipe& r : handcraftRecipes()) {
         std::string out = itemName(r.output.id);
         if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
-        std::printf("| `%s` | %s | %s |\n", r.key, stackList(r.inputs).c_str(), out.c_str());
+        std::printf("| `%s` | %s | %s |\n", r.key.c_str(), stackList(r.inputs).c_str(),
+                    out.c_str());
     }
 
     std::printf("\n## Machines\n\n");
@@ -811,7 +877,7 @@ int dumpRecipes() {
                         static_cast<int>(o.weight / total * 100.0f + 0.5f)) + "%)";
                 }
             }
-            std::printf("| `%s` | %s | %s | %.1f |\n", r->key,
+            std::printf("| `%s` | %s | %s | %.1f |\n", r->key.c_str(),
                         stackList(r->inputs).c_str(), out.c_str(),
                         static_cast<double>(r->seconds));
         }
@@ -841,7 +907,7 @@ int dumpRecipes() {
         }
         std::string out = itemName(r.output.id);
         if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
-        std::printf("| `%s` | %s | %s | %s | %.1f |\n", r.key, centre.c_str(),
+        std::printf("| `%s` | %s | %s | %s | %.1f |\n", r.key.c_str(), centre.c_str(),
                     ring.c_str(), out.c_str(), static_cast<double>(r.seconds));
     }
 
@@ -861,17 +927,54 @@ int dumpRecipes() {
 int main(int argc, char** argv) {
     SDL_SetMainReady();
 
+    // ---- Content packs, before anything has read the tables ---------------
+    // Two ways in, and they are deliberately not the same way.
+    //
+    // The `packs/` folder beside the executable is the PLAYER'S installation,
+    // so it applies to the game and to nothing else. `--pack <file>` is the
+    // AUTHOR'S, and applies to whatever it is asked of -- which is what lets a
+    // generator run `--pack draft.json --validate` on its own output without
+    // installing it anywhere.
+    //
+    // Keeping the folder out of the headless tools is what stops an installed
+    // pack from silently rewriting the answers: --selftest asserts against the
+    // content compiled into the build, and --dump-content is the build's own
+    // spec. A pack changing either of those out from under CI would be a very
+    // confusing failure.
+    std::vector<std::string> packs;
+    const char* mode = "";
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--pack") == 0 && i + 1 < argc) packs.push_back(argv[++i]);
+        else if (!*mode) mode = argv[i];
+    }
+    const bool headless = std::strcmp(mode, "--selftest") == 0 ||
+                          std::strcmp(mode, "--dump-recipes") == 0 ||
+                          std::strcmp(mode, "--dump-content") == 0 ||
+                          std::strcmp(mode, "--validate") == 0;
+    if (packs.empty() && !headless) {
+        if (const char* base = SDL_GetBasePath()) { // owned by SDL, do not free
+            packs = content::findPacks(std::string(base) + "packs");
+        }
+    }
+    const std::vector<std::string> packProblems = content::applyPacks(packs);
+    if (!packProblems.empty() && headless) {
+        // A tool was asked about a named pack and the pack is not usable. Say
+        // why and stop, rather than quietly answer about the fallback.
+        for (const std::string& msg : packProblems) std::printf("%s\n", msg.c_str());
+        return 1;
+    }
+
     // Headless save round-trip for CI; runs before any window/GL setup.
-    if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0) {
+    if (std::strcmp(mode, "--selftest") == 0) {
         return runSelfTest();
     }
     // Regenerates RECIPES.md from the live tables; also headless.
-    if (argc > 1 && std::strcmp(argv[1], "--dump-recipes") == 0) {
+    if (std::strcmp(mode, "--dump-recipes") == 0) {
         return dumpRecipes();
     }
     // The whole content set as JSON, by key. The pack format's own spec, its
     // vocabulary, and a worked example -- see ContentPack.h.
-    if (argc > 1 && std::strcmp(argv[1], "--dump-content") == 0) {
+    if (std::strcmp(mode, "--dump-content") == 0) {
         const std::string doc = content::dumpContent();
         std::fwrite(doc.data(), 1, doc.size(), stdout);
         return 0;
@@ -880,7 +983,7 @@ int main(int argc, char** argv) {
     // CONTENT rather than about code, on their own and without the save
     // round-trip: the answer a pack author (or a generator repairing its own
     // output) actually wants, printed one problem per line.
-    if (argc > 1 && std::strcmp(argv[1], "--validate") == 0) {
+    if (std::strcmp(mode, "--validate") == 0) {
         const std::vector<std::string> problems = content::validate();
         for (const std::string& msg : problems) std::printf("%s\n", msg.c_str());
         return problems.empty() ? 0 : 1;
@@ -893,6 +996,26 @@ int main(int argc, char** argv) {
     if (!pref.empty()) {
         engine::Log::init(pref);
         engine::CrashHandler::install(pref);
+    }
+
+    // A refused pack is not fatal -- applyPacks already put the compiled
+    // content back, so the game below is the ordinary one. But it must not be
+    // silent either: someone installed a pack and is about to not see it, and
+    // the reason is the one thing that lets them fix it. Logged in full (the
+    // log is what a bug report carries), shown as the first problem plus a
+    // count, because a broken pack can produce a great many.
+    if (!packProblems.empty()) {
+        for (const std::string& msg : packProblems) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "content pack: %s", msg.c_str());
+        }
+        std::string box = "A content pack was refused, so the game is running without it.\n\n" +
+                          packProblems.front();
+        if (packProblems.size() > 1) {
+            box += "\n\n(and " + std::to_string(packProblems.size() - 1) +
+                   " more -- see logs/game.log)";
+        }
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Voxel Factory - Content Pack",
+                                 box.c_str(), nullptr);
     }
 
     int exitCode = 0;
