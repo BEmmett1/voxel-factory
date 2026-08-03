@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <vector>
 
 // Things the player can hold in their inventory. Distinct from BlockId: some
@@ -185,6 +186,14 @@ enum class ArmorSlot : std::uint8_t { None, Head, Body, Feet };
 
 inline constexpr int kArmorSlots = 3; // head, body, feet
 
+// Enum spellings for the content pack format (ContentPack.h). One table read
+// by both the writer and the reader, so the two cannot drift -- and adding an
+// enumerator without naming it here is a compile error.
+inline constexpr const char* kToolNames[] = {"none", "pickaxe", "axe", "shovel"};
+inline constexpr const char* kArmorSlotNames[] = {"none", "head", "body", "feet"};
+static_assert(std::size(kToolNames) == 4 && std::size(kArmorSlotNames) == 4,
+              "tool/armor-slot names must cover every enumerator");
+
 // Tool tiers, low to high. A block's required tier (BlockInfo::toolTier) gates
 // its drop; a tool's tier (ItemInfo::toolTier) must meet it. 0 = no tool / not
 // a tool (soft blocks, ungated).
@@ -234,6 +243,7 @@ const ItemInfo& itemInfo(ItemId id);
 std::size_t itemCount();
 const std::vector<ItemInfo>& itemRows();
 ItemId addItem(const ItemInfo& row);
+void restoreItems(std::vector<ItemInfo> rows); // rollback; see restoreBlocks
 
 inline const char* itemName(ItemId id) { return itemInfo(id).name; }
 inline ToolType    itemTool(ItemId id)        { return itemInfo(id).tool; }

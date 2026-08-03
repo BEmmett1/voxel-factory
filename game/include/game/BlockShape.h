@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <iterator>
 #include <span>
+#include <string_view>
 
 // Sub-cube block geometry: the boxes a block actually occupies inside its cell,
 // instead of the implicit 1x1x1 every block was until now. A block names a
@@ -130,6 +131,32 @@ inline constexpr const BlockShape& blockShape(ShapeId id) {
 }
 inline const BlockShape& blockShape(BlockId id) {
     return blockShape(blockInfo(id).shape);
+}
+
+// ---- Shape names, for the content pack format -----------------------------
+// A shape is baked from a Blockbench model, so a pack cannot author one -- but
+// it must be able to SAY which existing shape a block uses, and "3" is exactly
+// the kind of ordinal the whole content-key exercise was about not writing
+// down. One table serves both the dump and the loader, so a new shape is a name
+// here and nothing else.
+inline constexpr const char* kShapeNames[] = {
+    "full_cube", "empty", "brewing_cauldron",
+    "alchemical_alembic", "auger_mining_rig", "arcane_infuser",
+};
+static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
+              "kShapeNames needs exactly one name per ShapeId");
+
+inline const char* shapeName(ShapeId id) {
+    return kShapeNames[static_cast<std::size_t>(id)];
+}
+
+// ShapeId::Count when the name is unknown -- shapes are compiled in, so unlike
+// blocks and items this sentinel can never collide with a real row.
+inline ShapeId shapeFromName(std::string_view name) {
+    for (std::size_t i = 0; i < std::size(kShapeNames); ++i) {
+        if (name == kShapeNames[i]) return static_cast<ShapeId>(i);
+    }
+    return ShapeId::Count;
 }
 
 // The boxes a block occupies, cell-local. Physics and raycasts walk these

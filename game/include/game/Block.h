@@ -217,6 +217,11 @@ const std::vector<BlockInfo>& blockRows();
 // growing the vector invalidates every one of them.
 BlockId addBlock(const BlockInfo& row);
 
+// Put the whole table back. A pack has to be APPLIED before anyone can ask
+// whether the content set it produces is coherent, so a refusal needs a way
+// back -- see content::applyPacks().
+void restoreBlocks(std::vector<BlockInfo> rows);
+
 inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
 inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }
 inline bool isFullCube(BlockId id)         { return blockInfo(id).fullCube; }

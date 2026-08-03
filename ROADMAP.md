@@ -489,17 +489,25 @@ generate → validate → repair loop a model needs.
 1. [x] **Content identity by key** (done, save v22 — see Q3 above). The
        prerequisite: content that isn't compiled in needs an identity that
        isn't an ordinal
-2. [ ] **Runtime registries** — the five tables become vectors seeded from the
-       compiled rows; mods append. The `static_assert` lambdas become runtime
-       validators (same loops, same messages). Now the ONLY thing standing
-       between a pack and new content, since steps 3 and 4 landed without it.
-       Wider than it is hard: `Inventory` is a fixed
-       `std::array<int, ItemId::Count>`, `detail::kMachineTraitIndex` is a
-       `constexpr int8_t` table sized by `BlockId::Count`, `blockShape()` is
-       `constexpr` and feeds four `static_assert`s, and there are ~38
-       `::Count` sites across 14 files. Watch two ceilings while doing it:
-       `kMaxShapeBanks` caps shapes at 32, and that `int8_t` silently caps
-       machines at 127
+2. [x] **Runtime registries** (Aug 2026) — blocks, items, machine traits and
+       fuels are vectors seeded from the compiled rows, and a pack appends to
+       them. **`BlockId::Count` changed meaning**: it is now "how many blocks
+       were COMPILED IN", not how many exist; `blockCount()`/`itemCount()`
+       answer the latter. An ordinal past Count is a valid id (the enums have
+       fixed underlying types), so loaded content rides every path compiled
+       content does, including a chunk's raw bytes and a save's key table.
+       Shapes stayed compiled — a shape needs a Blockbench bake, so it is not
+       text-authorable, which also left `kMaxShapeBanks` out of scope.
+       The compiled tables stayed put (renamed `*Seed`) with every
+       `static_assert` intact, so a developer editing kBlocks still gets a
+       compile error; `content::validate()` re-asks the same questions of the
+       whole runtime table, which is where a pack's rows are.
+       Three things that were correct and would have become bugs: the "no such
+       content" sentinel was `BlockId::Count`, which a pack makes a REAL id
+       (now `content::kNoBlock` at the top of the underlying type);
+       `Inventory` was a `std::array<int, ItemId::Count>`, so a modded item's
+       count landed in the next item's slot; and the machine trait index was a
+       `constexpr int8_t` array, silently capping the game at 127 machines
 3. [x] **The validator is callable** (Aug 2026) — `content::validate()`
        (`ContentValidate.h`) holds the recipe-key round-trip, the
        circle-pattern shadowing check and the tech-tree reachability closure,
@@ -508,7 +516,7 @@ generate → validate → repair loop a model needs.
        round-trip; the pack loader below runs the same function. Done ahead of
        step 2 because it is what makes a bad pack *reportable* instead of
        merely refused
-4. [~] **JSON format + loader** — the format landed early for RECIPES,
+4. [x] **JSON format + loader** — the format landed early for RECIPES,
        because those three tables were already runtime vectors and v22's keys
        already named every item and block, so **no part of step 2 was
        needed**. `--dump-content` writes the whole content set by key and
@@ -520,13 +528,19 @@ generate → validate → repair loop a model needs.
        All-or-nothing: `applyPacks` applies, validates, and **restores the
        compiled tables** if the result is incoherent, so a generated pack can
        make the game different but never broken.
-       What is still gated on step 2: blocks, items, machine traits and fuels.
-       A pack may CONTAIN those sections (the dump is a pack) but not change
-       them, and it is told exactly which row it tried to change
-5. [ ] **Generation tooling** — an out-of-game companion tool that emits a mod
-       file, NOT an in-game HTTP client: the game has zero networking today,
-       and keeping generation outside the binary avoids server costs and
-       moderation liability entirely
+       Since step 2 landed, a pack may also ADD or retune blocks, items,
+       machine traits and fuels — a new machine with its own recipes, a new
+       ore, a better fuel, all from JSON. Rows may name content the same pack
+       is adding, in either order: every new key is declared before any field
+       is resolved. What still needs a compiler is a block SHAPE (a Blockbench
+       bake), new `MachineKind`s and `CreatureKind`s (hand-written dispatch),
+       item effects, and worldgen presence
+5. [ ] **Generation tooling** — an out-of-game companion tool that emits a
+       pack file, NOT an in-game HTTP client: the game has zero networking
+       today, and keeping generation outside the binary avoids server costs and
+       moderation liability entirely. Everything it needs now exists:
+       `--dump-content` is the prompt (spec, vocabulary and worked example in
+       one file) and `--pack draft.json --validate` is the repair loop
 
 Constraints that are not negotiable once multiplayer is in view (above):
 **mods are declarative data, never a scripting language** — a client receives

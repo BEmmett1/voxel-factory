@@ -1,7 +1,10 @@
 #include "game/ContentValidate.h"
 
 #include "game/AlchemyCircle.h"
+#include "game/Atlas.h"
 #include "game/Block.h"
+#include "game/BlockShape.h"
+#include "game/ContentRegistry.h"
 #include "game/Inventory.h"
 #include "game/Item.h"
 #include "game/Machine.h"
@@ -29,20 +32,20 @@ namespace {
     std::string key(const CircleRecipe& r)  { return "circle '" + std::string(r.key) + "'"; }
 
     // ---- Keys are the identity, so they must be unique and non-empty -------
-    // The keys ARE the save format for a locked machine: a duplicate makes two
-    // recipes indistinguishable on load, and an empty one makes a lock
-    // unsaveable. Nothing else in the build catches either.
+    // Shared by the recipe tables and the block/item registries, because it is
+    // the same rule for the same reason: a key IS what a save stores, so a
+    // duplicate makes two rows indistinguishable on load and an empty one makes
+    // the row unsaveable. Nothing else in the build catches either.
     void checkKeys(const std::vector<std::string>& keys, const char* table,
                    std::vector<std::string>& out) {
         for (std::size_t i = 0; i < keys.size(); ++i) {
             if (keys[i].empty()) {
-                out.push_back(std::string("a ") + table + " recipe has an empty key");
+                out.push_back(std::string("a ") + table + " has an empty key");
                 continue;
             }
             for (std::size_t j = i + 1; j < keys.size(); ++j) {
                 if (keys[i] == keys[j]) {
-                    out.push_back(std::string("duplicate ") + table + " recipe key '" +
-                                  keys[i] + "'");
+                    out.push_back(std::string("duplicate ") + table + " key '" + keys[i] + "'");
                 }
             }
         }
@@ -53,9 +56,9 @@ namespace {
         for (const Recipe& r : handcraftRecipes()) hand.push_back(r.key);
         for (const MachineRecipe& r : machineRecipes()) mach.push_back(r.key);
         for (const CircleRecipe& r : circleRecipes()) circ.push_back(r.key);
-        checkKeys(hand, "hand-craft", out);
-        checkKeys(mach, "machine", out);
-        checkKeys(circ, "circle", out);
+        checkKeys(hand, "hand-craft recipe", out);
+        checkKeys(mach, "machine recipe", out);
+        checkKeys(circ, "circle recipe", out);
 
         // A machine recipe must name a machine that actually RUNS a list.
         // recipesForMachine() resolves a manual twin through its recipeGroup,
@@ -116,6 +119,134 @@ namespace {
             if (!same) {
                 out.push_back(std::string(blockName(traits.block)) + " does not run exactly " +
                               blockName(traits.recipeGroup) + "'s recipes");
+            }
+        }
+    }
+
+    // ---- The registries themselves ----------------------------------------
+    // Every rule here is a static_assert in Block.cpp / Item.cpp / Machine.h
+    // as well, guarding the COMPILED rows. These are the same rules asked of
+    // the whole runtime table, which is where a pack's rows are -- and the
+    // reason they are worth asking twice is that the consequences are not
+    // "wrong behaviour" but memory: a block whose `solid` disagrees with its
+    // shape makes the collision code trust a box array that isn't there, and a
+    // tile index past the sheet is an out-of-bounds write in the fallback
+    // atlas generator.
+    void checkRegistries(std::vector<std::string>& out) {
+        constexpr std::size_t kTiles = static_cast<std::size_t>(Atlas::Rows * Atlas::Cols);
+
+        // The sentinel has to stay out of reach. A registry this large is
+        // absurd today, and would silently make "no such content" name a row.
+        if (blockCount() >= static_cast<std::size_t>(content::kNoBlock)) {
+            out.push_back("there are too many blocks for the 'no such block' sentinel");
+        }
+        if (itemCount() >= static_cast<std::size_t>(content::kNoItem)) {
+            out.push_back("there are too many items for the 'no such item' sentinel");
+        }
+
+        // Keys are the identity: a duplicate aliases two rows everywhere at
+        // once -- a save's id table maps both onto one, and two packs claiming
+        // the same key overwrite each other.
+        std::vector<std::string> keys;
+        for (const BlockInfo& b : blockRows()) keys.push_back(b.key ? b.key : "");
+        checkKeys(keys, "block", out);
+        keys.clear();
+        for (const ItemInfo& i : itemRows()) keys.push_back(i.key ? i.key : "");
+        checkKeys(keys, "item", out);
+
+        for (std::size_t i = 0; i < blockRows().size(); ++i) {
+            const BlockInfo& b = blockRows()[i];
+            const std::string named = std::string("block '") +
+                                      (b.key ? b.key : "?") + "' ";
+            if (static_cast<std::size_t>(b.id) != i) {
+                out.push_back(named + "is not at its own ordinal");
+            }
+            // fullCube decides what the mesher may HIDE behind this block, so a
+            // non-solid one would occlude a face you can walk and shoot through.
+            if (b.fullCube && !b.solid) out.push_back(named + "is a full cube but not solid");
+            if (static_cast<std::size_t>(b.shape) >= static_cast<std::size_t>(ShapeId::Count)) {
+                out.push_back(named + "names a shape this build does not have");
+                continue; // the checks below would read past kBlockShapes
+            }
+            // Solidity and geometry must agree, or physics and rendering
+            // disagree about where the block is: this is what lets Collision.cpp
+            // trust blockBoxes() alone.
+            if (b.solid != !blockShape(b.shape).boxes.empty()) {
+                out.push_back(named + "is solid exactly when its shape has collision "
+                                      "boxes, and these disagree");
+            }
+            const ShapeAabb& s = blockShape(b.shape).bounds;
+            if (b.fullCube && (s.lo != glm::vec3(0.0f) || s.hi != glm::vec3(1.0f))) {
+                out.push_back(named + "is a full cube but its shape does not fill the cell");
+            }
+            // The fallback atlas generator writes a 16x16 swatch at
+            // tile % Cols, tile / Cols -- with no bounds check, because until
+            // now every tile came from a table a human wrote.
+            for (const int tile : {b.tiles.top, b.tiles.side, b.tiles.bottom}) {
+                if (tile < 0 || static_cast<std::size_t>(tile) >= kTiles) {
+                    out.push_back(named + "uses atlas tile " + std::to_string(tile) +
+                                  ", which is outside the " + std::to_string(kTiles) +
+                                  "-tile sheet");
+                }
+            }
+            if (b.machine != hasMachineTraits(b.id)) {
+                out.push_back(named + (b.machine ? "is a machine with no traits row"
+                                                 : "is not a machine but has a traits row"));
+            }
+            if (b.source && b.spawnsNode == BlockId::Air) {
+                out.push_back(named + "is a source that grows nothing");
+            }
+        }
+
+        for (std::size_t i = 0; i < itemRows().size(); ++i) {
+            const ItemInfo& it = itemRows()[i];
+            const std::string named = std::string("item '") +
+                                      (it.key ? it.key : "?") + "' ";
+            if (static_cast<std::size_t>(it.id) != i) {
+                out.push_back(named + "is not at its own ordinal");
+            }
+            if (it.atlasTile >= 0 && static_cast<std::size_t>(it.atlasTile) >= kTiles) {
+                out.push_back(named + "uses atlas tile " + std::to_string(it.atlasTile) +
+                              ", which is outside the " + std::to_string(kTiles) +
+                              "-tile sheet");
+            }
+            // A placeable that places nothing is a click that does nothing, and
+            // iconTile() would borrow Air's tile for its icon.
+            if (it.placeable && it.placesBlock == BlockId::Air) {
+                out.push_back(named + "is placeable but places nothing");
+            }
+        }
+
+        // One row per machine, and a manual twin must delegate exactly one hop
+        // to a machine that runs its own list -- recipeGroupFor() is a plain
+        // lookup and two twins pointing at each other would spin.
+        for (std::size_t i = 0; i < machineTraitRows().size(); ++i) {
+            const MachineTraits& t = machineTraitRows()[i];
+            const std::string named =
+                std::string("machine '") + blockName(t.block) + "' ";
+            for (std::size_t j = i + 1; j < machineTraitRows().size(); ++j) {
+                if (machineTraitRows()[j].block == t.block) {
+                    out.push_back(named + "has more than one traits row");
+                }
+            }
+            if (t.handCranked != (t.recipeGroup != BlockId::Air)) {
+                out.push_back(named + "must be hand-cranked exactly when it "
+                                      "delegates its recipes to another machine");
+            }
+            if (t.recipeGroup == BlockId::Air) continue;
+            if (!hasMachineTraits(t.recipeGroup)) {
+                out.push_back(named + "delegates its recipes to something that is "
+                                      "not a machine");
+            } else if (machineTraits(t.recipeGroup).recipeGroup != BlockId::Air) {
+                out.push_back(named + "delegates to a machine that itself delegates");
+            }
+        }
+
+        for (const FuelInfo& f : fuelRows()) {
+            if (f.item == ItemId::None) out.push_back("a fuel row names no item");
+            else if (f.seconds <= 0.0f) {
+                out.push_back(std::string("fuel '") + itemName(f.item) +
+                              "' burns for no time at all");
             }
         }
     }
@@ -280,6 +411,7 @@ namespace content {
 
     std::vector<std::string> validate() {
         std::vector<std::string> out;
+        checkRegistries(out);
         checkRecipeKeys(out);
         checkCircleShadowing(out);
         checkReachability(out);

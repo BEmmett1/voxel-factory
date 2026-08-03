@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -359,6 +360,10 @@ std::size_t itemCount() {
 
 const std::vector<ItemInfo>& itemRows() {
     return itemTable();
+}
+
+void restoreItems(std::vector<ItemInfo> rows) {
+    itemTable() = std::move(rows);
 }
 
 ItemId addItem(const ItemInfo& row) {

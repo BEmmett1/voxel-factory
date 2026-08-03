@@ -7,6 +7,7 @@
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
 #include "game/ContentPack.h"
+#include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
 #include "game/MachineSystem.h"
 #include "game/Recipes.h"
@@ -688,6 +689,7 @@ int runSelfTest() {
             SELFTEST_CHECK(static_cast<bool>(out));
             out << R"({"format": 1, "recipes": {"remove": ["press/copper-plate"]}})";
         }
+        std::error_code rmErr;
         const std::vector<std::string> refused = content::applyPacks({badPath});
         SELFTEST_CHECK(!refused.empty());
         SELFTEST_CHECK(content::validate().empty());
@@ -711,10 +713,112 @@ int runSelfTest() {
         SELFTEST_CHECK(unknown.front().find("mod:unobtainium") != std::string::npos);
         SELFTEST_CHECK(content::dumpContent() == before);
 
-        std::error_code rmErr;
-        fs::remove(packPath, rmErr);
-        fs::remove(badPath, rmErr);
-        fs::remove(unknownPath, rmErr);
+        // ---- A pack that ADDS content, and a save that survives it ---------
+        // The whole point of the runtime registries: a block whose ordinal is
+        // past BlockId::Count has to ride every path a compiled one does. Most
+        // of those would fail loudly. The save would NOT -- its chunk bytes and
+        // its key table are both sized by the content set, and a mismatch there
+        // reads back as the wrong block rather than as an error. So this puts a
+        // modded block in a world, round-trips it, and looks at what comes back.
+        const std::vector<BlockInfo> blocks0 = blockRows();
+        const std::vector<ItemInfo> items0 = itemRows();
+        const std::vector<MachineTraits> traits0 = machineTraitRows();
+        const std::string addPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-addpack.json").string();
+        {
+            std::ofstream out(addPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "items": [{"key": "mod:widget", "name": "Widget", "atlasTile": 64}],
+                 "blocks": [{"key": "mod:widget_ore", "name": "Widget Ore",
+                             "color": "#8020a0", "drop": {"item": "mod:widget", "count": 2},
+                             "tiles": {"top": 3, "side": 3, "bottom": 3}, "hardness": 1.0}]})";
+        }
+        const std::vector<std::string> added = content::applyPacks({addPath});
+        for (const std::string& msg : added) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(added.empty());
+
+        const BlockId modBlock = content::blockFromKey("mod:widget_ore");
+        const ItemId modItem = content::itemFromKey("mod:widget");
+        SELFTEST_CHECK(modBlock != content::kNoBlock && modItem != content::kNoItem);
+        // Past the compiled enum, which is the case that did not exist before.
+        SELFTEST_CHECK(static_cast<int>(modBlock) >= static_cast<int>(BlockId::Count));
+        SELFTEST_CHECK(static_cast<int>(modItem) >= static_cast<int>(ItemId::Count));
+        SELFTEST_CHECK(blockDrop(modBlock).id == modItem && blockDrop(modBlock).count == 2);
+        // An Inventory sized before the item existed must still hold it -- that
+        // is why it grows on demand rather than only at construction.
+        SELFTEST_CHECK(blockName(modBlock) == std::string("Widget Ore"));
+
+        {
+            const std::string modSave =
+                (fs::temp_directory_path() / "voxel-factory-selftest-mod.vxf").string();
+            fs::remove(modSave, rmErr);
+            World mw;
+            mw.setBlock(3, 4, 5, modBlock);
+            mw.setBlock(3, 4, 6, BlockId::Stone); // a compiled block beside it
+            Inventory minv;
+            minv.add(modItem, 9);
+            minv.add(ItemId::Stone, 4);
+            Weather mwx;
+            PlayerController mp;
+            float mfill = 0.0f;
+            glm::vec3 mpos{0.0f};
+            float myaw = 0.0f, mpitch = 0.0f;
+            std::uint32_t mseed = 7u, mrng = 8u;
+            int mslot = 0;
+            std::array<ItemId, kHotbarSlots> mhot{};
+            mhot[0] = modItem;
+            bool mb1 = false, mb2 = false;
+            double mplay = 0.0;
+            std::vector<DroppedItem> mdrops;
+            std::array<ItemId, kArmorSlots> marmor{};
+            std::unordered_map<glm::ivec3, Machine, IVec3Hash> mmach;
+            std::unordered_map<glm::ivec3, Belt, IVec3Hash> mbelt;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> msrc, msap;
+            SaveData ms{mw, minv, {mmach, mbelt, msrc, msap}, mwx, mp, mfill, mpos, myaw, mpitch,
+                        mseed, mrng, mslot, mhot, mb1, mb2, mplay, mdrops, marmor};
+            SELFTEST_CHECK(SaveSystem::save(modSave, ms));
+
+            World rw;
+            Inventory rinv;
+            Weather rwx;
+            PlayerController rp;
+            float rfill = 0.0f;
+            glm::vec3 rpos{0.0f};
+            float ryaw = 0.0f, rpitch = 0.0f;
+            std::uint32_t rseed = 0u, rrng = 0u;
+            int rslot = 0;
+            std::array<ItemId, kHotbarSlots> rhot{};
+            bool rb1 = false, rb2 = false;
+            double rplay = 0.0;
+            std::vector<DroppedItem> rdrops;
+            std::array<ItemId, kArmorSlots> rarmor{};
+            std::unordered_map<glm::ivec3, Machine, IVec3Hash> rmach;
+            std::unordered_map<glm::ivec3, Belt, IVec3Hash> rbelt;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> rsrc, rsap;
+            SaveData rs{rw, rinv, {rmach, rbelt, rsrc, rsap}, rwx, rp, rfill, rpos, ryaw, rpitch,
+                        rseed, rrng, rslot, rhot, rb1, rb2, rplay, rdrops, rarmor};
+            SELFTEST_CHECK(SaveSystem::load(modSave, rs));
+            SELFTEST_CHECK(rw.getBlock(3, 4, 5) == modBlock);
+            SELFTEST_CHECK(rw.getBlock(3, 4, 6) == BlockId::Stone);
+            SELFTEST_CHECK(rinv.count(modItem) == 9);
+            SELFTEST_CHECK(rinv.count(ItemId::Stone) == 4);
+            SELFTEST_CHECK(rhot[0] == modItem);
+            fs::remove(modSave, rmErr);
+        }
+
+        // Put the compiled content back: everything after this is about the
+        // build, not about a pack.
+        restoreBlocks(blocks0);
+        restoreItems(items0);
+        restoreMachineTraits(traits0);
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        std::error_code rmErr2;
+        fs::remove(packPath, rmErr2);
+        fs::remove(badPath, rmErr2);
+        fs::remove(unknownPath, rmErr2);
+        fs::remove(addPath, rmErr2);
     }
 
     // ---- Pre-v20 lock migration ------------------------------------------

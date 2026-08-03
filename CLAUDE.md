@@ -111,6 +111,20 @@ stay in their file's anonymous namespace.
 ## Conventions
 
 - Engine code in `engine::`; game code in the global namespace.
+- **The registries are RUNTIME tables** (Aug 2026). `kBlocks`/`kItems`/
+  `kMachineTraitSeed`/`kFuelSeed` are SEEDS copied into vectors at first use;
+  a content pack appends. So **`BlockId::Count` means "how many were COMPILED
+  IN"**, not how many exist — iterate `blockCount()`/`itemCount()` and use
+  `blockRows()`/`itemRows()`/`machineTraitRows()`/`fuelRows()`, never the seed
+  arrays. An ordinal past `Count` is a valid id (fixed underlying type), and
+  rides every path a compiled one does including a chunk's bytes and a save's
+  key table. "No such content" is `content::kNoBlock`/`kNoItem` at the top of
+  the underlying type — NOT `::Count`, which a pack turns into a real row.
+  Every `static_assert` still guards the seeds (a bad `kBlocks` edit is still
+  a compile error); `content::validate()` asks the same questions of the whole
+  runtime table. Shapes stay compiled — a shape needs a Blockbench bake.
+  Registry writes are STARTUP ONLY: growing a vector invalidates every
+  `BlockInfo&` and would move nothing but break everything.
 - Block/item content lives in id-tagged registry tables (`kBlocks` in Block.cpp,
   `kItems` in Item.cpp — name, flags, drops, atlas tiles, all of it), one
   designated-initializer row per enum value, `static_assert`ed against enum order.
@@ -178,10 +192,13 @@ stay in their file's anonymous namespace.
   `applyPacks` applies first and judges after — a refusal restores exactly what
   was there. At launch a refused pack is logged and shown in a message box but
   is never fatal (the compiled content is already back).
-  Only the three RECIPE tables are authorable; blocks/items/machine traits/
-  fuels are still compiled in. A pack may CONTAIN those sections — the dump is
-  a valid pack — but only restating what is true, checked by parsing our own
-  dump so the rule can't drift, and the complaint names the row.
+  A pack authors all three RECIPE tables plus **blocks, items, machine traits
+  and fuels** (Aug 2026) — a new machine with its own recipes, a new ore, a
+  better fuel, all from JSON. Rows may name content the same pack is adding,
+  in either file order: `loadPack` declares every new key before resolving any
+  field. Still needs a compiler: block SHAPES (a Blockbench bake), new
+  `MachineKind`s/`CreatureKind`s (hand-written dispatch), item effects,
+  worldgen presence.
 - **`content::validate()`** (`ContentValidate.h`) is the coherence check —
   recipe key uniqueness + round-trip, circle-pattern shadowing, and the
   tech-tree reachability closure — returning DIAGNOSTICS, not an exit code.

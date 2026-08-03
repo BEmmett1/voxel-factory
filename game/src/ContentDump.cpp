@@ -1,6 +1,7 @@
 #include "game/ContentPack.h"
 
 #include "game/Block.h"
+#include "game/BlockShape.h"
 #include "game/ContentRegistry.h"
 #include "game/Item.h"
 #include "game/Machine.h"
@@ -88,38 +89,6 @@ namespace {
         return a;
     }
 
-    const char* toolName(ToolType t) {
-        switch (t) {
-            case ToolType::Pickaxe: return "pickaxe";
-            case ToolType::Axe:     return "axe";
-            case ToolType::Shovel:  return "shovel";
-            case ToolType::None:    break;
-        }
-        return "none";
-    }
-
-    const char* armorSlotName(ArmorSlot s) {
-        switch (s) {
-            case ArmorSlot::Head: return "head";
-            case ArmorSlot::Body: return "body";
-            case ArmorSlot::Feet: return "feet";
-            case ArmorSlot::None: break;
-        }
-        return "none";
-    }
-
-    const char* kindName(MachineKind k) {
-        switch (k) {
-            case MachineKind::Generator: return "generator";
-            case MachineKind::Collector: return "collector";
-            case MachineKind::Miner:     return "miner";
-            case MachineKind::RuneCore:  return "rune_core";
-            case MachineKind::Pedestal:  return "pedestal";
-            case MachineKind::Processor: break;
-        }
-        return "processor";
-    }
-
     json dumpBlocks() {
         json a = json::array();
         for (int b = 0; b < static_cast<int>(blockCount()); ++b) {
@@ -143,8 +112,10 @@ namespace {
                                        {"side", info.tiles.side},
                                        {"bottom", info.tiles.bottom}});
             put(j, "hardness", info.hardness, 0.0f);
-            if (info.tool != ToolType::None) j["tool"] = toolName(info.tool);
+            if (info.tool != ToolType::None) j["tool"] = kToolNames[static_cast<std::size_t>(info.tool)];
             put(j, "toolTier", info.toolTier, 0);
+            // Omitted when it is the plain unit cube, like every other default.
+            if (info.shape != ShapeId::FullCube) j["shape"] = shapeName(info.shape);
             a.push_back(j);
         }
         return a;
@@ -162,10 +133,10 @@ namespace {
             put(j, "placeable", info.placeable, false);
             if (info.placesBlock != BlockId::Air) j["places"] = blockKey(info.placesBlock);
             if (info.nodeBlock != BlockId::Air) j["nodeBlock"] = blockKey(info.nodeBlock);
-            if (info.tool != ToolType::None) j["tool"] = toolName(info.tool);
+            if (info.tool != ToolType::None) j["tool"] = kToolNames[static_cast<std::size_t>(info.tool)];
             put(j, "toolTier", info.toolTier, 0);
             put(j, "miningSpeed", info.miningSpeed, 1.0f);
-            if (info.armorSlot != ArmorSlot::None) j["armorSlot"] = armorSlotName(info.armorSlot);
+            if (info.armorSlot != ArmorSlot::None) j["armorSlot"] = kArmorSlotNames[static_cast<std::size_t>(info.armorSlot)];
             put(j, "armor", info.armor, 0.0f);
             put(j, "weaponDamage", info.weaponDamage, 0.0f);
             a.push_back(j);
@@ -178,7 +149,8 @@ namespace {
         for (const MachineTraits& t : machineTraitRows()) {
             json j;
             j["block"] = blockKey(t.block);
-            put(j, "kind", std::string(kindName(t.kind)), std::string("processor"));
+            put(j, "kind", std::string(kKindNames[static_cast<std::size_t>(t.kind)]),
+                std::string("processor"));
             put(j, "demand", t.demand, 5);
             put(j, "powerOutput", t.powerOutput, 0);
             put(j, "burnsFuel", t.burnsFuel, false);

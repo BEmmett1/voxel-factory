@@ -1,6 +1,7 @@
 #include "game/ContentPack.h"
 
 #include "game/Block.h"
+#include "game/BlockShape.h"
 #include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
 #include "game/Item.h"
@@ -10,6 +11,8 @@
 #include <json.hpp>
 
 #include <algorithm>
+#include <cstddef>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -70,24 +73,85 @@ namespace {
             return it->get<float>();
         }
 
+        // Key -> id against the STAGED tables rather than the live registry, so
+        // a row may name content the same pack is adding. Which section came
+        // first in the file is then not something an author has to know.
+        const std::vector<BlockInfo>* blocks = nullptr;
+        const std::vector<ItemInfo>*  items = nullptr;
+
         ItemId item(const std::string& key) {
             if (key.empty()) return ItemId::None;
-            const ItemId id = content::itemFromKey(key);
-            if (id == content::kNoItem) {
-                bad("names item '" + key + "', which this build does not have");
-                return ItemId::None;
+            for (std::size_t i = 0; i < items->size(); ++i) {
+                if (key == (*items)[i].key) return static_cast<ItemId>(i);
             }
-            return id;
+            bad("names item '" + key + "', which neither this build nor this pack has");
+            return ItemId::None;
         }
 
         BlockId block(const std::string& key) {
             if (key.empty()) return BlockId::Air;
-            const BlockId id = content::blockFromKey(key);
-            if (id == content::kNoBlock) {
-                bad("names block '" + key + "', which this build does not have");
-                return BlockId::Air;
+            for (std::size_t i = 0; i < blocks->size(); ++i) {
+                if (key == (*blocks)[i].key) return static_cast<BlockId>(i);
             }
-            return id;
+            bad("names block '" + key + "', which neither this build nor this pack has");
+            return BlockId::Air;
+        }
+
+        // Enum spellings. The dump writes these names, so the loader reading
+        // the same table is what keeps the two from drifting.
+        template <std::size_t N, typename E>
+        E named(const json& j, const char* field, const char* const (&names)[N], E fallback) {
+            const auto it = j.find(field);
+            if (it == j.end()) return fallback;
+            if (it->is_string()) {
+                const std::string s = it->get<std::string>();
+                for (std::size_t i = 0; i < N; ++i) {
+                    if (s == names[i]) return static_cast<E>(i);
+                }
+            }
+            bad(std::string("has an unknown \"") + field + "\"");
+            return fallback;
+        }
+
+        bool boolean(const json& j, const char* field, bool fallback) {
+            const auto it = j.find(field);
+            if (it == j.end()) return fallback;
+            if (!it->is_boolean()) {
+                bad(std::string("has a non-boolean \"") + field + "\"");
+                return fallback;
+            }
+            return it->get<bool>();
+        }
+
+        int integer(const json& j, const char* field, int fallback) {
+            const auto it = j.find(field);
+            if (it == j.end()) return fallback;
+            if (!it->is_number_integer()) {
+                bad(std::string("has a non-integer \"") + field + "\"");
+                return fallback;
+            }
+            return it->get<int>();
+        }
+
+        // "#4d9e42" -- see hexColor() in ContentDump.cpp for why a colour is a
+        // string here rather than three numbers.
+        glm::vec3 color(const json& j) {
+            const auto it = j.find("color");
+            if (it == j.end()) return glm::vec3(0.0f);
+            const std::string s = it->is_string() ? it->get<std::string>() : std::string();
+            if (s.size() != 7 || s[0] != '#') {
+                bad("has a \"color\" that is not \"#rrggbb\"");
+                return glm::vec3(0.0f);
+            }
+            auto channel = [&](std::size_t at) {
+                return static_cast<float>(std::stoi(s.substr(at, 2), nullptr, 16)) / 255.0f;
+            };
+            try {
+                return {channel(1), channel(3), channel(5)};
+            } catch (const std::exception&) {
+                bad("has a \"color\" that is not \"#rrggbb\"");
+                return glm::vec3(0.0f);
+            }
         }
 
         // {"item": "core:wood", "count": 2}, or null for "this slot is empty".
@@ -140,68 +204,23 @@ namespace {
                     table.end());
     }
 
-    // ---- The sections that are still compiled in --------------------------
-    // Blocks, items, machine traits and fuels come from the registries in
-    // Block.cpp / Item.cpp / Machine.h, so a pack cannot author them yet. It
-    // may still CONTAIN them -- --dump-content writes the whole content set,
-    // and a pack derived from that dump would otherwise be unfeedable to the
-    // game that wrote it -- as long as it only restates what is already true.
-    //
-    // "State it, don't change it" is checked against the writer itself, by
-    // parsing our own dump, so this can never disagree with what the dump says.
-    // The diagnostic then names the row rather than the section: what a pack
-    // author needs is not "blocks are compiled in" but "you tried to change
-    // core:stone, and that is the part I cannot do".
-    void checkCompiledSections(const json& doc, std::vector<std::string>& problems) {
-        static const struct { const char* section; const char* idField; } kCompiled[] = {
-            {"blocks", "key"}, {"items", "key"}, {"machines", "block"}, {"fuels", "item"},
-        };
-
-        json ours; // our own content, through the same writer the pack came from
-        bool parsed = false;
-        for (const auto& [section, idField] : kCompiled) {
-            const auto incoming = doc.find(section);
-            if (incoming == doc.end()) continue;
-            if (!incoming->is_array()) {
-                problems.push_back(std::string("\"") + section + "\" is not an array");
-                continue;
-            }
-            if (incoming->empty()) continue;
-            if (!parsed) { ours = json::parse(content::dumpContent()); parsed = true; }
-
-            for (const json& row : *incoming) {
-                const auto id = row.is_object() ? row.find(idField) : row.end();
-                if (id == row.end() || !id->is_string()) {
-                    problems.push_back(std::string("a \"") + section + "\" row has no \"" +
-                                       idField + "\"");
-                    continue;
-                }
-                const std::string key = id->get<std::string>();
-                const json& mine = ours[section];
-                const auto at = std::find_if(mine.begin(), mine.end(), [&](const json& r) {
-                    const auto k = r.find(idField);
-                    return k != r.end() && *k == *id;
-                });
-                if (at == mine.end()) {
-                    problems.push_back("pack adds " + std::string(section) + " '" + key +
-                                       "', which this build cannot do yet -- blocks, items, "
-                                       "machines and fuels are still compiled in, so a pack "
-                                       "may only change recipes");
-                } else if (*at != row) {
-                    problems.push_back("pack changes " + std::string(section) + " '" + key +
-                                       "', which this build cannot do yet -- blocks, items, "
-                                       "machines and fuels are still compiled in, so a pack "
-                                       "may only change recipes");
-                }
-            }
-        }
+    // ---- Strings a pack owns ----------------------------------------------
+    // BlockInfo/ItemInfo hold `const char*` because every row used to be a
+    // string literal with static storage duration. A loaded row's key and name
+    // have to live at least as long, and registry rows are never freed, so this
+    // arena is deliberately never emptied. A deque, not a vector: the addresses
+    // handed out must survive the next push.
+    const char* intern(std::string s) {
+        static std::deque<std::string> arena;
+        arena.push_back(std::move(s));
+        return arena.back().c_str();
     }
 
 } // namespace
 
 namespace {
 
-    std::vector<std::string> loadRecipePack(const std::string& path) {
+    std::vector<std::string> loadPack(const std::string& path) {
         std::vector<std::string> problems;
 
         json doc;
@@ -224,15 +243,171 @@ namespace {
             problems.push_back("pack is format " + std::to_string(fmt->get<int>()) +
                                "; this build reads " + std::to_string(content::kPackFormat));
         }
-        checkCompiledSections(doc, problems);
         if (!problems.empty()) return problems;
 
         // ---- Parse to one side ---------------------------------------------
+        // The staged copies. Nothing below touches a live registry until the
+        // very end, so a pack that fails anywhere leaves the game untouched
+        // rather than half converted.
         Reader rd;
+        std::vector<BlockInfo> blocks = blockRows();
+        std::vector<ItemInfo> items = itemRows();
+        std::vector<MachineTraits> traits = machineTraitRows();
+        std::vector<FuelInfo> fuels = fuelRows();
+        rd.blocks = &blocks;
+        rd.items = &items;
         std::vector<Recipe> hand;
         std::vector<MachineRecipe> mach;
         std::vector<CircleRecipe> circ;
         std::vector<std::string> removals;
+
+        auto topSection = [&](const char* name) -> const json& {
+            static const json none = json::array();
+            const auto it = doc.find(name);
+            if (it == doc.end()) return none;
+            if (!it->is_array()) {
+                rd.where = std::string("\"") + name + "\" ";
+                rd.bad("is not an array");
+                return none;
+            }
+            return *it;
+        };
+
+        // ---- Pass 1: every new key exists before any field is resolved -----
+        // Rows point at each other by key -- a block's drop names an item, an
+        // item places a block -- and a pack adding both would otherwise depend
+        // on which section it happened to write first. Declaring the keys up
+        // front makes file order stop mattering, which is one less rule for an
+        // author (or a generator) to get right.
+        auto declare = [&](const char* section, const char* what, auto& table, auto make) {
+            for (const json& j : topSection(section)) {
+                rd.where = std::string("a ") + what + " ";
+                if (!rd.wantObject(j)) continue;
+                const std::string key = rd.str(j, "key");
+                if (key.empty()) continue;
+                const bool known = std::any_of(table.begin(), table.end(),
+                                               [&](const auto& r) { return key == r.key; });
+                if (!known) table.push_back(make(intern(key)));
+            }
+        };
+        declare("blocks", "block", blocks, [](const char* k) {
+            // A placeholder only has to be findable by key; pass 2 overwrites
+            // every other field.
+            BlockInfo b{};
+            b.key = k;
+            b.name = k;
+            return b;
+        });
+        declare("items", "item", items, [](const char* k) {
+            ItemInfo it{};
+            it.key = k;
+            it.name = k;
+            return it;
+        });
+
+        // ---- Pass 2: blocks -------------------------------------------------
+        for (const json& j : topSection("blocks")) {
+            rd.where = "a block ";
+            if (!j.is_object()) continue;
+            const std::string key = rd.str(j, "key");
+            if (key.empty()) continue;
+            rd.where = "block '" + key + "' ";
+            const auto at = std::find_if(blocks.begin(), blocks.end(),
+                                         [&](const BlockInfo& b) { return key == b.key; });
+            BlockInfo b{};
+            b.id = static_cast<BlockId>(at - blocks.begin());
+            b.key = at->key;   // already interned (or a compiled literal)
+            b.name = j.contains("name") ? intern(rd.str(j, "name")) : at->name;
+            b.solid = rd.boolean(j, "solid", true);
+            b.fullCube = rd.boolean(j, "fullCube", true);
+            b.color = rd.color(j);
+            b.emissive = rd.number(j, "emissive", 0.0f);
+            b.machine = rd.boolean(j, "machine", false);
+            b.source = rd.boolean(j, "source", false);
+            b.node = rd.boolean(j, "node", false);
+            b.spawnsNode = rd.block(rd.str(j, "spawnsNode", false));
+            if (const auto d = j.find("drop"); d != j.end()) {
+                const ItemStack s = rd.stack(*d);
+                b.drop = {s.id, s.count};
+            }
+            if (const auto t = j.find("tiles"); t != j.end() && t->is_object()) {
+                b.tiles = {rd.integer(*t, "top", 0), rd.integer(*t, "side", 0),
+                           rd.integer(*t, "bottom", 0)};
+            }
+            b.hardness = rd.number(j, "hardness", 0.0f);
+            b.tool = rd.named(j, "tool", kToolNames, ToolType::None);
+            b.toolTier = rd.integer(j, "toolTier", 0);
+            // Shapes are baked from Blockbench models, so a pack may only NAME
+            // one that exists -- which is also why this is the one content
+            // reference that is a plain name rather than a namespaced key.
+            b.shape = rd.named(j, "shape", kShapeNames, ShapeId::FullCube);
+            *at = b;
+        }
+
+        // ---- Pass 2: items --------------------------------------------------
+        for (const json& j : topSection("items")) {
+            rd.where = "an item ";
+            if (!j.is_object()) continue;
+            const std::string key = rd.str(j, "key");
+            if (key.empty()) continue;
+            rd.where = "item '" + key + "' ";
+            const auto at = std::find_if(items.begin(), items.end(),
+                                         [&](const ItemInfo& r) { return key == r.key; });
+            ItemInfo it{};
+            it.id = static_cast<ItemId>(at - items.begin());
+            it.key = at->key;
+            it.name = j.contains("name") ? intern(rd.str(j, "name")) : at->name;
+            it.atlasTile = rd.integer(j, "atlasTile", -1);
+            it.placeable = rd.boolean(j, "placeable", false);
+            it.placesBlock = rd.block(rd.str(j, "places", false));
+            it.nodeBlock = rd.block(rd.str(j, "nodeBlock", false));
+            it.tool = rd.named(j, "tool", kToolNames, ToolType::None);
+            it.toolTier = rd.integer(j, "toolTier", 0);
+            it.miningSpeed = rd.number(j, "miningSpeed", 1.0f);
+            it.armorSlot = rd.named(j, "armorSlot", kArmorSlotNames, ArmorSlot::None);
+            it.armor = rd.number(j, "armor", 0.0f);
+            it.weaponDamage = rd.number(j, "weaponDamage", 0.0f);
+            *at = it;
+        }
+
+        // ---- Pass 2: machine traits and fuels -------------------------------
+        // Keyed on the block and the item respectively, and replaced in place
+        // for the same reason recipes are.
+        for (const json& j : topSection("machines")) {
+            rd.where = "a machine ";
+            if (!rd.wantObject(j)) continue;
+            const std::string key = rd.str(j, "block");
+            rd.where = "machine '" + key + "' ";
+            MachineTraits t{};
+            t.block = rd.block(key);
+            t.kind = rd.named(j, "kind", kKindNames, MachineKind::Processor);
+            t.demand = rd.integer(j, "demand", 5);
+            t.powerOutput = rd.integer(j, "powerOutput", 0);
+            t.burnsFuel = rd.boolean(j, "burnsFuel", false);
+            t.fuelMult = rd.number(j, "fuelMult", 1.0f);
+            t.collects = rd.item(rd.str(j, "collects", false));
+            t.collectCap = rd.integer(j, "collectCap", 0);
+            t.collectSeconds = rd.number(j, "collectSeconds", 0.0f);
+            t.recipeGroup = rd.block(rd.str(j, "recipeGroup", false));
+            t.speedMult = rd.number(j, "speedMult", 1.0f);
+            t.handCranked = rd.boolean(j, "handCranked", false);
+            const auto at = std::find_if(traits.begin(), traits.end(),
+                                         [&](const MachineTraits& r) { return r.block == t.block; });
+            if (at != traits.end()) *at = t;
+            else traits.push_back(t);
+        }
+
+        for (const json& j : topSection("fuels")) {
+            rd.where = "a fuel ";
+            if (!rd.wantObject(j)) continue;
+            const std::string key = rd.str(j, "item");
+            rd.where = "fuel '" + key + "' ";
+            const FuelInfo f{rd.item(key), rd.number(j, "seconds", 0.0f)};
+            const auto at = std::find_if(fuels.begin(), fuels.end(),
+                                         [&](const FuelInfo& r) { return r.item == f.item; });
+            if (at != fuels.end()) *at = f;
+            else fuels.push_back(f);
+        }
 
         const auto recipes = doc.find("recipes");
         if (recipes != doc.end() && !recipes->is_object()) {
@@ -332,6 +507,10 @@ namespace {
         // ---- Apply, all at once ---------------------------------------------
         // Nothing above this line touched the live tables, so a pack that fails
         // leaves the game exactly as it was rather than half-converted.
+        restoreBlocks(std::move(blocks));
+        restoreItems(std::move(items));
+        restoreMachineTraits(std::move(traits));
+        restoreFuels(std::move(fuels));
         removeKeys(recipes::handTable(), removals);
         removeKeys(recipes::machineTable(), removals);
         removeKeys(recipes::circleTable(), removals);
@@ -366,11 +545,15 @@ namespace content {
         const std::vector<Recipe> hand0 = recipes::handTable();
         const std::vector<MachineRecipe> mach0 = recipes::machineTable();
         const std::vector<CircleRecipe> circ0 = recipes::circleTable();
+        const std::vector<BlockInfo> blocks0 = blockRows();
+        const std::vector<ItemInfo> items0 = itemRows();
+        const std::vector<MachineTraits> traits0 = machineTraitRows();
+        const std::vector<FuelInfo> fuels0 = fuelRows();
 
         std::vector<std::string> problems;
         for (const std::string& path : paths) {
             const std::string name = std::filesystem::path(path).filename().string();
-            for (std::string& msg : loadRecipePack(path)) {
+            for (std::string& msg : loadPack(path)) {
                 problems.push_back(name + ": " + std::move(msg));
             }
             if (!problems.empty()) break;
@@ -381,6 +564,10 @@ namespace content {
             recipes::handTable() = hand0;
             recipes::machineTable() = mach0;
             recipes::circleTable() = circ0;
+            restoreBlocks(blocks0);
+            restoreItems(items0);
+            restoreMachineTraits(traits0);
+            restoreFuels(fuels0);
         }
         return problems;
     }

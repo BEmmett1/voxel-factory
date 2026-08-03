@@ -59,6 +59,13 @@ enum class MachineKind : std::uint8_t {
     Pedestal,  // passive one-item-type holder; a ring slot for the Rune Core
 };
 
+// Enum spellings for the content pack format -- see kToolNames in Item.h.
+inline constexpr const char* kKindNames[] = {
+    "processor", "generator", "collector", "miner", "rune_core", "pedestal",
+};
+static_assert(std::size(kKindNames) == 6,
+              "kKindNames needs one name per MachineKind");
+
 // What burns, and for how long. A shared registry rather than a per-machine
 // field, so "add a better fuel" is one row here instead of a change at every
 // burner: anything with a row is valid fuel in a Generator AND in a fuel-fired
@@ -84,6 +91,7 @@ const std::vector<FuelInfo>& fuelRows();
 
 // Startup only, like the other registries -- see blockCount() in Block.h.
 void addFuel(const FuelInfo& row);
+void restoreFuels(std::vector<FuelInfo> rows); // rollback
 
 // Static per-machine-type properties: one registry row per machine block,
 // like kBlocks/kItems. Block.cpp cross-static_asserts this table against the
@@ -247,6 +255,7 @@ const std::vector<MachineTraits>& machineTraitRows();
 
 // Startup only, like the other registries -- see blockCount() in Block.h.
 void addMachineTraits(const MachineTraits& row);
+void restoreMachineTraits(std::vector<MachineTraits> rows); // rollback
 
 // Whose recipe rows this machine runs: itself, unless its row delegates to a
 // powered counterpart. One hop only -- a manual twin never points at another

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <iterator>
+#include <utility>
 #include <vector>
 
 // The machine and fuel registries at runtime. kMachineTraitSeed and kFuelSeed in
@@ -61,11 +62,21 @@ void addMachineTraits(const MachineTraits& row) {
     (void)traitIndex();
 }
 
+void restoreMachineTraits(std::vector<MachineTraits> rows) {
+    traitTable() = std::move(rows);
+    traitIndex().clear();
+    (void)traitIndex();
+}
+
 float fuelSeconds(ItemId item) {
     for (const FuelInfo& f : fuelTable()) {
         if (f.item == item) return f.seconds;
     }
     return 0.0f;
+}
+
+void restoreFuels(std::vector<FuelInfo> rows) {
+    fuelTable() = std::move(rows);
 }
 
 const std::vector<FuelInfo>& fuelRows() {

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -365,6 +366,10 @@ std::size_t blockCount() {
 
 const std::vector<BlockInfo>& blockRows() {
     return blockTable();
+}
+
+void restoreBlocks(std::vector<BlockInfo> rows) {
+    blockTable() = std::move(rows);
 }
 
 BlockId addBlock(const BlockInfo& row) {
