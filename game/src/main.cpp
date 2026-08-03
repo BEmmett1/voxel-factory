@@ -998,6 +998,14 @@ int main(int argc, char** argv) {
         engine::CrashHandler::install(pref);
     }
 
+    // What content is this session actually running? A bug report from a
+    // player with packs installed is unreadable without it, and it is the one
+    // record that the folder was read at all.
+    for (const std::string& path : packs) {
+        SDL_Log("content pack: %s%s", path.c_str(),
+                packProblems.empty() ? "" : " (REFUSED)");
+    }
+
     // A refused pack is not fatal -- applyPacks already put the compiled
     // content back, so the game below is the ordinary one. But it must not be
     // silent either: someone installed a pack and is about to not see it, and

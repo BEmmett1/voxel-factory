@@ -491,13 +491,38 @@ generate → validate → repair loop a model needs.
        isn't an ordinal
 2. [ ] **Runtime registries** — the five tables become vectors seeded from the
        compiled rows; mods append. The `static_assert` lambdas become runtime
-       validators (same loops, same messages). Watch two ceilings:
-       `kMaxShapeBanks` caps shapes at 32, and `kMachineTraitIndex` is `int8_t`,
-       silently capping machines at 127
-3. [ ] **Extract `checkReachability`** out of `runSelfTest` into Recipes.cpp so
-       a mod loader can call it and report problems, not just exit non-zero
-4. [ ] **JSON mod format + loader** (nlohmann is already vendored), validated
-       by 2 and 3. At this point hand-written mods work — shippable alone
+       validators (same loops, same messages). Now the ONLY thing standing
+       between a pack and new content, since steps 3 and 4 landed without it.
+       Wider than it is hard: `Inventory` is a fixed
+       `std::array<int, ItemId::Count>`, `detail::kMachineTraitIndex` is a
+       `constexpr int8_t` table sized by `BlockId::Count`, `blockShape()` is
+       `constexpr` and feeds four `static_assert`s, and there are ~38
+       `::Count` sites across 14 files. Watch two ceilings while doing it:
+       `kMaxShapeBanks` caps shapes at 32, and that `int8_t` silently caps
+       machines at 127
+3. [x] **The validator is callable** (Aug 2026) — `content::validate()`
+       (`ContentValidate.h`) holds the recipe-key round-trip, the
+       circle-pattern shadowing check and the tech-tree reachability closure,
+       and answers with **diagnostics** rather than an exit code. `--selftest`
+       prints them and fails; a new `--validate` does it without the save
+       round-trip; the pack loader below runs the same function. Done ahead of
+       step 2 because it is what makes a bad pack *reportable* instead of
+       merely refused
+4. [~] **JSON format + loader** — the format landed early for RECIPES,
+       because those three tables were already runtime vectors and v22's keys
+       already named every item and block, so **no part of step 2 was
+       needed**. `--dump-content` writes the whole content set by key and
+       `ContentPack.cpp` reads exactly that back (`--selftest` holds a
+       dump → load → dump round-trip); `packs/*.json` beside the exe applies
+       to the game, `--pack <file>` to any mode. A pack replaces rows by key,
+       appends new ones, and `"remove"` deletes — enough to rebalance or to
+       total-convert the tech tree, which is most of what a Factorio mod is.
+       All-or-nothing: `applyPacks` applies, validates, and **restores the
+       compiled tables** if the result is incoherent, so a generated pack can
+       make the game different but never broken.
+       What is still gated on step 2: blocks, items, machine traits and fuels.
+       A pack may CONTAIN those sections (the dump is a pack) but not change
+       them, and it is told exactly which row it tried to change
 5. [ ] **Generation tooling** — an out-of-game companion tool that emits a mod
        file, NOT an in-game HTTP client: the game has zero networking today,
        and keeping generation outside the binary avoids server costs and

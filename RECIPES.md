@@ -256,5 +256,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | Wood | 20 |
 | Charcoal | 60 |
 
-A machine never burns an item its own recipes consume, which is why
-a Furnace fed wood chars it instead of eating it.
+A machine that both burns fuel and runs recipes has a FUEL buffer of its
+own, so a Furnace can char wood while burning wood -- which pile an
+arriving belt item joins is inferred (ingredient wins), and a hand-drag
+lands in the cell you dropped it on.

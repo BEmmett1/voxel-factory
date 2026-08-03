@@ -138,7 +138,10 @@ stay in their file's anonymous namespace.
   things replace it as the safety net, both in `--selftest`: a tech-tree
   **reachability closure** (edit a recipe into a deadlock and it fails) and a
   **circle-pattern shadowing check** (lay every pattern, prove the matcher
-  returns it). `RECIPES.md` is generated — `voxel-factory --dump-recipes`.
+  returns it) — both now live in `content::validate()`, below.
+  `RECIPES.md` is generated — `voxel-factory --dump-recipes`. Since Aug 2026
+  the tables are also loadable from a **content pack**, not only editable in
+  source.
 - **Content identity is the key, not the ordinal** (`ContentRegistry.h`/.cpp,
   save v22). A `BlockId`/`ItemId` ordinal is an ENCODING — the raw byte in a
   chunk, the slot position in an inventory — and only means anything relative
@@ -157,6 +160,34 @@ stay in their file's anonymous namespace.
   `--selftest` fabricates a foreign save by swapping two keys in the file and
   asserts the world comes back MIRRORED — a load that ignores the tables
   returns it unchanged, so the check fails loudly if the layer goes decorative.
+- **Content packs: recipes are authorable from data** (`ContentPack.h`,
+  `ContentDump.cpp`, `ContentPack.cpp`, Aug 2026). `--dump-content` writes
+  the whole content set as JSON, by KEY, and `ContentPack.cpp` reads exactly
+  that back — the writer IS the format's spec, and `--selftest` holds a
+  dump → load → dump round-trip so the two cannot drift. A pack replaces a row
+  whose key matches (in PLACE, which is what makes the round-trip work and
+  what keeps a rebalanced circle pattern from falling behind the pattern that
+  shadows it), appends anything new, and `"remove": [keys]` deletes. Two doors,
+  deliberately different: `packs/*.json` beside the exe is the PLAYER's and
+  applies to the game only; `--pack <file>` is the AUTHOR's and applies to any
+  mode, so a generator can `--pack draft.json --validate` without installing
+  anything. Keeping the folder out of the headless tools is what stops an
+  installed pack from rewriting what CI asserts.
+  **All-or-nothing:** nothing applies unless everything parses, and because
+  "would this tech tree close?" cannot be asked of a table the pack is not in,
+  `applyPacks` applies first and judges after — a refusal restores exactly what
+  was there. At launch a refused pack is logged and shown in a message box but
+  is never fatal (the compiled content is already back).
+  Only the three RECIPE tables are authorable; blocks/items/machine traits/
+  fuels are still compiled in. A pack may CONTAIN those sections — the dump is
+  a valid pack — but only restating what is true, checked by parsing our own
+  dump so the rule can't drift, and the complaint names the row.
+- **`content::validate()`** (`ContentValidate.h`) is the coherence check —
+  recipe key uniqueness + round-trip, circle-pattern shadowing, and the
+  tech-tree reachability closure — returning DIAGNOSTICS, not an exit code.
+  Three callers: `--selftest` (prints and fails), `--validate` (the same
+  without the save round-trip), and the pack loader. It answers in English
+  because its caller is often not a person.
 - Block place/break side effects funnel through **`WorldEdit`**
   (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
   machine/belt/source/sapling registry sync and return facts (drop, handed-back
