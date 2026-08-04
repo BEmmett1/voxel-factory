@@ -126,6 +126,12 @@ namespace vg {
         ItemId::PressItem};
 
     inline constexpr float kReach = 8.0f;             // how far you can target blocks
+    // Held RMB keeps placing. Two knobs, because one is not enough: the DELAY
+    // is what keeps an ordinary click (80-150 ms of button-down) from placing
+    // twice, and only past it does the repeat rate matter. Same shape as every
+    // key-repeat in every text field, for the same reason.
+    inline constexpr float kPlaceRepeatDelay   = 0.28f;
+    inline constexpr float kPlaceRepeatSeconds = 0.10f;
     inline constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area
     inline constexpr float kIslandRadius = 34.0f;     // base coastline radius (noise-wobbled)
     inline constexpr int   kSurfaceY = 14;            // base island surface height
@@ -134,6 +140,23 @@ namespace vg {
     inline constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
     inline constexpr int   kLoadPerAction = 8;        // recipe sets loaded per panel action
     inline constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
+
+    // ---- Buffer capacity (what makes a factory a network) ----
+    // Every Inventory in the game is an unbounded count-per-item array, which
+    // for the player's pack is a deliberate choice (hardcore death is the pack's
+    // pressure) but for a MACHINE meant nothing could ever back up: an output
+    // never filled, so a machine never jammed, and a belt never had to be routed
+    // anywhere in particular. These two caps are what give the logistics blocks
+    // a job -- a full input stops the belt feeding it, a full output stops the
+    // machine, and the line congests until somebody routes around it.
+    //
+    // Per ITEM TYPE, not per buffer, matching how Inventory counts. Tuned by
+    // play: too generous and nothing backs up (the old behaviour), too tight and
+    // the game is a chore.
+    inline constexpr int   kMachineInputCap  = 64;    // ingredients/fuel a machine holds
+    inline constexpr int   kMachineOutputCap = 32;    // finished goods before it jams
+    // A crate is the ANSWER to a full output, so it has to be worth building.
+    inline constexpr int   kChestCap         = 512;
 
     inline constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
     inline constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes

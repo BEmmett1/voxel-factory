@@ -31,6 +31,11 @@ namespace {
         // Structural staples you can always fall back on.
         {"hand/scaffold",      {{I::Stone, 1}},                     {I::ScaffoldItem, 4}},
         {"hand/bucket",        {{I::Wood, 3}},                      {I::Bucket, 1}},
+        // Storage stays HAND-craftable on purpose. A crate is the answer to a
+        // machine whose output has filled, and outputs start filling long
+        // before you own a Circle -- gating it behind one would mean meeting
+        // the problem with no way to solve it.
+        {"hand/storage-crate", {{I::Wood, 8}},                      {I::StorageCrateItem, 1}},
         // ---- The two bootstrap machines ----
         // Smelting, glass, vials and dirt+sand -> stone all moved onto
         // machines, so these two have to stay hand-buildable or the tree

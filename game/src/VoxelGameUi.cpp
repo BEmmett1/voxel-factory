@@ -303,6 +303,16 @@ namespace {
     constexpr glm::vec4 kTextDim    {0.45f, 0.45f, 0.48f, 1.0f};
     constexpr glm::vec4 kTextHeader {1.0f, 1.0f, 0.7f, 1.0f};
     constexpr glm::vec4 kTextFooter {0.7f, 0.7f, 0.75f, 1.0f};
+    // Craft bars. Green is work happening; amber is work READY with nowhere to
+    // put it -- a different problem with a different fix (drain the output, or
+    // belt it into a crate), so it must not read as slow progress.
+    constexpr glm::vec4 kBarWorking {0.30f, 0.90f, 0.40f, 0.95f};
+    constexpr glm::vec4 kBarJammed  {0.95f, 0.65f, 0.15f, 0.95f};
+    // A belt's filter, drawn where its cargo would ride. Deliberately NOT
+    // kOutOfStockTint: that means "you don't own this", and a filter is a
+    // setting you chose. Ghosted enough to read as "waiting for", solid enough
+    // to pick out down a line of belts.
+    constexpr glm::vec4 kFilterGhost{0.72f, 0.76f, 0.85f, 0.85f};
     constexpr glm::vec4 kTextTooltip{1.0f, 1.0f, 0.8f, 1.0f};
 
     // Row label color for the standard states: selected (dark on the gold
@@ -514,7 +524,7 @@ void VoxelGame::drawDebugOverlay() {
 
     char line[96];
     m_ui.begin(w, h);
-    m_ui.rect(8, 8, 360, 88, glm::vec4(0.05f, 0.05f, 0.08f, 0.82f));
+    m_ui.rect(8, 8, 360, 106, glm::vec4(0.05f, 0.05f, 0.08f, 0.82f));
 
     std::snprintf(line, sizeof(line), "FRAME AVG %5.1f MS  WORST %6.1f MS",
                   m_perf.avgMs, m_perf.worstMs);
@@ -528,7 +538,17 @@ void VoxelGame::drawDebugOverlay() {
                   m_perf.lastSolveMs, m_perf.solvesPerSec);
     m_ui.text(16, 52, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
 
-    m_ui.text(16, 70, 12.0f, "VOXEL FACTORY V" VOXEL_FACTORY_VERSION,
+    // Where you are. The overlay has carried timings since it was born and
+    // never a position, which is the one thing you actually want when a factory
+    // is spread over an island and you are trying to describe where something
+    // is (or find your way back to it).
+    const glm::vec3 p = camera().position;
+    std::snprintf(line, sizeof(line), "XYZ %7.1f %7.1f %7.1f",
+                  static_cast<double>(p.x), static_cast<double>(p.y),
+                  static_cast<double>(p.z));
+    m_ui.text(16, 70, 12.0f, line, glm::vec4(0.9f, 0.9f, 0.92f, 1.0f));
+
+    m_ui.text(16, 88, 12.0f, "VOXEL FACTORY V" VOXEL_FACTORY_VERSION,
               glm::vec4(0.6f, 0.6f, 0.65f, 1.0f));
 
     m_ui.end();
@@ -543,7 +563,13 @@ void VoxelGame::drawMachineUi() {
     if (machineTraits(mac.type).kind == MachineKind::RuneCore) { drawCircleUi(); return; }
 
     const auto recipes = recipesForMachine(mac.type);
-    const int rows = static_cast<int>(recipes.size()) + 2;
+    // AUTO, one MAKE row per recipe, TAKE OUTPUTS, then the master switch LAST.
+    // Last rather than first on purpose: putting it at the top would shift every
+    // recipe row's index, and the row a player reaches for most is a recipe.
+    // The header carries the OFF state instead, where status already lives.
+    const bool switched = hasPowerSwitch(mac.type);
+    const int rows = static_cast<int>(recipes.size()) + 2 + (switched ? 1 : 0);
+    const int switchRow = switched ? rows - 1 : -1;
     const bool fuelStrip = usesFuelSlot(mac.type);
     const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
@@ -563,7 +589,18 @@ void VoxelGame::drawMachineUi() {
     // Header status (generators report their burn instead of network power --
     // their energized state is their own doing).
     const MachineTraits& traits = machineTraits(mac.type);
-    switch (traits.kind) {
+    // OFF outranks even a jam, and a jam outranks everything else: a machine
+    // reading BURNING or POWERED while producing nothing is the confusing case
+    // this exists to end. One of the three takes the header slot outright
+    // rather than any of them sharing it.
+    if (!mac.enabled) {
+        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, "OFF",
+                  glm::vec4(0.55f, 0.55f, 0.60f, 1.0f));
+    }
+    else if (mac.jammed) {
+        m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, "OUTPUT FULL", kBarJammed);
+    }
+    else switch (traits.kind) {
         case MachineKind::Generator: {
             const bool burning = mac.progress > 0.0f;
             const bool hungry = m_hungryGenerators.count(m_machineUiPos) > 0;
@@ -585,6 +622,20 @@ void VoxelGame::drawMachineUi() {
         }
         case MachineKind::Pedestal:
             break; // a pedestal draws no power, so "NO POWER" would be a lie
+        case MachineKind::Storage: {
+            // No recipe, no power, no fire -- the only thing worth reporting is
+            // how much is in there. A total across item types, because the cap
+            // itself is per type.
+            int held = 0;
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                held += mac.input.count(id) + mac.output.count(id);
+            }
+            m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f,
+                      std::to_string(held) + " STORED",
+                      glm::vec4(0.80f, 0.68f, 0.45f, 1.0f));
+            break;
+        }
         default: {
             // A machine that asks for no power must never be told it has none.
             // Fuel-fired ones report their fire instead; the manual tier is
@@ -657,6 +708,10 @@ void VoxelGame::drawMachineUi() {
                     // Core behind it, so it is not part of any circle yet.
                     label = "  A RING SLOT ( NEEDS A RUNE CORE 2 CELLS AWAY )";
                     break;
+                case MachineKind::Storage:
+                    label = "  BULK STORAGE ( BELTS FILL IT AND DRAIN IT, " +
+                            std::to_string(kChestCap) + " PER ITEM )";
+                    break;
                 case MachineKind::RuneCore: // dispatched to the circle panel
                 case MachineKind::Processor:
                     label = std::string(mac.selectedRecipe < 0 ? "> " : "  ") +
@@ -682,6 +737,12 @@ void VoxelGame::drawMachineUi() {
                 if (m_inventory.has(in.id, 1)) actionable = true;
             }
             label += " )";
+        } else if (i == switchRow) {
+            // Says what pressing it DOES, not what the state is -- the header
+            // already says that, and a row labelled "ON" is ambiguous about
+            // whether it reports or commands.
+            label = mac.enabled ? "  TURN OFF" : "  TURN ON";
+            actionable = true;
         } else {
             label = "  TAKE OUTPUTS";
             for (int k = 1; k < static_cast<int>(itemCount()); ++k) {
@@ -721,8 +782,10 @@ void VoxelGame::drawMachineUi() {
     const float barW = (L.panelW - 32) - (traits.handCranked ? 78.0f : 0.0f);
     m_ui.rect(L.px + 16, L.barY, barW, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
     if (mac.crafting) {
-        const float frac = glm::clamp(mac.craftTime > 0 ? mac.progress / mac.craftTime : 0.0f, 0.0f, 1.0f);
-        m_ui.rect(L.px + 16, L.barY, barW * frac, 10, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+        const float frac = mac.jammed
+            ? 1.0f
+            : glm::clamp(mac.craftTime > 0 ? mac.progress / mac.craftTime : 0.0f, 0.0f, 1.0f);
+        m_ui.rect(L.px + 16, L.barY, barW * frac, 10, mac.jammed ? kBarJammed : kBarWorking);
     }
 
     // The crank dial: the handle, drawn as the four positions of one turn with
@@ -853,10 +916,12 @@ void VoxelGame::updateMachineUi() {
 
     if (machineTraits(mac.type).kind == MachineKind::RuneCore) { updateCircleUi(); return; }
 
-    // Action rows: AUTO, one MAKE row per recipe, then TAKE OUTPUTS.
+    // Action rows: AUTO, one MAKE row per recipe, TAKE OUTPUTS, master switch.
     const MachineTraits& traits = machineTraits(mac.type);
     const auto recipes = recipesForMachine(mac.type);
-    const int rows = static_cast<int>(recipes.size()) + 2;
+    const bool switched = hasPowerSwitch(mac.type);
+    const int rows = static_cast<int>(recipes.size()) + 2 + (switched ? 1 : 0);
+    const int switchRow = switched ? rows - 1 : -1;
     const bool fuelStrip = usesFuelSlot(mac.type);
     const auto allItems = itemsOf(m_inventory);
     const auto inItems = itemsOf(mac.input);
@@ -992,6 +1057,16 @@ void VoxelGame::updateMachineUi() {
                     mac.input.add(in.id, move);
                 }
             }
+        } else if (m_machineUiSel == switchRow) {
+            // The master switch. Everything else about the machine is kept --
+            // progress, buffers, the recipe lock -- so this is a pause, not a
+            // reset. The re-solve is required rather than tidy: an off machine
+            // stops drawing power (its network may now be satisfied), stops
+            // producing it (its network may now be dark), and drops out of the
+            // energized set, which is what makes it LOOK off.
+            mac.enabled = !mac.enabled;
+            audio().play(mac.enabled ? "click" : "deny", kUiVolume);
+            solvePowerAndMarkDirty();
         } else {
             // Take all outputs.
             for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
@@ -1652,20 +1727,31 @@ void VoxelGame::drawHud() {
         const float bw = 46.0f, bh = 7.0f;
         const float bx = sp.x - bw * 0.5f, by = sp.y - bh * 0.5f;
         m_ui.rect(bx - 1, by - 1, bw + 2, bh + 2, glm::vec4(0.0f, 0.0f, 0.0f, 0.7f));
-        const float frac = glm::clamp(m.craftTime > 0 ? m.progress / m.craftTime : 0.0f, 0.0f, 1.0f);
-        m_ui.rect(bx, by, bw * frac, bh, glm::vec4(0.30f, 0.90f, 0.40f, 0.95f));
+        // A jam is FULL, not partial: show the whole bar amber rather than a
+        // frozen sliver, so a stalled line is visible across the factory floor
+        // instead of looking like a machine that happens to be slow.
+        const float frac = m.jammed
+            ? 1.0f
+            : glm::clamp(m.craftTime > 0 ? m.progress / m.craftTime : 0.0f, 0.0f, 1.0f);
+        m_ui.rect(bx, by, bw * frac, bh, m.jammed ? kBarJammed : kBarWorking);
     }
 
-    // Items currently riding on conduits, drawn as floating icons.
+    // Items currently riding on conduits, drawn as floating icons -- and, on an
+    // empty filtered belt, a ghost of what it is waiting for. Without that
+    // second draw a filter would be invisible, and an invisible routing rule is
+    // the exact problem filters were added to solve.
     for (const auto& [pos, b] : m_belts) {
-        if (b.item == ItemId::None) continue;
+        const bool ghost = b.item == ItemId::None;
+        const ItemId shown = ghost ? b.filter : b.item;
+        if (shown == ItemId::None) continue;
         glm::vec2 sp;
         if (!projectToScreen(glm::vec3(pos) + glm::vec3(0.5f, 0.85f, 0.5f), sp)) continue;
         const float dist = glm::length(camera().position - (glm::vec3(pos) + glm::vec3(0.5f)));
-        const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f);
+        const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f) * (ghost ? 0.8f : 1.0f);
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(iconTile(b.item), uv0, uv1);
-        m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1);
+        Atlas::uvForTile(iconTile(shown), uv0, uv1);
+        m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1,
+                  ghost ? kFilterGhost : glm::vec4(1.0f));
     }
 
     // Ground items: billboarded icons (same convention as belt cargo) with a
@@ -1721,18 +1807,33 @@ void VoxelGame::drawHud() {
             const float pyp = y - ph - 14.0f;
             m_ui.rect(pxp, pyp, pw, ph, glm::vec4(0.07f, 0.07f, 0.09f, 0.92f));
             m_ui.text(pxp + 12, pyp + 8, 16.0f, blockName(m.type), glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+            // An idled machine is otherwise indistinguishable from a starved
+            // one at a glance -- both just sit there -- so say which.
+            if (!m.enabled) {
+                m_ui.text(pxp + pw - 60, pyp + 10, 14.0f, "OFF",
+                          glm::vec4(0.55f, 0.55f, 0.60f, 1.0f));
+            }
 
             std::string in = "IN:";
             std::string fuel = "FUEL:";
             std::string out = "OUT:";
+            // Which pile is full, named. Standing in front of a stalled line
+            // and reading the counts is exactly when a player needs to know
+            // WHICH item stopped it, and the numbers alone don't say.
+            const int inCap = MachineSystem::inputCap(m);
+            const int outCap = MachineSystem::outputCap(m);
             for (int i = 0; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
-                if (m.input.count(id) > 0)
+                if (m.input.count(id) > 0) {
                     in += " " + std::string(itemName(id)) + " x" + std::to_string(m.input.count(id));
+                    if (m.input.count(id) >= inCap) in += " ( FULL )";
+                }
                 if (m.fuel.count(id) > 0)
                     fuel += " " + std::string(itemName(id)) + " x" + std::to_string(m.fuel.count(id));
-                if (m.output.count(id) > 0)
+                if (m.output.count(id) > 0) {
                     out += " " + std::string(itemName(id)) + " x" + std::to_string(m.output.count(id));
+                    if (m.output.count(id) >= outCap) out += " ( FULL )";
+                }
             }
             float ly = pyp + 32;
             m_ui.text(pxp + 12, ly, 13.0f, in, glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
@@ -1741,11 +1842,14 @@ void VoxelGame::drawHud() {
                 m_ui.text(pxp + 12, ly, 13.0f, fuel, glm::vec4(0.95f, 0.75f, 0.45f, 1.0f));
                 ly += 20;
             }
-            m_ui.text(pxp + 12, ly, 13.0f, out, glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
+            m_ui.text(pxp + 12, ly, 13.0f, out,
+                      m.jammed ? kBarJammed : glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
             m_ui.text(pxp + 12, pyp + ph - 22.0f, 12.0f,
-                      machineTraits(m.type).handCranked ? "RMB OPEN - THEN CRANK IT"
-                                                        : "RMB OPEN",
-                      glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+                      !m.enabled ? "RMB OPEN - THEN TURN ON"
+                      : m.jammed ? "JAMMED - DRAIN IT OR BELT IT TO A CRATE"
+                      : machineTraits(m.type).handCranked ? "RMB OPEN - THEN CRANK IT"
+                                                          : "RMB OPEN",
+                      m.jammed ? kBarJammed : glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
         }
     }
 
@@ -2400,6 +2504,9 @@ void VoxelGame::drawHelp() {
         {"6. RIGHT-CLICK A MACHINE TO OPEN IT: LOAD INPUTS, TAKE OUTPUTS.", 1},
         {"7. CONDUITS CARRY ITEMS THE WAY THEIR ARROW POINTS. WRENCH + " +
              k(Action::WrenchRotate) + " RE-AIMS.", 1},
+        {"7B. MACHINE BUFFERS FILL UP AND JAM ( AMBER BAR ). CRATES HOLD THE", 1},
+        {"    OVERFLOW, AND " + k(Action::BeltFilter) +
+             " SETS A CONDUIT TO CARRY ONLY WHAT YOU HOLD.", 1},
         {"8. GRINDER > CAULDRON > INFUSER > ALEMBIC > DISTILLER > TRANSMUTER", 1},
         {"9. CHOP TREES: LOGS GIVE WOOD, LEAVES DROP SAPLINGS. REPLANT ON GRASS.", 1},
         {"10. NO FLYING: BUILD SCAFFOLD. FALL OFF THE EDGE AND YOUR PACK IS LOST.", 2},

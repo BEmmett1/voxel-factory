@@ -22,10 +22,21 @@ namespace MachineSystem {
     using MachineMap = std::unordered_map<glm::ivec3, Machine, IVec3Hash>;
     using BeltMap    = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
 
-    // Does this machine use `item` as an input? A machine locked to a
-    // specific recipe only accepts that recipe's inputs (so belts can't
-    // overfill it with ingredients it will never consume).
+    // Does this machine use `item` as an input, AND is there room for another?
+    // A machine locked to a specific recipe only accepts that recipe's inputs
+    // (so belts can't overfill it with ingredients it will never consume).
+    //
+    // The room half is what makes a belt line congest: beltStep already leaves
+    // an item sitting on a belt whose target refuses it, so capacity needs no
+    // belt code of its own.
     bool machineAccepts(const Machine& mac, ItemId item);
+
+    // Per-item-type capacity of this machine's buffers. Most machines take the
+    // vg:: defaults; a Storage crate and a Pedestal have their own. Exposed
+    // because the panel marks a full line, and "full" has to mean the same
+    // thing there as it does to a belt.
+    int inputCap(const Machine& mac);
+    int outputCap(const Machine& mac);
 
     // Where this machine's fuel lives: its own `fuel` buffer when it has one,
     // otherwise `input` (a Generator has no recipes to confuse fuel with).
@@ -38,7 +49,8 @@ namespace MachineSystem {
     // a Furnace is feedstock or firewood (ingredient wins -- the machine is
     // there to make the thing). A player dragging onto a cell has already said
     // which, and never consults this.
-    Inventory& bufferFor(Machine& mac, ItemId item);
+    const Inventory& bufferFor(const Machine& mac, ItemId item);
+    Inventory&       bufferFor(Machine& mac, ItemId item);
 
     // The first raw item in a miner's input buffer; None = unfiltered (mine
     // anything nearby). The filter item is a reference sample, never consumed.

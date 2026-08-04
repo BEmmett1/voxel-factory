@@ -315,6 +315,9 @@ namespace {
         {.id = I::HandTransmuterItem, .key = "core:hand_transmuter_item",
          .name = "Hand Transmuter", .placeable = true,
          .placesBlock = B::HandTransmuter},
+        {.id = I::StorageCrateItem, .key = "core:storage_crate_item",
+         .name = "Storage Crate", .placeable = true,
+         .placesBlock = B::StorageCrate},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

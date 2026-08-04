@@ -53,8 +53,11 @@ namespace WorldEdit {
                            BlockId id, const glm::ivec3& beltFacing);
 
     // Re-aim the conduit at `pos`, cycling its facing through the six
-    // cardinals (and queueing the arrow remesh). False = no belt there.
-    bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos);
+    // cardinals (and queueing the arrow remesh). `reverse` steps the other way,
+    // which is what keeps overshooting by one from costing five presses.
+    // False = no belt there.
+    bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos,
+                    bool reverse = false);
 
     // Source fusion: if `aimed` is a source with an orthogonally-adjacent
     // source of a DIFFERENT type, consume both (partner cell -> Air) and

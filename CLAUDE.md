@@ -601,6 +601,76 @@ Economy v2 (difficulty by design; hand table in `Recipes.cpp`):
   slack), logs drop Wood ×2, and sources scatter beyond `kSourceMinRadius` so the
   outer band is where the resources are — logistics distance is the point.
 
+Logistics: buffers, the crate, and belt filters (Aug 2026 — the factory
+becomes a puzzle):
+- **Machine buffers have a bottom.** Every `Inventory` is an unbounded
+  count-per-item array, which for the player's pack is deliberate (hardcore
+  death is its pressure) but for a MACHINE meant nothing could ever back up:
+  an output never filled, a machine never jammed, and a belt never had to be
+  routed anywhere in particular. `kMachineInputCap` (64) and
+  `kMachineOutputCap` (32) — per item TYPE, matching how `Inventory` counts —
+  are what give every logistics block a job. **The capacity rule lives in two
+  places only**: `machineAccepts` (split into `wantsItem` + a room check, so
+  the rule isn't repeated down every branch) and a gate in `tickPowered`.
+  Belts needed **no change at all** — `beltStep` already leaves an item sitting
+  on a belt whose target refuses it, so lines congest for free.
+- **A jam HOLDS; it never cancels or eats.** Progress is kept, inputs are
+  untouched, and the fuel gate sits *after* the jam check so a jammed burner
+  doesn't consume its stock standing still (the generator's "hungry" rule).
+  Crucially the check runs BEFORE `rollOutput`, because that roll advances the
+  world's shared RNG counter and one thrown away would desync a sifting line
+  from its own save — so a weighted recipe needs room for **every** face it
+  could roll. `Machine::jammed` is transient (re-derived each tick, never
+  saved). Miners and Rune Cores jam by the same rule.
+- **Feedback, because an invisible jam is worse than none**: the floating bar
+  goes fully amber (a jam is FULL, not partial — a frozen sliver would read as
+  "slow"), the panel header shows OUTPUT FULL outranking every other status,
+  and the look-at tooltip names which pile is full and says what to do.
+- **The Storage Crate** (`MachineKind::Storage`, `demand = 0` so it stays off
+  the power graph — the Rain Barrel/Pedestal precedent). Its tick migrates
+  `input` → `output` each tick before the power gate, which is the whole trick:
+  `beltStep` fills a machine's `input` and drains its `output`, so one buffer
+  swap makes a single block both feedable and drainable with no belt code.
+  `kChestCap` = 512/item. `machineAccepts` counts BOTH halves for a crate or
+  the cap would never bind. **A crate is also the splitter** — every belt
+  pointing away from one pulls independently, so one line in feeds two out —
+  which is why the roadmap's separate splitter/router block was not needed.
+  Hand-craftable (Wood ×8) on purpose: outputs fill long before you own a
+  Circle, and gating the fix behind one would mean meeting the problem with no
+  way to solve it. Generic machine save records = no save bump.
+- **Belt filters** (`Belt::filter`, save **v23**). This retired `beltStep`'s
+  rule for draining a mixed output — "whichever item has the lowest ItemId
+  ordinal" — which was arbitrary, invisible, and impossible to teach. It binds
+  BOTH ways: a filtered belt pulls only its item from a machine, and refuses
+  anything else from the belt behind, which is what makes a sorting **lane**
+  rather than just a sorting tap. The stall that creates is the intended,
+  visible failure (the stuck cargo and the target's filter both draw). Set with
+  `Action::BeltFilter` (default **F**, rebindable, needs a Wrench in the pack):
+  the aimed conduit takes the selected hotbar item, pressing again with the
+  same item clears it. The selected item is a REFERENCE, never consumed, so you
+  can plumb a line before the factory has made any of what will run down it.
+  An empty filtered belt draws its filter as a ghosted icon (`kFilterGhost` —
+  deliberately not `kOutOfStockTint`, which means "you don't own this").
+  v23 is a tail append **within the belt record**, read version-gated like
+  v20's `burnLeft` and v21's fuel buffer; `kOldestLoadable` does not move and a
+  pre-v23 belt loads unfiltered, which is what it was.
+- **Build ergonomics, which the above makes load-bearing** — richer logistics
+  means laying many more belts, so shipping it without these would have made
+  the game worse. Held RMB keeps placing (**only** the place path; every other
+  RMB verb re-tests the edge, so a repeat aimed at a machine places against it
+  instead of reopening its panel). Two knobs, not one: `kPlaceRepeatDelay`
+  (0.28 s) is what stops an ordinary 80–150 ms click placing twice, and only
+  past it does `kPlaceRepeatSeconds` matter — the same shape as any key-repeat.
+  A belt placed against a MACHINE now aims away from it (`beltStep` only pulls
+  from the machine directly behind a belt, so the camera guess was wrong
+  exactly when you stand at a machine looking at it). Shift+R reverses
+  `rotateBelt`, capping the worst case at two presses instead of five.
+  Middle-click picks the aimed block onto the hotbar. F3 finally shows XYZ.
+- Covered by `--selftest`: a jam holds progress + spends no fuel + leaves the
+  RNG counter alone, a belt facing a full machine keeps its cargo, a crate
+  feeds two belts one item each per step, filters pull only their item and
+  refuse the rest, and a belt filter round-trips through the save.
+
 The core loop is complete, closed, and fully automatable. Possible next directions:
 - **Generator tiers / better fuels:** charcoal or essence-based fuels with longer
   burns; higher-output generator tiers.
@@ -874,33 +944,83 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **`RECIPES.md` is generated** — `voxel-factory --dump-recipes > RECIPES.md`.
   It used to be a hand-maintained mirror carrying an "update both together"
   warning, which is a promise a repo cannot keep.
-- **The manual tier is thirteen data rows plus one branch.** Hand-cranked twins
-  (Bloomery, Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap,
-  Mixing Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter) — one per
-  Processor. Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
+- **The manual tier is thirteen data rows plus one branch.** One twin per
+  Processor: the Bloomery (fire-driven — see below) plus twelve hand-cranked
+  (Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap,
+  Mixing Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter). Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
   build recipe; **no new `MachineKind`**. `recipeGroup` points at the powered
   twin so `recipesForMachine()` returns its rows (a recipe stays authored
   exactly once, and a static_assert keeps the delegation one hop), `speedMult`
   (`kManualSlowdown` = 3) is the price, and `demand = 0` bypasses the power gate
   at `tickPowered`'s one `traits.demand > 0 &&` and keeps them off the power
   graph via `isPowerNode` — the Rain Barrel precedent.
+- **The Bloomery is the one manual-tier machine that is NOT cranked** (Aug
+  2026, user decision). `recipeGroup` and `handCranked` used to be tied by an
+  equivalence — cranked *iff* delegating — which silently forced a hand-turned
+  fire, and a lit bloomery full of ore did nothing at all unless somebody stood
+  there pressing arrows. The two questions are genuinely separate:
+  `recipeGroup` asks WHOSE RECIPES do I run, `handCranked` asks WHO SUPPLIES
+  THE WORK, and a bloomery answers "the Furnace's" and "the fire". So the
+  invariant is now one-directional (cranked ⇒ delegates, not the reverse) in
+  BOTH the `static_assert` and `content::validate()`, and the Bloomery runs on
+  the clock like every other machine. It still pays its manual-tier dues in the
+  other two currencies — `kManualSlowdown` times as long as a Furnace, on fuel
+  it wastes (`fuelMult = 0.6`) — so the tier gap is intact while the crank tier
+  now means one coherent thing (a machine your ARM drives) instead of two.
+  Its panel is a Furnace's — no dial, W/S drives the rows, the header reads
+  BURNING/OUT OF FUEL, and it has the same master switch as everything else
+  (see above, which this change is what prompted). `--selftest` pins that it runs unattended,
+  that it is slower than the Furnace over the same ticks, and that it stops
+  when the fuel does; the crank test moved to a Mortar.
+- **Every machine has a master switch** (`Machine::enabled`, save **v24**, Aug
+  2026, user request). **OFF means FROZEN, not broken**: no work, no power drawn
+  or produced, dark — but every buffer, the progress, and the recipe lock are
+  kept, so switching back on resumes mid-craft. It is asked ONCE, at the top of
+  `tickPowered` and `tickSelfPowered`, before power/fuel/recipes/the crank, so
+  "off" means the same thing for every `MachineKind` instead of being
+  re-implemented per branch.
+  Three things it deliberately does NOT do. It does not stop the machine
+  **conducting** — `isPowerNode` is by block id and the flood fill runs on
+  those, so idling a machine can never split a network and black out everything
+  downstream. It does not stop the machine **accepting** deliveries or giving
+  up its output, which is what makes it a logistics tool rather than a wall: an
+  idled machine fills to its input cap and the feed line backs up from there on
+  its own, with no special case in `beltStep`. And it is not a per-kind opt-in —
+  only a Pedestal lacks one (`hasPowerSwitch`), because its tick is already a
+  `continue` and a dead control teaches players the live ones might be dead too.
+  In `PowerSystem::solve` an off machine contributes no `demand` and no
+  `powerOutput` and is skipped when the energized set is filled — that last part
+  is the whole of "it looks switched off", because the energized set already
+  drives both the emissive glow and the shape animation, so no mesher change was
+  needed. The panel row is **LAST** (`switchRow`), so adding it shifted no
+  recipe row's index; the row says what pressing it DOES (TURN OFF / TURN ON)
+  while the header says the state (OFF outranks even a jam), and the look-at
+  tooltip reads OFF so an idled machine isn't confused with a starved one.
+  Toggling re-solves power (`solvePowerAndMarkDirty`) — required, not tidy.
+  `--selftest` pins the freeze, that it is a pause and not a reset, that belts
+  still fill and drain it, that an off consumer leaves the wire live, that an
+  off consumer stops making its generator hungry, that an off generator darkens
+  what it fed, and the v24 save round-trip (one machine on, one off).
 - **Cranking is what makes the tier manual rather than merely slow** (Aug 2026).
-  It shipped as pure data — a 3× wall-clock stretch — which meant a Bloomery ran
+  It shipped as pure data — a 3× wall-clock stretch — which meant a Mortar ran
   itself overnight and the powered tier sold nothing but speed. A `handCranked`
-  traits flag (static_asserted to agree with the manual tier, since the two must
-  never come apart) now makes `tickPowered` advance those machines by
+  traits flag (static_asserted to IMPLY the manual tier — a handle needs a
+  recipe list; the reverse does not hold, see the Bloomery above) makes
+  `tickPowered` advance those machines by
   `Machine::crankBanked` instead of `kTickSeconds`. The bank is filled by the
   **panel**: with it open, the four ARROWS pressed in order (`vg::kCrankOrder`,
   clockwise from up) turn the handle, and a completed rotation banks
   `kCrankProgress` seconds. A wrong key resets the turn. `crankStep`/`crankBanked`
   are transient, so a half-turn is not saved and needs no version bump; W/S keep
   the rows via `menuNav`'s new `useArrows` flag, so the two never fight. The tick
-  bails BEFORE spending the bank when the fire is out, so a turn against an unlit
-  Bloomery is owed, not swallowed — and fuel burns only on a tick that banked a
-  crank, so an unattended burner costs nothing. **Belts still load a manual
-  machine but can never run one**: the tier is now genuinely un-automatable, and
-  what the powered tier sells is not speed but not having to be there. Covered by
-  `--selftest` (400 ticks of a loaded Bloomery must produce and burn nothing).
+  bails BEFORE spending the bank when a cranked machine's fire is out, so the
+  turn is owed rather than swallowed — and fuel burns only on a tick that banked
+  a crank, so an unattended cranked burner costs nothing. (No cranked machine
+  burns fuel any more, now that the Bloomery has left the set, but the rule
+  stands for the next one.) **Belts still load a cranked machine but can never
+  run one**: those are genuinely un-automatable, and what the powered tier sells
+  is not speed but not having to be there. Covered by `--selftest` (400 ticks of
+  a loaded Mortar must produce nothing).
 - **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, Charcoal
   60s) replaced the Generator's single `.fuel`/`.burnSeconds` pair, so a better
   fuel is one row. A Processor with `burnsFuel` runs on heat instead of

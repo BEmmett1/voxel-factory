@@ -172,6 +172,7 @@ enum class ItemId : std::uint16_t {
     StillItem,
     HandDistillerItem,
     HandTransmuterItem,
+    StorageCrateItem,
     Count
 };
 

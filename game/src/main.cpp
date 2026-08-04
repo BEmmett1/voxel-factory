@@ -166,10 +166,18 @@ int runSelfTest() {
     furnace.burnLeft = 12.5f;
     furnace.input.add(ItemId::Wood, 5);
     furnace.fuel.add(ItemId::Charcoal, 2);
+    // Switched OFF (v24). The default is true, so only a machine that was
+    // deliberately idled proves the flag is actually written and read -- the
+    // grinder above stays on, so the round-trip has to carry both values.
+    furnace.enabled = false;
     machines[glm::ivec3{9, 3, 3}] = furnace;
 
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts;
-    belts[glm::ivec3{2, 3, 3}] = Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb};
+    // Cargo AND a filter (v23), and deliberately different items -- a filter
+    // that happened to equal the cargo would pass even if the two were written
+    // or read in the wrong order.
+    belts[glm::ivec3{2, 3, 3}] =
+        Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb, ItemId::Crystal};
 
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources;
     sources[glm::ivec3{4, 2, 4}] = 3.5f;
@@ -260,10 +268,12 @@ int runSelfTest() {
     SELFTEST_CHECK(m2.progress == 0.75f);
     SELFTEST_CHECK(m2.input.count(ItemId::Herb) == 3);
     SELFTEST_CHECK(m2.output.count(ItemId::GroundHerb) == 2);
+    SELFTEST_CHECK(m2.enabled); // v24: this one was left running
 
     const Machine& f2 = machines2.at(glm::ivec3{9, 3, 3});
     SELFTEST_CHECK(f2.type == BlockId::Furnace);
     SELFTEST_CHECK(f2.burnLeft == 12.5f);
+    SELFTEST_CHECK(!f2.enabled); // v24: ...and this one was switched off
     SELFTEST_CHECK(f2.input.count(ItemId::Wood) == 5);   // feedstock, still IN
     SELFTEST_CHECK(f2.fuel.count(ItemId::Charcoal) == 2); // the fire, still FUEL
     SELFTEST_CHECK(f2.input.count(ItemId::Charcoal) == 0);
@@ -289,6 +299,7 @@ int runSelfTest() {
     const Belt& b2 = belts2.at(glm::ivec3{2, 3, 3});
     SELFTEST_CHECK(b2.facing == glm::ivec3(-1, 0, 0));
     SELFTEST_CHECK(b2.item == ItemId::GroundHerb);
+    SELFTEST_CHECK(b2.filter == ItemId::Crystal); // v23
 
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
@@ -857,38 +868,38 @@ int runSelfTest() {
     {
         World cw;
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
-        PowerState dead; // nothing energized; a Bloomery asks for no power
+        PowerState dead; // nothing energized; the manual tier asks for no power
         const glm::ivec3 p{40, 20, 40};
-        cw.setBlock(p.x, p.y, p.z, BlockId::Bloomery);
-        cm[p].type = BlockId::Bloomery;
-        cm[p].input.add(ItemId::CopperOre, 8); // a smelt is ready to go
-        cm[p].fuel.add(ItemId::Charcoal, 4);   // and the fire is stocked
+        // A MORTAR, not a Bloomery: the crank tier is now exactly the machines
+        // your arm drives, and the Bloomery left it (a fire is not an arm --
+        // see below). Picking a fuelless one also keeps this test about the one
+        // thing it is for.
+        cw.setBlock(p.x, p.y, p.z, BlockId::Mortar);
+        cm[p].type = BlockId::Mortar;
+        cm[p].input.add(ItemId::Crystal, 8); // a grind is ready to go
 
         std::uint32_t rc = 0;
         for (int i = 0; i < 400; ++i) { // 20 seconds of being ignored
             MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
         }
         SELFTEST_CHECK(cm[p].progress == 0.0f);
-        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 4);
-        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 0);
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 0);
+        SELFTEST_CHECK(cm[p].input.count(ItemId::Crystal) == 8);
 
         // One turn of the handle, and it moves by exactly that much.
         cm[p].crankBanked = vg::kCrankProgress;
         MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
         SELFTEST_CHECK(cm[p].progress == vg::kCrankProgress);
         SELFTEST_CHECK(cm[p].crankBanked == 0.0f);
-        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 3); // now it burns
 
-        // Enough turns to finish the craft. A Furnace smelt is 4s, and the
+        // Enough turns to finish the craft. A Grinder grind is 2s, and the
         // manual twin owes kManualSlowdown times that.
-        const float need = 4.0f * kManualSlowdown;
-        for (int i = 0; cm[p].output.count(ItemId::CopperIngot) == 0 && i < 64; ++i) {
+        for (int i = 0; cm[p].output.count(ItemId::CrystalDust) == 0 && i < 64; ++i) {
             cm[p].crankBanked = vg::kCrankProgress;
             MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
         }
-        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 1);
-        SELFTEST_CHECK(cm[p].input.count(ItemId::CopperOre) == 6); // 2 per smelt
-        SELFTEST_CHECK(need > 0.0f);
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 1);
+        SELFTEST_CHECK(cm[p].input.count(ItemId::Crystal) == 7);
 
         // A powered twin, by contrast, runs on nothing but time.
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm;
@@ -899,6 +910,334 @@ int runSelfTest() {
         pm[q].fuel.add(ItemId::Charcoal, 4);
         for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc);
         SELFTEST_CHECK(pm[q].output.count(ItemId::CopperIngot) > 0);
+    }
+
+    // ---- The Bloomery is FIRE-driven, not arm-driven ------------------------
+    // It sat in the manual tier as a hand-cranked machine, which meant a lit
+    // bloomery full of ore did nothing at all unless somebody stood at it
+    // turning arrows. What does the work in a bloomery is the burn, so it now
+    // runs on the clock like every other machine and pays its manual-tier dues
+    // in time and wasted fuel instead. Pinned here because the traits row that
+    // says so is one word, and losing it would look like a balance tweak.
+    {
+        World bw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> bm;
+        PowerState dead;
+        const glm::ivec3 p{48, 20, 48};
+        bw.setBlock(p.x, p.y, p.z, BlockId::Bloomery);
+        bm[p].type = BlockId::Bloomery;
+        bm[p].input.add(ItemId::CopperOre, 8);
+        bm[p].fuel.add(ItemId::Charcoal, 4);
+
+        SELFTEST_CHECK(!machineTraits(BlockId::Bloomery).handCranked);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).burnsFuel);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).demand == 0); // never electric
+        // Still a manual-tier machine in every other sense: the Furnace's
+        // recipes, kManualSlowdown times as long, on fuel it wastes.
+        SELFTEST_CHECK(recipeGroupFor(BlockId::Bloomery) == BlockId::Furnace);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).speedMult == kManualSlowdown);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).fuelMult < 1.0f);
+
+        std::uint32_t rc = 0;
+        for (int i = 0; i < 400; ++i) { // left completely alone
+            MachineSystem::tickPowered(bw, bm, dead, 1u, rc);
+        }
+        SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) > 0); // it ran
+        SELFTEST_CHECK(bm[p].input.count(ItemId::CopperOre) < 8);    // it ate ore
+        SELFTEST_CHECK(bm[p].fuel.count(ItemId::Charcoal) < 4);      // it burned
+
+        // ...and it is still slower than the Furnace it copies, on the same
+        // stock and the same number of ticks. That gap IS the tier.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm2;
+        const glm::ivec3 q{52, 20, 52};
+        bw.setBlock(q.x, q.y, q.z, BlockId::Furnace);
+        fm2[q].type = BlockId::Furnace;
+        fm2[q].input.add(ItemId::CopperOre, 8);
+        fm2[q].fuel.add(ItemId::Charcoal, 4);
+        std::uint32_t rc2 = 0;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, fm2, dead, 1u, rc2);
+        SELFTEST_CHECK(fm2[q].output.count(ItemId::CopperIngot) >
+                       bm[p].output.count(ItemId::CopperIngot));
+
+        // Turning it OFF is what turning off any machine is: stop feeding the
+        // fire. No handle, no switch -- it simply stops when the fuel runs out.
+        bm[p].fuel.remove(ItemId::Charcoal, bm[p].fuel.count(ItemId::Charcoal));
+        bm[p].burnLeft = 0.0f;
+        const int made = bm[p].output.count(ItemId::CopperIngot);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, bm, dead, 1u, rc);
+        SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) == made);
+    }
+
+    // ---- Buffers have a bottom, and a full one stops the line --------------
+    // Every Inventory is unbounded, so before these caps a machine's output
+    // swallowed everything and nothing in a factory could ever be wrong. The
+    // checks that matter are the ones about what a jam must NOT do: eat inputs,
+    // burn fuel, or touch the shared RNG counter.
+    {
+        World jw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> jm;
+        PowerState dead; // a Furnace burns fuel and asks for no power
+        const glm::ivec3 p{60, 20, 60};
+        jw.setBlock(p.x, p.y, p.z, BlockId::Furnace);
+        Machine& f = jm[p];
+        f.type = BlockId::Furnace;
+        f.input.add(ItemId::CopperOre, 8);
+        f.fuel.add(ItemId::Charcoal, 4);
+        f.output.add(ItemId::CopperIngot, vg::kMachineOutputCap); // nowhere to put one more
+
+        std::uint32_t rc = 7;
+        const std::uint32_t rcBefore = rc;
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc);
+        SELFTEST_CHECK(jm[p].jammed);
+        SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) == vg::kMachineOutputCap);
+        SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) == 8);   // inputs untouched
+        SELFTEST_CHECK(jm[p].fuel.count(ItemId::Charcoal) == 4);     // fire never lit
+        SELFTEST_CHECK(rc == rcBefore); // no roll thrown away -- see outputHasRoom
+
+        // Drain it and the same craft resumes; a jam holds, it doesn't cancel.
+        jm[p].output.remove(ItemId::CopperIngot, vg::kMachineOutputCap);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc);
+        SELFTEST_CHECK(!jm[p].jammed);
+        SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) > 0);
+        SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) < 8);
+
+        // A belt facing a machine that can take no more KEEPS its cargo. This
+        // is the whole of what makes a feed line back up: beltStep already
+        // stalls on a refusal, so capacity needed no belt code of its own.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> bm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> bb;
+        const glm::ivec3 mp{64, 20, 64};
+        bm[mp].type = BlockId::Furnace;
+        bm[mp].input.add(ItemId::CopperOre, vg::kMachineInputCap); // input full
+        const glm::ivec3 bp = mp - glm::ivec3(0, 0, 1);
+        bb[bp].facing = {0, 0, 1}; // pointing at the furnace
+        bb[bp].item = ItemId::CopperOre;
+        MachineSystem::beltStep(bb, bm);
+        SELFTEST_CHECK(bb[bp].item == ItemId::CopperOre); // stalled, not voided
+        SELFTEST_CHECK(bm[mp].input.count(ItemId::CopperOre) == vg::kMachineInputCap);
+
+        // Room for one, and it moves again.
+        bm[mp].input.remove(ItemId::CopperOre, 1);
+        MachineSystem::beltStep(bb, bm);
+        SELFTEST_CHECK(bb[bp].item == ItemId::None);
+        SELFTEST_CHECK(bm[mp].input.count(ItemId::CopperOre) == vg::kMachineInputCap);
+    }
+
+    // ---- A crate is feedable, drainable, and therefore also the splitter ----
+    // beltStep fills a machine's `input` and drains its `output`, so a crate is
+    // one buffer migration and no belt code. The second half is why the roadmap
+    // never needed a separate splitter block: every belt pointing AWAY from a
+    // crate pulls from it independently, so one line in feeds two lines out.
+    {
+        World kw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> km;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> kb;
+        PowerState dead; // a crate draws no power and is not a power node
+        SELFTEST_CHECK(!PowerSystem::isPowerNode(BlockId::StorageCrate));
+
+        const glm::ivec3 c{70, 20, 70};
+        kw.setBlock(c.x, c.y, c.z, BlockId::StorageCrate);
+        km[c].type = BlockId::StorageCrate;
+
+        // In from the north, out to east and west.
+        const glm::ivec3 in = c - glm::ivec3(0, 0, 1);
+        kb[in].facing = {0, 0, 1};
+        kb[in].item = ItemId::CopperOre;
+        const glm::ivec3 outE = c + glm::ivec3(1, 0, 0);
+        const glm::ivec3 outW = c - glm::ivec3(1, 0, 0);
+        kb[outE].facing = {1, 0, 0};
+        kb[outW].facing = {-1, 0, 0};
+
+        std::uint32_t rc = 0;
+        MachineSystem::beltStep(kb, km);
+        SELFTEST_CHECK(kb[in].item == ItemId::None);          // a crate takes anything
+        SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 1);
+
+        // The migration is the whole behaviour: what was fed in becomes stock.
+        MachineSystem::tickPowered(kw, km, dead, 1u, rc);
+        SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 0);
+        SELFTEST_CHECK(km[c].output.count(ItemId::CopperOre) == 1);
+
+        // Stock it properly, then prove BOTH outgoing belts draw from it in the
+        // same step -- one item each, which is an even split with no splitter.
+        km[c].output.add(ItemId::CopperOre, 9); // 10 in the crate
+        MachineSystem::beltStep(kb, km);
+        SELFTEST_CHECK(kb[outE].item == ItemId::CopperOre);
+        SELFTEST_CHECK(kb[outW].item == ItemId::CopperOre);
+        SELFTEST_CHECK(km[c].output.count(ItemId::CopperOre) == 8);
+
+        // And it is deep: a crate has to hold far more than the machine whose
+        // jam it exists to relieve, or nobody would walk over to build one.
+        SELFTEST_CHECK(MachineSystem::inputCap(km[c]) == vg::kChestCap);
+        SELFTEST_CHECK(vg::kChestCap > vg::kMachineOutputCap);
+        km[c].output.add(ItemId::Stone, vg::kChestCap);
+        SELFTEST_CHECK(!MachineSystem::machineAccepts(km[c], ItemId::Stone)); // full
+        SELFTEST_CHECK(MachineSystem::machineAccepts(km[c], ItemId::Wood));   // room yet
+    }
+
+    // ---- Belt filters: the sorting half -----------------------------------
+    // What this replaced was beltStep draining a mixed output by lowest ItemId
+    // ordinal -- a rule no player could see or be taught. These checks pin both
+    // directions of the filter, because only the pair makes a sorting LANE:
+    // pull only your item, and refuse to accept anything else.
+    {
+        World fw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> fb;
+
+        // A crate holding two things, with a filtered belt out of each side.
+        const glm::ivec3 c{80, 20, 80};
+        fw.setBlock(c.x, c.y, c.z, BlockId::StorageCrate);
+        fm[c].type = BlockId::StorageCrate;
+        fm[c].output.add(ItemId::CopperOre, 5);
+        fm[c].output.add(ItemId::Stone, 5);
+
+        const glm::ivec3 east = c + glm::ivec3(1, 0, 0);
+        const glm::ivec3 west = c - glm::ivec3(1, 0, 0);
+        fb[east].facing = {1, 0, 0};
+        fb[east].filter = ItemId::Stone;      // deliberately NOT the low ordinal
+        fb[west].facing = {-1, 0, 0};
+        fb[west].filter = ItemId::CopperOre;
+
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[east].item == ItemId::Stone);
+        SELFTEST_CHECK(fb[west].item == ItemId::CopperOre);
+        SELFTEST_CHECK(fm[c].output.count(ItemId::Stone) == 4);
+        SELFTEST_CHECK(fm[c].output.count(ItemId::CopperOre) == 4);
+
+        // A filter that names something the machine hasn't got pulls NOTHING --
+        // it does not fall back to "whatever is there", which would quietly
+        // undo the whole point.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> gm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> gb;
+        const glm::ivec3 g{84, 20, 84};
+        gm[g].type = BlockId::StorageCrate;
+        gm[g].output.add(ItemId::Stone, 3);
+        const glm::ivec3 gout = g + glm::ivec3(1, 0, 0);
+        gb[gout].facing = {1, 0, 0};
+        gb[gout].filter = ItemId::IronIngot; // none in there
+        MachineSystem::beltStep(gb, gm);
+        SELFTEST_CHECK(gb[gout].item == ItemId::None);
+        SELFTEST_CHECK(gm[g].output.count(ItemId::Stone) == 3);
+
+        // Belt -> belt: a filtered belt refuses cargo it is not for, and the
+        // line behind it holds rather than losing the item.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> hm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> hb;
+        const glm::ivec3 a{90, 20, 90};
+        const glm::ivec3 nextBelt = a + glm::ivec3(0, 0, 1);
+        hb[a].facing = {0, 0, 1};
+        hb[a].item = ItemId::Stone;
+        hb[nextBelt].facing = {0, 0, 1};
+        hb[nextBelt].filter = ItemId::CopperOre; // not stone
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[a].item == ItemId::Stone); // stalled, not voided
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::None);
+
+        // Matching cargo passes.
+        hb[nextBelt].filter = ItemId::Stone;
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[a].item == ItemId::None);
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone);
+
+        // An unfiltered belt still carries anything -- the fallback has to
+        // stay, or every existing factory would stop on load.
+        hb[nextBelt].filter = ItemId::None;
+        hb[a].item = ItemId::IronIngot;
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone); // still occupied this step
+        SELFTEST_CHECK(hb[a].item == ItemId::IronIngot);
+    }
+
+    // ---- The master switch: off means FROZEN, not broken -------------------
+    // "Off" has to mean the same thing to four different systems at once (the
+    // tick, the power solve, the glow, the belts), and the easy bugs are all
+    // half-measures: a machine that stops working but still browns out its
+    // network, or a generator that stops producing but still counts as lit.
+    {
+        World sw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> sm;
+        PowerState dead;
+        const glm::ivec3 p{100, 20, 100};
+        sw.setBlock(p.x, p.y, p.z, BlockId::Furnace);
+        sm[p].type = BlockId::Furnace;
+        sm[p].input.add(ItemId::CopperOre, 8);
+        sm[p].fuel.add(ItemId::Charcoal, 4);
+
+        // Off: no product, no ore eaten, no fuel burned, however long it sits.
+        sm[p].enabled = false;
+        std::uint32_t rc = 0;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) == 0);
+        SELFTEST_CHECK(sm[p].input.count(ItemId::CopperOre) == 8);
+        SELFTEST_CHECK(sm[p].fuel.count(ItemId::Charcoal) == 4);
+        SELFTEST_CHECK(!sm[p].crafting); // and draws no progress bar
+
+        // ...but it is a PAUSE, not a reset: the buffers are still there and it
+        // picks straight back up.
+        sm[p].enabled = true;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) > 0);
+
+        // An off machine still ACCEPTS and still gives up its output. This is
+        // what makes the switch a logistics tool instead of a wall: the feed
+        // line backs up on its own once the input hits its cap, with no special
+        // case in beltStep at all.
+        sm[p].enabled = false;
+        SELFTEST_CHECK(MachineSystem::machineAccepts(sm[p], ItemId::CopperOre));
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> sb;
+        const glm::ivec3 drain = p + glm::ivec3(1, 0, 0);
+        sb[drain].facing = {1, 0, 0};
+        const int had = sm[p].output.count(ItemId::CopperIngot);
+        MachineSystem::beltStep(sb, sm);
+        SELFTEST_CHECK(sb[drain].item == ItemId::CopperIngot);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) == had - 1);
+    }
+
+    // ---- ...and the power network agrees ----------------------------------
+    {
+        World pw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm;
+        // A generator wired to a grinder: the smallest network with both a
+        // producer and a consumer.
+        const glm::ivec3 gen{110, 20, 110};
+        const glm::ivec3 wire = gen + glm::ivec3(1, 0, 0);
+        const glm::ivec3 mac = gen + glm::ivec3(2, 0, 0);
+        pw.setBlock(gen.x, gen.y, gen.z, BlockId::Generator);
+        pw.setBlock(wire.x, wire.y, wire.z, BlockId::Wire);
+        pw.setBlock(mac.x, mac.y, mac.z, BlockId::Grinder);
+        pm[gen].type = BlockId::Generator;
+        pm[gen].progress = 10.0f; // burning
+        pm[mac].type = BlockId::Grinder;
+
+        PowerState st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(st.energized(wire.x, wire.y, wire.z));
+
+        // Switch the CONSUMER off: it goes dark, but the wire between them
+        // stays live -- an off machine must never split a network, or idling
+        // one would black out everything downstream.
+        pm[mac].enabled = false;
+        st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(!st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(st.energized(wire.x, wire.y, wire.z));
+        SELFTEST_CHECK(st.energized(gen.x, gen.y, gen.z));
+
+        // An off consumer also stops DEMANDING, so its generator is no longer
+        // hungry and stops lighting fresh fuel.
+        std::unordered_set<glm::ivec3, IVec3Hash> hungry;
+        PowerSystem::solve(pw, pm, &hungry);
+        SELFTEST_CHECK(hungry.empty());
+        pm[mac].enabled = true;
+        PowerSystem::solve(pw, pm, &hungry);
+        SELFTEST_CHECK(hungry.count(gen) > 0);
+
+        // Switch the PRODUCER off instead: it stops producing, so the machine
+        // it fed goes dark too even though that machine is still on.
+        pm[gen].enabled = false;
+        st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(!st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(!st.energized(gen.x, gen.y, gen.z));
     }
 
     std::printf("selftest OK\n");

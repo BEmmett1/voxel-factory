@@ -229,9 +229,13 @@ namespace {
                     out.push_back(named + "has more than one traits row");
                 }
             }
-            if (t.handCranked != (t.recipeGroup != BlockId::Air)) {
-                out.push_back(named + "must be hand-cranked exactly when it "
-                                      "delegates its recipes to another machine");
+            // Cranked implies delegating, but NOT the reverse: the Bloomery
+            // borrows the Furnace's recipes and is driven by its fire rather
+            // than by an arm. A handle with no recipe list, though, is a handle
+            // attached to nothing.
+            if (t.handCranked && t.recipeGroup == BlockId::Air) {
+                out.push_back(named + "is hand-cranked but has no recipe group "
+                                      "to crank (a handle needs a job)");
             }
             if (t.recipeGroup == BlockId::Air) continue;
             if (!hasMachineTraits(t.recipeGroup)) {

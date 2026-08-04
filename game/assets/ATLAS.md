@@ -141,12 +141,18 @@ surface in the powered twin's accent color, every side tile carries the same
 | 186 | iron helm | 187 | iron chestplate |
 | 188 | iron boots | 189-191 | spare |
 
-## Rows 12-15 — spare (tiles 192-255)
+## Row 12 — bulk storage (tiles 192-193)
+
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 192 | storage crate (top/lid) | 193 | storage crate (side) |
+
+## Rows 12-15 — spare (tiles 194-255)
 
 Empty. This is the headroom the 8→16 row growth bought.
 
 All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63,
-116-127, 162-175, 189-255) are free for new blocks/items. Claim a tile here,
+116-127, 162-175, 189-191, 194-255) are free for new blocks/items. Claim a tile here,
 add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
 on the kBlocks row for blocks, `atlasTile` on the kItems row for material
 items).

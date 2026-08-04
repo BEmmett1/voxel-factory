@@ -23,6 +23,7 @@ enum class Action : int {
     CraftMenu,
     Inventory,
     WrenchRotate,
+    BeltFilter,
     QuickSave,
     Help,
     Count
@@ -32,7 +33,7 @@ inline constexpr int kActionCount = static_cast<int>(Action::Count);
 inline constexpr std::array<SDL_Scancode, kActionCount> kDefaultBinds = {
     SDL_SCANCODE_W,     SDL_SCANCODE_S,   SDL_SCANCODE_A,  SDL_SCANCODE_D,
     SDL_SCANCODE_SPACE, SDL_SCANCODE_LCTRL, SDL_SCANCODE_E, SDL_SCANCODE_TAB,
-    SDL_SCANCODE_R,     SDL_SCANCODE_F5,  SDL_SCANCODE_F1};
+    SDL_SCANCODE_R,     SDL_SCANCODE_F, SDL_SCANCODE_F5,  SDL_SCANCODE_F1};
 
 // Value ranges shared by the UI steppers and the load-time clamp.
 inline constexpr float kSensitivityMin = 0.02f;

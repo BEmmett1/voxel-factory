@@ -70,7 +70,8 @@ PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& p
     return r;
 }
 
-bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos) {
+bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos,
+                bool reverse) {
     const auto it = belts.find(pos);
     if (it == belts.end()) return false;
     static const glm::ivec3 kCycle[6] = {
@@ -79,7 +80,10 @@ bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& p
     for (int i = 0; i < 6; ++i) {
         if (it->second.facing == kCycle[i]) { cur = i; break; }
     }
-    it->second.facing = kCycle[(cur + 1) % 6];
+    // Six one-way steps meant a belt that landed one notch past where you
+    // wanted it cost five presses. Reversing costs one branch and caps the
+    // worst case at two.
+    it->second.facing = kCycle[(cur + (reverse ? 5 : 1)) % 6];
     // No block changed, but the arrow UVs did: queue a remesh.
     world.markDirtyAt(pos.x, pos.y, pos.z);
     return true;

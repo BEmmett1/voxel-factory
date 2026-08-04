@@ -1080,6 +1080,33 @@ def manual_tier():
         crank(t, accent)
 
 
+CRATE = (140, 102, 56)      # storage-crate timber
+
+
+def storage():
+    """Row 12: bulk storage (192-193).
+
+    Deliberately plain boards rather than the manual tier's `crude` housing --
+    a crate is not a machine you operate, and it should read as furniture at a
+    glance so a wall of them doesn't look like a wall of hand cranks.
+    """
+    t = paint(192)                                   # top: a slatted lid
+    t.fill(CRATE, noise=0.14)
+    t.outline(shade(CRATE, 0.5))
+    for y in (4, 8, 12):                             # three boards
+        t.hline(y, 1, 14, shade(CRATE, 0.62))
+    t.rect(6, 6, 9, 9, shade(CRATE, 1.15))           # a lighter centre panel
+
+    t = paint(193)                                   # side: boards + corner posts
+    t.fill(CRATE, noise=0.14)
+    t.outline(shade(CRATE, 0.5))
+    for y in (5, 10):
+        t.hline(y, 1, 14, shade(CRATE, 0.62))
+    t.vline(1, 1, 14, shade(CRATE, 1.25))            # corner posts catch the light
+    t.vline(14, 1, 14, shade(CRATE, 0.78))
+    t.hline(1, 1, 14, shade(CRATE, 1.3))             # top rail
+
+
 def iron_tier():
     """Row 11: iron, charcoal, and the tool/armor tier above copper (176-188)."""
     t = paint(176)                                   # iron nugget (sifted)
@@ -1172,6 +1199,7 @@ def main():
     smelting_tier()
     manual_tier()
     iron_tier()
+    storage()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

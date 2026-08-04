@@ -19,6 +19,7 @@ Instant and free, so it deliberately cannot build the factory.
 | `hand/stone-shovel` | Stone x2 + Stick x2 | Stone Shovel |
 | `hand/scaffold` | Stone | Scaffold x4 |
 | `hand/bucket` | Wood x3 | Bucket |
+| `hand/storage-crate` | Wood x8 | Storage Crate |
 | `hand/bloomery` | Stone x8 | Bloomery |
 | `hand/sieve` | Wood x4 + Stick x4 | Sieve |
 | `hand/pedestal` | Stone x4 + Copper Ingot | Pedestal |
@@ -186,6 +187,12 @@ Draws 5 power. Hand tier: **Tamper** (3x slower).
 | key | inputs | output | seconds |
 |---|---|---|---|
 | `compactor/stone` | Dirt x4 + Sand x4 | Stone x2 | 5.0 |
+
+### Storage Crate
+
+Runs unpowered. 
+
+_No recipes -- its behavior is code, not a table._
 
 ## Alchemy Circle
 

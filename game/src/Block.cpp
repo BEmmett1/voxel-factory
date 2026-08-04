@@ -262,6 +262,11 @@ namespace {
          .name = "Hand Transmuter", .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::HandTransmuterItem, 1}, .tiles = {160, 161, 161},
          .hardness = 0.5f},
+        // ---- Bulk storage -------------------------------------------------
+        {.id = B::StorageCrate, .key = "core:storage_crate",
+         .name = "Storage Crate", .color = {0.55f, 0.40f, 0.22f},
+         .machine = true, .drop = {I::StorageCrateItem, 1}, .tiles = {192, 193, 193},
+         .hardness = 0.5f}, // lid on top, slatted sides
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

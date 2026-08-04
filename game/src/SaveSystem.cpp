@@ -19,7 +19,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 22;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 24;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -63,6 +63,16 @@ namespace {
     // will need on join, which is why it lives in ContentRegistry rather than
     // here. Pre-v22 saves get ContentMap::identity(): they were written by this
     // content set's own ancestor, so their ordinals are already ours.
+    //
+    // v23 appends a filter id to each BELT record. A tail append within the
+    // record rather than at the end of the file, so it is read version-gated
+    // exactly as v20's burnLeft and v21's fuel buffer were; kOldestLoadable
+    // does not move and a pre-v23 belt loads unfiltered, which is what it was.
+    //
+    // v24 appends the master on/off switch to each MACHINE record, the same
+    // shape again. A pre-v24 machine loads ENABLED, which is the only honest
+    // default: every machine in every older save was built before a switch
+    // existed, so all of them were running.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -319,6 +329,7 @@ bool save(const std::string& path, const SaveData& d) {
         writeInventory(out, m.input);
         writeInventory(out, m.output);
         writeInventory(out, m.fuel); // v21; empty for anything without a slot
+        writePod(out, static_cast<std::uint8_t>(m.enabled ? 1 : 0)); // v24
     }
 
     // Belts.
@@ -331,6 +342,7 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::int8_t>(b.facing.y));
         writePod(out, static_cast<std::int8_t>(b.facing.z));
         writeId(out, static_cast<std::uint32_t>(b.item));
+        writeId(out, static_cast<std::uint32_t>(b.filter)); // v23
     }
 
     // Sources.
@@ -545,6 +557,14 @@ bool load(const std::string& path, SaveData& d) {
                 m.fuel.add(f.item, held);
             }
         }
+        // The master switch, appended in v24. Anything older predates the
+        // switch entirely, so every machine in it was running -- and `enabled`
+        // already defaults true, which is why there is nothing to migrate.
+        if (version >= 24) {
+            std::uint8_t on = 1;
+            if (!readPod(in, on)) return false;
+            m.enabled = on != 0;
+        }
         d.registries.machines[{x, y, z}] = std::move(m);
     }
 
@@ -561,6 +581,13 @@ bool load(const std::string& path, SaveData& d) {
         Belt b;
         b.facing = {fx, fy, fz};
         b.item = map.item(item);
+        // v23 appended the filter. A pre-v23 belt carried anything, which is
+        // exactly what ItemId::None means, so there is nothing to migrate.
+        if (version >= 23) {
+            std::uint32_t filter = 0;
+            if (!readId(in, version, filter) || filter >= itemLimit) return false;
+            b.filter = map.item(filter);
+        }
         d.registries.belts[{x, y, z}] = b;
     }
 

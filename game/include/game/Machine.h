@@ -33,11 +33,26 @@ struct Machine {
                                  // -1 = auto. Saved as the recipe's KEY, not as
                                  // this index -- see Recipes.h.
 
+    // The master switch (save v24). OFF means FROZEN: the machine does no work,
+    // draws no power, produces none, and goes dark -- but it keeps its buffers,
+    // keeps conducting (so switching one off can never split a network), and
+    // still accepts deliveries and gives up its output. That last part is what
+    // makes it a logistics tool rather than a wall: an idled machine fills to
+    // its input cap and the feed line backs up from there on its own, with no
+    // special case anywhere.
+    bool      enabled = true;
+
     // Miner only, transient (not saved; re-acquired after load): the node
     // being drilled, so the reach isn't re-scanned every tick.
     glm::ivec3 target{0};
     bool       hasTarget = false;
     int        rescanCooldown = 0; // ticks until the next idle scan
+
+    // Transient (not saved -- recomputed by the first tick after a load): the
+    // craft is ready but its product has nowhere to go, so progress is HELD and
+    // the inputs are untouched. Purely a signal for the UI; the sim re-derives
+    // it every tick.
+    bool       jammed = false;
 
     // Hand-cranked tier only, transient (not saved -- a half-turned handle is
     // not worth persisting, and a fresh load simply starts the turn again):
@@ -57,13 +72,15 @@ enum class MachineKind : std::uint8_t {
     Miner,     // harvests nearby resource nodes, gated on network power
     RuneCore,  // reads the ring of Pedestals around it and runs CircleRecipes
     Pedestal,  // passive one-item-type holder; a ring slot for the Rune Core
+    Storage,   // bulk stockpile; belts both fill and drain it
 };
 
 // Enum spellings for the content pack format -- see kToolNames in Item.h.
 inline constexpr const char* kKindNames[] = {
     "processor", "generator", "collector", "miner", "rune_core", "pedestal",
+    "storage",
 };
-static_assert(std::size(kKindNames) == 6,
+static_assert(std::size(kKindNames) == 7,
               "kKindNames needs one name per MachineKind");
 
 // What burns, and for how long. A shared registry rather than a per-machine
@@ -169,10 +186,16 @@ inline constexpr MachineTraits kMachineTraitSeed[] = {
     // The MANUAL tier. Each row is the whole machine: no power (demand 0), its
     // powered twin's recipes (recipeGroup), kManualSlowdown times the work --
     // and handCranked, which is what makes it manual rather than merely slow.
-    // The Bloomery still needs fuel -- you cannot hand crank a fire -- and
-    // burns it less efficiently than a real Furnace.
+    // The Bloomery is the one manual-tier machine that is NOT cranked, because
+    // you cannot hand crank a fire: what does the work in a bloomery is the
+    // burn, and a burn keeps going whether or not anyone is standing there.
+    // So it runs on the clock like every other machine -- light it and walk
+    // away -- and pays for the privilege in the other two currencies instead:
+    // kManualSlowdown times as long as a Furnace, on fuel it wastes (fuelMult).
+    // That leaves the crank tier meaning one coherent thing (a machine your
+    // ARM drives) rather than two, and leaves the fuel tier meaning another.
     {.block = BlockId::Bloomery, .demand = 0, .burnsFuel = true, .fuelMult = 0.6f,
-     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown, .handCranked = true},
+     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown},
     {.block = BlockId::Sieve, .demand = 0,
      .recipeGroup = BlockId::Sifter, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Blowpipe, .demand = 0,
@@ -197,17 +220,30 @@ inline constexpr MachineTraits kMachineTraitSeed[] = {
      .recipeGroup = BlockId::Distiller, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::HandTransmuter, .demand = 0,
      .recipeGroup = BlockId::Transmuter, .speedMult = kManualSlowdown, .handCranked = true},
+
+    // Bulk storage. demand 0 keeps it off the power graph (the Rain Barrel and
+    // Pedestal precedent), so a crate never conducts and a row of them can't
+    // silently bridge two networks. Its tick migrates input -> output, which is
+    // the whole trick: beltStep fills a machine's `input` and drains its
+    // `output`, so one buffer swap makes a crate both feedable and drainable
+    // with no belt code at all.
+    {.block = BlockId::StorageCrate, .kind = MachineKind::Storage, .demand = 0},
 };
 
-// Only the manual tier is cranked, and every cranked machine is a manual twin.
-// The two travel together by design -- if they ever come apart, the panel and
-// the tick would disagree about what "manual" means.
+// Every cranked machine is a manual twin -- but NOT every twin is cranked.
+// This used to be an equivalence, which quietly forced the Bloomery to be
+// hand-turned for no reason except that it shared a recipe list with the
+// Furnace. The two questions are genuinely separate: `recipeGroup` asks WHOSE
+// RECIPES do I run, `handCranked` asks WHO SUPPLIES THE WORK, and a bloomery
+// answers "the Furnace's" and "the fire". Only the implication still has to
+// hold, because a cranked machine with no recipes would be a handle attached
+// to nothing.
 static_assert([] {
     for (const MachineTraits& t : kMachineTraitSeed) {
-        if (t.handCranked != (t.recipeGroup != BlockId::Air)) return false;
+        if (t.handCranked && t.recipeGroup == BlockId::Air) return false;
     }
     return true;
-}(), "handCranked and the manual tier (recipeGroup) must agree");
+}(), "a handCranked machine must name a recipeGroup (a handle needs a job)");
 
 static_assert([] {
     for (std::size_t i = 0; i < std::size(kMachineTraitSeed); ++i) {
@@ -279,4 +315,13 @@ inline BlockId recipeGroupFor(BlockId id) {
 // and there is no fourteenth column to keep in sync with reality.
 inline bool usesFuelSlot(BlockId id) {
     return machineTraits(id).burnsFuel && !recipesForMachine(id).empty();
+}
+
+// Is a master switch worth offering here? Everything that DOES something does:
+// processors, generators, collectors, miners, circles, crates. A Pedestal is a
+// passive shelf whose tick is already a `continue`, so a switch on it would be
+// a control that changes nothing -- and a dead control teaches players that the
+// other switches might be dead too.
+inline bool hasPowerSwitch(BlockId id) {
+    return machineTraits(id).kind != MachineKind::Pedestal;
 }

@@ -83,6 +83,8 @@ void VoxelGame::onUpdate(float dt) {
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);
+        m_placeCooldown = std::max(0.0f, m_placeCooldown - dt);
+        m_rmbHeld = input().isMouseDown(SDL_BUTTON_RIGHT) ? m_rmbHeld + dt : 0.0f;
 
         // Victory linger: soak in the win, then ride home automatically.
         if (m_victoryTimer > 0.0f) {
@@ -182,6 +184,15 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::CompactorItem, 1);
         m_inventory.add(ItemId::MortarItem, 1);
         m_inventory.add(ItemId::HandPressItem, 1);
+        // Logistics: crates and a spool of conduit, so a sorting line (machine
+        // -> crate -> filtered belts) can be laid without first chopping the
+        // wood for it. This is the tier F6 most needs to reach, because a jam
+        // is the one thing you cannot set up by hand in a fresh world.
+        give(ItemId::StorageCrateItem, 4, kHotbarSlots - 4);
+        give(ItemId::Conduit, 32, kHotbarSlots - 5);
+        // The Wrench gates BOTH conduit verbs (re-aim and set filter), so a kit
+        // without one leaves half the logistics tier untestable.
+        m_inventory.add(ItemId::Wrench, 1);
         // Iron: stock at every link of the sand -> nugget -> ingot -> plate
         // chain, plus the fuel to run it.
         m_inventory.add(ItemId::Charcoal, 32);
@@ -439,9 +450,22 @@ void VoxelGame::onUpdate(float dt) {
         // below, after the RMB/wrench edits.)
         // RMB: on a machine, open its panel (Shift+RMB to place against it
         // instead); otherwise place the held item into the empty target cell.
-        if (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        // Placing repeats while RMB is HELD, but only the place path: every
+        // other RMB verb below (open a panel, drink, spend a key, fuse) stays
+        // edge-triggered, because repeating those would be a disaster. Gated on
+        // a cooldown AND on the cell changing, so holding the button down a
+        // line of belts lays one per cell instead of racing the raycast.
+        const bool placeRepeat =
+            input().isMouseDown(SDL_BUTTON_RIGHT) && m_rmbHeld >= kPlaceRepeatDelay &&
+            m_placeCooldown <= 0.0f && m_placedLastCell != aim.block + aim.normal;
+        if (!drank && (input().wasMousePressed(SDL_BUTTON_RIGHT) || placeRepeat)) {
             const bool aimedMachine = m_machines.find(tb) != m_machines.end();
-            if (held == ItemId::FusionCatalyst && m_inventory.has(held)) {
+            // Only the final `else` (placing) may run on a repeat -- so both
+            // one-shot verbs below re-test the EDGE. A repeat aimed at a
+            // machine therefore places against it rather than re-opening its
+            // panel every frame, which is what you want mid-line anyway.
+            const bool pressed = input().wasMousePressed(SDL_BUTTON_RIGHT);
+            if (pressed && held == ItemId::FusionCatalyst && m_inventory.has(held)) {
                 // Fuse the aimed source with a different adjacent source; the
                 // catalyst is spent only on a successful pairing.
                 if (WorldEdit::fuseSources(*m_world, editRegistries(), tb)) {
@@ -452,7 +476,7 @@ void VoxelGame::onUpdate(float dt) {
                 } else {
                     audio().play("deny", kCraftVolume);
                 }
-            } else if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
+            } else if (pressed && aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);
             } else {
                 const glm::ivec3 p = aim.block + aim.normal;
@@ -473,6 +497,17 @@ void VoxelGame::onUpdate(float dt) {
                     } else {
                         facing = {0, 0, f.z > 0 ? 1 : -1};
                     }
+                    // ...unless you clicked against a MACHINE, in which case
+                    // aim away from it. beltStep only pulls from the machine
+                    // directly BEHIND a belt, so a belt built onto a machine
+                    // face and pointing any other way is silently useless --
+                    // by far the most common mis-facing, and the camera guess
+                    // gets it wrong precisely when you are standing at the
+                    // machine looking at it.
+                    if (itemInfo(held).placesBlock == BlockId::Belt &&
+                        m_machines.find(aim.block) != m_machines.end()) {
+                        facing = aim.normal;
+                    }
 
                     // WorldEdit refuses world-side (cell taken, saplings need
                     // soil) as a silent no-op, matching the old guards.
@@ -484,6 +519,8 @@ void VoxelGame::onUpdate(float dt) {
                         m_inventory.remove(held, 1);
                         if (r.powerChanged) solvePowerAndMarkDirty();
                         updateTitle();
+                        m_placedLastCell = p;
+                        m_placeCooldown = kPlaceRepeatSeconds;
                     }
                 }
             }
@@ -491,7 +528,55 @@ void VoxelGame::onUpdate(float dt) {
 
         // Wrench (default R): re-aims the targeted conduit, cycling six ways.
         if (input().wasKeyPressed(key(Action::WrenchRotate)) && m_inventory.has(ItemId::Wrench)) {
-            WorldEdit::rotateBelt(*m_world, m_belts, tb);
+            WorldEdit::rotateBelt(*m_world, m_belts, tb,
+                                  input().isKeyDown(SDL_SCANCODE_LSHIFT));
+        }
+
+        // Middle-click picks the aimed block onto the hotbar, if you own one.
+        // Costs nothing, saves a Tab round trip every time you extend a line
+        // with a block you are already standing next to.
+        if (input().wasMousePressed(SDL_BUTTON_MIDDLE)) {
+            const ItemId want = blockDrop(m_world->getBlock(tb.x, tb.y, tb.z)).id;
+            if (want != ItemId::None && itemInfo(want).placeable && m_inventory.has(want)) {
+                // Already on the hotbar: just select it. Otherwise take the
+                // current slot, which is the whole point -- you aimed at the
+                // thing you want in your hand.
+                int slot = -1;
+                for (int i = 0; i < kHotbarSlots; ++i) {
+                    if (m_hotbar[static_cast<std::size_t>(i)] == want) { slot = i; break; }
+                }
+                if (slot < 0) {
+                    slot = m_selectedSlot;
+                    m_hotbar[static_cast<std::size_t>(slot)] = want;
+                }
+                m_selectedSlot = slot;
+                audio().play("click", kCraftVolume);
+                updateTitle();
+            } else {
+                audio().play("deny", kCraftVolume);
+            }
+        }
+
+        // Belt filter (default F): the aimed conduit carries only the item on
+        // the hotbar; pressing it again with that same item clears the filter.
+        // A binding of its own rather than a modifier on the wrench, because
+        // both the item and the belt already say what they are -- the player
+        // should not also have to hold a mode.
+        if (input().wasKeyPressed(key(Action::BeltFilter)) &&
+            m_inventory.has(ItemId::Wrench)) {
+            const auto bit = m_belts.find(tb);
+            if (bit == m_belts.end()) {
+                audio().play("deny", kCraftVolume);
+            } else {
+                // The selected item is a REFERENCE here, never consumed, so an
+                // out-of-stock hotbar assignment still names a filter -- which
+                // is the normal case when you are laying out a line before the
+                // factory has made any of what will run down it.
+                const ItemId want = (held == ItemId::Wrench) ? ItemId::None : held;
+                bit->second.filter = (bit->second.filter == want) ? ItemId::None : want;
+                audio().playAt("click", glm::vec3(tb) + glm::vec3(0.5f), kCraftVolume);
+                m_world->markDirtyAt(tb.x, tb.y, tb.z);
+            }
         }
     }
 

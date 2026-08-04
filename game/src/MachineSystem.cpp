@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <utility>
 
 using namespace vg;
 
@@ -28,7 +29,7 @@ Inventory& fuelBuffer(Machine& mac) {
     return usesFuelSlot(mac.type) ? mac.fuel : mac.input;
 }
 
-Inventory& bufferFor(Machine& mac, ItemId item) {
+const Inventory& bufferFor(const Machine& mac, ItemId item) {
     if (!usesFuelSlot(mac.type) || fuelSeconds(item) <= 0.0f) return mac.input;
     // Fuel that is ALSO an ingredient here is feedstock: a belt feeding wood to
     // a Furnace is stocking the charcoal recipe, not the fire. Anything the
@@ -39,6 +40,35 @@ Inventory& bufferFor(Machine& mac, ItemId item) {
         }
     }
     return mac.fuel;
+}
+
+Inventory& bufferFor(Machine& mac, ItemId item) {
+    return const_cast<Inventory&>(bufferFor(std::as_const(mac), item));
+}
+
+int inputCap(const Machine& mac) {
+    switch (machineTraits(mac.type).kind) {
+        // A pedestal's shallow cap is what keeps a laid pattern readable, and
+        // predates all of this.
+        case MachineKind::Pedestal: return kPedestalCap;
+        // A crate is the ANSWER to a full output, so it has to be deep enough
+        // to be worth walking to.
+        case MachineKind::Storage:  return kChestCap;
+        default:                    return kMachineInputCap;
+    }
+}
+
+int outputCap(const Machine& mac) {
+    switch (machineTraits(mac.type).kind) {
+        // A Collector's own collectCap already governs its output, and it is
+        // the tighter of the two.
+        case MachineKind::Collector: return std::max(machineTraits(mac.type).collectCap,
+                                                     kMachineOutputCap);
+        // Its output IS the stockpile -- everything a crate holds has already
+        // been migrated there for belts to drain.
+        case MachineKind::Storage:   return kChestCap;
+        default:                     return kMachineOutputCap;
+    }
 }
 
 namespace {
@@ -176,6 +206,19 @@ namespace {
             m.hasTarget = true;
         }
 
+        // A full output stops the drill instead of mining a patch into a
+        // bottomless bucket. The target is already chosen, so its yield is
+        // known before the harvest rather than after.
+        const ItemStack yield =
+            blockDrop(world.getBlock(m.target.x, m.target.y, m.target.z));
+        if (yield.id != ItemId::None &&
+            m.output.count(yield.id) + yield.count > outputCap(m)) {
+            m.jammed = true;
+            m.crafting = true;
+            m.craftTime = kMineSeconds;
+            return;
+        }
+
         m.crafting = true;
         m.craftTime = kMineSeconds;
         m.progress += kTickSeconds;
@@ -208,6 +251,16 @@ namespace {
             return;
         }
 
+        // Nowhere to put it: hold the ritual rather than consume the necklace.
+        const ItemStack made = match.recipe->output;
+        if (made.id != ItemId::None &&
+            core.output.count(made.id) + made.count > outputCap(core)) {
+            core.jammed = true;
+            core.crafting = true;
+            core.craftTime = AlchemyCircle::craftSeconds(*match.recipe, tier, energized);
+            return;
+        }
+
         core.crafting = true;
         core.craftTime = AlchemyCircle::craftSeconds(*match.recipe, tier, energized);
         core.progress += kTickSeconds;
@@ -218,47 +271,81 @@ namespace {
         }
     }
 
+    // Does this machine WANT `item` at all, ignoring how full it is? Split out
+    // so the capacity rule lives in ONE place rather than being repeated down
+    // every branch -- and so a kind that grows its own cap (a crate) changes
+    // inputCap and nothing here.
+    bool wantsItem(const Machine& mac, ItemId item) {
+        const MachineTraits& t = machineTraits(mac.type);
+        switch (t.kind) {
+            case MachineKind::Generator: return fuelSeconds(item) > 0.0f;
+            case MachineKind::Collector: return false; // the environment fills it
+            case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
+                                         // raws are filters (not consumed)
+            case MachineKind::RuneCore: {
+                // The core's own buffer holds the CENTRE catalyst only; ring
+                // ingredients belong on the pedestals.
+                for (const CircleRecipe& r : circleRecipes()) {
+                    if (r.center.id == item) return true;
+                }
+                return false;
+            }
+            case MachineKind::Pedestal: {
+                // A one-item-TYPE holder: it takes anything while empty, then
+                // only more of the same (up to inputCap -- kPedestalCap here).
+                // Belts can therefore keep a pattern topped up but can never
+                // contaminate a laid slot.
+                if (mac.input.count(item) > 0) return true;
+                for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
+                    if (mac.input.count(static_cast<ItemId>(i)) > 0) return false;
+                }
+                return true;
+            }
+            case MachineKind::Storage:   return true; // a crate takes anything
+            case MachineKind::Processor: break;
+        }
+        // A fuel-fired processor takes fuel as well as ingredients, so a belt
+        // can keep the fire going. (An item that is BOTH is still just an
+        // ingredient — see pickFuel.)
+        if (t.burnsFuel && fuelSeconds(item) > 0.0f) return true;
+        const auto recipes = recipesForMachine(mac.type);
+        for (std::size_t i = 0; i < recipes.size(); ++i) {
+            if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
+            for (const ItemStack& in : recipes[i]->inputs) {
+                if (in.id == item) return true;
+            }
+        }
+        return false;
+    }
+
+    // Room for every product this craft could yield. Asked BEFORE rollOutput,
+    // because that roll advances the world's shared RNG counter and one thrown
+    // away here would desync a sifting line from its own save. So a weighted
+    // recipe needs room for every face it could roll, not just the one it would
+    // have drawn -- stricter, deterministic, and the right behaviour anyway: a
+    // Sifter whose iron pile is full should stop, not quietly skip the iron.
+    bool outputHasRoom(const Machine& mac, const MachineRecipe& r) {
+        const int cap = outputCap(mac);
+        for (const RecipeOutput& o : r.outputs) {
+            if (o.stack.id == ItemId::None || o.stack.count <= 0) continue;
+            if (mac.output.count(o.stack.id) + o.stack.count > cap) return false;
+        }
+        return true;
+    }
+
 } // namespace
 
 bool machineAccepts(const Machine& mac, ItemId item) {
-    const MachineTraits& t = machineTraits(mac.type);
-    switch (t.kind) {
-        case MachineKind::Generator: return fuelSeconds(item) > 0.0f;
-        case MachineKind::Collector: return false; // the environment fills it
-        case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
-                                     // raws are filters (not consumed)
-        case MachineKind::RuneCore: {
-            // The core's own buffer holds the CENTRE catalyst only; ring
-            // ingredients belong on the pedestals.
-            for (const CircleRecipe& r : circleRecipes()) {
-                if (r.center.id == item) return true;
-            }
-            return false;
-        }
-        case MachineKind::Pedestal: {
-            // A one-item-TYPE holder: it takes anything while empty, then only
-            // more of the same, up to the cap. Belts can therefore keep a
-            // pattern topped up but can never contaminate a laid slot.
-            if (mac.input.count(item) > 0) return mac.input.count(item) < kPedestalCap;
-            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
-                if (mac.input.count(static_cast<ItemId>(i)) > 0) return false;
-            }
-            return true;
-        }
-        case MachineKind::Processor: break;
+    if (!wantsItem(mac, item)) return false;
+    // A crate's stock lives in `output` -- its tick migrates it there so belts
+    // can drain it -- so how full it is has to count BOTH halves, or the cap
+    // would never bind and a crate would swallow the world.
+    if (machineTraits(mac.type).kind == MachineKind::Storage) {
+        return mac.input.count(item) + mac.output.count(item) < inputCap(mac);
     }
-    // A fuel-fired processor takes fuel as well as ingredients, so a belt can
-    // keep the fire going. (An item that is BOTH is still just an ingredient —
-    // see pickFuel.)
-    if (t.burnsFuel && fuelSeconds(item) > 0.0f) return true;
-    const auto recipes = recipesForMachine(mac.type);
-    for (std::size_t i = 0; i < recipes.size(); ++i) {
-        if (mac.selectedRecipe >= 0 && static_cast<int>(i) != mac.selectedRecipe) continue;
-        for (const ItemStack& in : recipes[i]->inputs) {
-            if (in.id == item) return true;
-        }
-    }
-    return false;
+    // The capacity half. beltStep leaves an item sitting on a belt whose target
+    // refuses it, so this is the whole of what makes a feed line back up.
+    return bufferFor(mac, item).count(item) < inputCap(mac);
 }
 
 ItemId minerFilter(const Machine& mac) {
@@ -274,6 +361,7 @@ bool tickSelfPowered(const World& world, MachineMap& machines,
                      bool raining) {
     bool powerChanged = false;
     for (auto& [pos, m] : machines) {
+        if (!m.enabled) { m.crafting = false; continue; } // off = frozen
         const MachineTraits& t = machineTraits(m.type);
         switch (t.kind) {
             case MachineKind::Generator:
@@ -299,6 +387,13 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
         if (traits.kind == MachineKind::Generator ||
             traits.kind == MachineKind::Collector) continue;
         m.crafting = false;
+        m.jammed = false; // re-derived below; never saved
+
+        // The master switch. Deliberately the FIRST thing asked, before power,
+        // fuel, recipes or the crank: "off" should mean off for every kind at
+        // once rather than being re-implemented per branch. Progress and every
+        // buffer are kept, so switching back on resumes mid-craft.
+        if (!m.enabled) continue;
 
         // The Rune Core runs BEFORE the power gate: a Lesser circle is
         // deliberately allowed to work on a dead network (slowly), so the
@@ -308,6 +403,21 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
             continue;
         }
         if (traits.kind == MachineKind::Pedestal) continue; // a passive holder
+
+        // A crate, entire. beltStep fills a machine's `input` and drains its
+        // `output`, so migrating one to the other is what makes a single block
+        // both feedable and drainable with no belt code of its own. Before the
+        // power gate because a crate draws none.
+        if (traits.kind == MachineKind::Storage) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
+                const ItemId id = static_cast<ItemId>(i);
+                const int n = m.input.count(id);
+                if (n <= 0) continue;
+                m.input.remove(id, n);
+                m.output.add(id, n);
+            }
+            continue;
+        }
 
         if (traits.demand > 0 && !power.energized(pos.x, pos.y, pos.z)) continue;
 
@@ -332,6 +442,19 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
             // Work banked against a machine that has nothing to make is work
             // aimed at no job: drop it rather than let it land on the next one.
             m.crankBanked = 0.0f;
+            continue;
+        }
+
+        // Nowhere to put the product: HOLD, exactly like the unpowered and
+        // out-of-fuel cases below. Sits before the fuel block on purpose, so a
+        // jammed burner doesn't eat its stock standing still -- the generator's
+        // "hungry" rule again. Inputs are untouched, so unjamming it (drain the
+        // output, or belt it into a crate) resumes the same craft where it
+        // stopped.
+        if (!outputHasRoom(m, *active)) {
+            m.jammed = true;
+            m.crafting = true;
+            m.craftTime = active->seconds * traits.speedMult;
             continue;
         }
 
@@ -403,6 +526,11 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
         if (tb == belts.end()) continue;          // ahead is not a belt
         if (before[front] != ItemId::None) continue; // target was occupied
         if (claimed.count(front)) continue;       // already filled this step
+        // A filtered belt refuses what it isn't for, which is what turns a run
+        // of them into sorting LANES. The refused item stays put and the line
+        // behind it backs up -- visibly, since both the stuck cargo and the
+        // target's filter draw as icons.
+        if (tb->second.filter != ItemId::None && tb->second.filter != carried) continue;
         tb->second.item = carried;
         b.item = ItemId::None;
         claimed.insert(front);
@@ -415,6 +543,16 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
         const auto mit = machines.find(back);
         if (mit == machines.end()) continue;
         Inventory& out = mit->second.output;
+        // A filtered belt draws exactly one thing. Unfiltered, it falls back to
+        // the old ordinal scan -- still arbitrary, but now it is the DEFAULT
+        // rather than the only option, and the fix is one keypress on the belt.
+        if (b.filter != ItemId::None) {
+            if (out.count(b.filter) > 0) {
+                out.remove(b.filter, 1);
+                b.item = b.filter;
+            }
+            continue;
+        }
         for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             if (out.count(id) > 0) {

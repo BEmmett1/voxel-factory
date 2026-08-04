@@ -113,6 +113,10 @@ enum class BlockId : std::uint16_t {
     Still,          // Alembic
     HandDistiller,  // Distiller
     HandTransmuter, // Transmuter
+    // Bulk storage. The answer to a machine whose output has filled up, and
+    // -- with belt filters -- the sorter, since every belt pointing away from
+    // one drains it independently.
+    StorageCrate,
     Count
 };
 

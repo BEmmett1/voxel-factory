@@ -24,6 +24,7 @@
 
 #include <glm/glm.hpp>
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -317,6 +318,13 @@ private:
     glm::ivec3 m_breakTarget{0};
     float      m_breakProgress = 0.0f; // seconds accumulated
     float      m_breakNeeded   = 0.0f; // seconds required (for the HUD bar)
+
+    // Held-RMB placing (transient). The cooldown paces the repeat; the last
+    // cell stops a single hold from re-placing into the same spot the instant
+    // the block there is broken or the raycast jitters.
+    float      m_placeCooldown  = 0.0f;
+    float      m_rmbHeld        = 0.0f; // seconds RMB has been down
+    glm::ivec3 m_placedLastCell{INT_MIN};
 
     // The player's body: velocities + health + move/damage (health is public
     // on the controller so SaveData binds to it). Reaching 0 hp triggers the

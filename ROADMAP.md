@@ -99,7 +99,17 @@ the pillar slips to post-launch.
   The manual tier is now genuinely MANUAL (Aug 2026): a cranked machine
   advances only while the player turns its handle — the four arrows in order,
   with the panel open — so belts can load one but never run it, and the powered
-  tier sells absence rather than speed. Fuel moved into a buffer of its own on
+  tier sells absence rather than speed. The **Bloomery is the exception** (Aug
+  2026, user decision): what does the work there is the fire, not an arm, so it
+  runs on the clock and pays the tier's price in time and wasted fuel instead.
+  That split `handCranked` from `recipeGroup`, which had been tied by an
+  equivalence — cranked now IMPLIES delegating rather than matching it, in both
+  the static_assert and `content::validate()`. That in turn prompted a **master
+  on/off switch on every machine** (save v24): off = frozen, drawing and
+  producing no power and going dark, but still conducting, still accepting
+  deliveries, and keeping every buffer — so idling a machine backs its feed line
+  up through the buffer caps rather than needing any belt logic of its own.
+  Fuel moved into a buffer of its own on
   the machines that also have recipes (save v21), which retired the "never burn
   your own feedstock" rule and let a Furnace char wood while burning wood.
 - **Factory depth (Factorio/Satisfactory direction, user vision):** the game
@@ -112,31 +122,35 @@ the pillar slips to post-launch.
 - **Storage & logistics** — the logistics half of factory depth, staged in
   dependency order because the costs are wildly uneven and the data model
   already decides most of them:
-  - **The Storage Crate, and it is nearly free — so do it first.** There is no
-    storage block in the game at all, which is a strange hole in a factory
-    game, and `Inventory` is an unbounded count-per-`ItemId` array, so bulk
-    storage needs no new container type: a `MachineKind::Storage` row in
-    `kMachineTraits` (`demand = 0`, not a power node — the `Pedestal`
-    precedent), one block, one case per dispatch switch, and `machineAccepts`
-    taking anything below a `kChestCap`. The non-obvious bit is the belt
-    contract: `beltStep` pushes into a machine's `input` and pulls from its
-    `output`, so for a crate to be both feedable AND drainable its tick
-    migrates `input` → `output` each tick (before the power gate, like
-    `tickRuneCore`) — zero belt changes. Generic machine save records mean **no
-    save bump**, and the existing machine panel with its item cells and
-    dupe-safe `m_drag` machinery is already the UI.
-    The design lever to watch: with no stack or slot limits anywhere in the
-    game, that cap knob is the ONLY source of storage pressure. Slot-based
-    inventories are deliberately not planned — they would touch every panel and
-    the save format to buy a constraint one constant already provides
-  - **Belt filters.** `beltStep`'s pull step drains a machine's mixed output by
-    lowest `ItemId` — arbitrary, invisible, and impossible to teach. Give
-    `Belt` a filter `ItemId`, wrench-set exactly like `facing`, so a belt pulls
-    and carries only its filter item. One appended `Belt` field
-  - **Splitters / routers.** A block that round-robins one input across its
-    other faces, or routes by filter (so it depends on the filter above). This
-    is where multi-output logistics actually begins — today a machine feeds one
-    line and that is the whole vocabulary
+  - [x] **The Storage Crate** (Aug 2026) — landed as designed: a
+    `MachineKind::Storage` row (`demand = 0`, not a power node), one block, one
+    case per dispatch switch, `machineAccepts` under `kChestCap` (512/item),
+    and the tick migrating `input` → `output` before the power gate so belts
+    both fill and drain it with zero belt changes. No save bump. Two things the
+    design note got wrong by omission: `machineAccepts` has to count `input` +
+    `output` for a crate or the cap never binds (its stock lives in `output`),
+    and **a crate is also the splitter** — every belt pointing away pulls
+    independently, so one line in feeds two out, which is what let the
+    splitter/router item below be dropped rather than built. Hand-craftable
+    (Wood ×8) because outputs fill long before a Circle exists
+  - [x] **Buffer caps were the actual feature, not the footnote** (Aug 2026).
+    This entry used to file the cap knob as "the design lever to watch". That
+    was backwards: a chest is worthless in a game with infinite pockets and a
+    filter is worthless on a line that never congests, so capping the buffers
+    was both the smallest change here and the one that gave every other
+    logistics block a job. `kMachineInputCap`/`kMachineOutputCap`; see CLAUDE.md
+    for the jam rules (hold, never cancel; check before the RNG roll). The
+    player's pack stays unbounded — hardcore death is its pressure. Slot-based
+    inventories remain deliberately unplanned
+  - [x] **Belt filters** (Aug 2026, save v23) — `Belt::filter`, set with
+    `Action::BeltFilter` (default F) rather than the wrench cycle, since the
+    filter needs an ITEM and rotation does not. Binds both ways (pull and
+    accept), which is what makes a sorting lane rather than a sorting tap
+  - ~~**Splitters / routers.**~~ **Dropped — the crate is the splitter.** Every
+    belt pointing away from a crate pulls from it independently, so a single
+    line feeding a crate feeds N machines evenly, and crate + filters is a
+    sorter. A dedicated round-robin block would buy nothing the pair doesn't
+    already do
   - **Multi-item belts — do them WITH "belts become tubes" (Q1 2027).** `Belt`
     carries one item and has no sub-cell progress. Slots plus a progress
     fraction is the *same* `Belt` layout change the tube item already wants for
@@ -145,6 +159,11 @@ the pillar slips to post-launch.
   - **Powered belts: a tuning decision, not a build.** Making belts power nodes
     would sharply change the early game (your first conveyor would need a
     fueled generator). Decide it in play before writing any of it
+  - **Storage/logistics still open after Aug 2026:** multi-item belts (below),
+    powered belts (below), auto-eject (below), fluids (below), and the visual
+    half — **belts become tubes**, which is now the most valuable of them,
+    because filters and crate junctions made a line something you have to READ
+    at a glance
   - **Machine output auto-eject is mostly already done** — belts pull from the
     machine directly behind them (`beltStep` step 3). What is genuinely missing
     is a machine pushing into an *adjacent* belt that is not aligned behind it,
