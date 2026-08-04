@@ -551,7 +551,13 @@ generate → validate → repair loop a model needs.
        machine traits and fuels — a new machine with its own recipes, a new
        ore, a better fuel, all from JSON. Rows may name content the same pack
        is adding, in either order: every new key is declared before any field
-       is resolved. What still needs a compiler is a block SHAPE (a Blockbench
+       is resolved. A row is a **patch** of the row it names rather than a
+       replacement (Aug 2026) — an absent field keeps its current value, so a
+       pack can state the one number it came to change without silently
+       defaulting everything it did not mention. That is the shape a generated
+       pack wants, and the round-trip test could not have found it: a full dump
+       states every non-default field, so both readings agree on the only
+       document the test feeds it. What still needs a compiler is a block SHAPE (a Blockbench
        bake), new `MachineKind`s and `CreatureKind`s (hand-written dispatch),
        item effects, and worldgen presence
 5. [ ] **Generation tooling** — an out-of-game companion tool that emits a

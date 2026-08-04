@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,21 @@
 // caller re-runs content::validate() afterwards, so a pack that parses
 // perfectly and deadlocks the tech tree is refused just as firmly as one with
 // a typo.
+//
+// A THIRD rule governs what a row means: a row naming an existing key is a
+// PATCH of it, not a replacement. An absent field inherits what that row
+// already had, rather than resetting to the type's default. The distinction is
+// invisible on a full dump -- there every non-default field is written, so both
+// readings agree, which is why the round-trip could not have caught the
+// difference -- but it is the whole experience of writing a small pack by hand
+// or of generating one:
+//
+//     {"blocks": [{"key": "core:stone", "hardness": 6.0}]}
+//
+// under replacement semantics is a Stone that is black, untextured, drops
+// nothing and needs no pickaxe. Under patch semantics it is Stone, harder.
+// Only the second is a thing anyone meant to write. Resetting a field to its
+// default is still possible -- state it explicitly -- so nothing is lost.
 
 using json = nlohmann::json;
 
@@ -133,15 +149,32 @@ namespace {
             return it->get<int>();
         }
 
+        // Optional key -> id fields, for patching. Absent means "leave it as it
+        // was", which is why these take the row's current value rather than a
+        // type default: see the note at the top of the file.
+        BlockId blockRef(const json& j, const char* field, BlockId fallback) {
+            const auto it = j.find(field);
+            if (it == j.end()) return fallback;
+            if (!it->is_string()) { bad(std::string("has a non-string \"") + field + "\""); return fallback; }
+            return block(it->get<std::string>());
+        }
+
+        ItemId itemRef(const json& j, const char* field, ItemId fallback) {
+            const auto it = j.find(field);
+            if (it == j.end()) return fallback;
+            if (!it->is_string()) { bad(std::string("has a non-string \"") + field + "\""); return fallback; }
+            return item(it->get<std::string>());
+        }
+
         // "#4d9e42" -- see hexColor() in ContentDump.cpp for why a colour is a
         // string here rather than three numbers.
-        glm::vec3 color(const json& j) {
+        glm::vec3 color(const json& j, const glm::vec3& fallback) {
             const auto it = j.find("color");
-            if (it == j.end()) return glm::vec3(0.0f);
+            if (it == j.end()) return fallback;
             const std::string s = it->is_string() ? it->get<std::string>() : std::string();
             if (s.size() != 7 || s[0] != '#') {
                 bad("has a \"color\" that is not \"#rrggbb\"");
-                return glm::vec3(0.0f);
+                return fallback;
             }
             auto channel = [&](std::size_t at) {
                 return static_cast<float>(std::stoi(s.substr(at, 2), nullptr, 16)) / 255.0f;
@@ -150,7 +183,7 @@ namespace {
                 return {channel(1), channel(3), channel(5)};
             } catch (const std::exception&) {
                 bad("has a \"color\" that is not \"#rrggbb\"");
-                return glm::vec3(0.0f);
+                return fallback;
             }
         }
 
@@ -314,33 +347,39 @@ namespace {
             rd.where = "block '" + key + "' ";
             const auto at = std::find_if(blocks.begin(), blocks.end(),
                                          [&](const BlockInfo& b) { return key == b.key; });
-            BlockInfo b{};
+            // The row as it stands is every field's fallback, so an absent
+            // field means "unchanged". For a key the pack is ADDING, that row
+            // is the placeholder pass 1 left, whose fields are the struct's own
+            // defaults -- so a new block still reads exactly as it always did.
+            const BlockInfo prev = *at;
+            BlockInfo b = prev;
             b.id = static_cast<BlockId>(at - blocks.begin());
-            b.key = at->key;   // already interned (or a compiled literal)
-            b.name = j.contains("name") ? intern(rd.str(j, "name")) : at->name;
-            b.solid = rd.boolean(j, "solid", true);
-            b.fullCube = rd.boolean(j, "fullCube", true);
-            b.color = rd.color(j);
-            b.emissive = rd.number(j, "emissive", 0.0f);
-            b.machine = rd.boolean(j, "machine", false);
-            b.source = rd.boolean(j, "source", false);
-            b.node = rd.boolean(j, "node", false);
-            b.spawnsNode = rd.block(rd.str(j, "spawnsNode", false));
+            b.key = prev.key;   // already interned (or a compiled literal)
+            if (j.contains("name")) b.name = intern(rd.str(j, "name"));
+            b.solid = rd.boolean(j, "solid", prev.solid);
+            b.fullCube = rd.boolean(j, "fullCube", prev.fullCube);
+            b.color = rd.color(j, prev.color);
+            b.emissive = rd.number(j, "emissive", prev.emissive);
+            b.machine = rd.boolean(j, "machine", prev.machine);
+            b.source = rd.boolean(j, "source", prev.source);
+            b.node = rd.boolean(j, "node", prev.node);
+            b.spawnsNode = rd.blockRef(j, "spawnsNode", prev.spawnsNode);
             if (const auto d = j.find("drop"); d != j.end()) {
                 const ItemStack s = rd.stack(*d);
                 b.drop = {s.id, s.count};
             }
             if (const auto t = j.find("tiles"); t != j.end() && t->is_object()) {
-                b.tiles = {rd.integer(*t, "top", 0), rd.integer(*t, "side", 0),
-                           rd.integer(*t, "bottom", 0)};
+                b.tiles = {rd.integer(*t, "top", prev.tiles.top),
+                           rd.integer(*t, "side", prev.tiles.side),
+                           rd.integer(*t, "bottom", prev.tiles.bottom)};
             }
-            b.hardness = rd.number(j, "hardness", 0.0f);
-            b.tool = rd.named(j, "tool", kToolNames, ToolType::None);
-            b.toolTier = rd.integer(j, "toolTier", 0);
+            b.hardness = rd.number(j, "hardness", prev.hardness);
+            b.tool = rd.named(j, "tool", kToolNames, prev.tool);
+            b.toolTier = rd.integer(j, "toolTier", prev.toolTier);
             // Shapes are baked from Blockbench models, so a pack may only NAME
             // one that exists -- which is also why this is the one content
             // reference that is a plain name rather than a namespaced key.
-            b.shape = rd.named(j, "shape", kShapeNames, ShapeId::FullCube);
+            b.shape = rd.named(j, "shape", kShapeNames, prev.shape);
             *at = b;
         }
 
@@ -353,20 +392,21 @@ namespace {
             rd.where = "item '" + key + "' ";
             const auto at = std::find_if(items.begin(), items.end(),
                                          [&](const ItemInfo& r) { return key == r.key; });
-            ItemInfo it{};
+            const ItemInfo prev = *at; // patched, not replaced -- see the blocks pass
+            ItemInfo it = prev;
             it.id = static_cast<ItemId>(at - items.begin());
-            it.key = at->key;
-            it.name = j.contains("name") ? intern(rd.str(j, "name")) : at->name;
-            it.atlasTile = rd.integer(j, "atlasTile", -1);
-            it.placeable = rd.boolean(j, "placeable", false);
-            it.placesBlock = rd.block(rd.str(j, "places", false));
-            it.nodeBlock = rd.block(rd.str(j, "nodeBlock", false));
-            it.tool = rd.named(j, "tool", kToolNames, ToolType::None);
-            it.toolTier = rd.integer(j, "toolTier", 0);
-            it.miningSpeed = rd.number(j, "miningSpeed", 1.0f);
-            it.armorSlot = rd.named(j, "armorSlot", kArmorSlotNames, ArmorSlot::None);
-            it.armor = rd.number(j, "armor", 0.0f);
-            it.weaponDamage = rd.number(j, "weaponDamage", 0.0f);
+            it.key = prev.key;
+            if (j.contains("name")) it.name = intern(rd.str(j, "name"));
+            it.atlasTile = rd.integer(j, "atlasTile", prev.atlasTile);
+            it.placeable = rd.boolean(j, "placeable", prev.placeable);
+            it.placesBlock = rd.blockRef(j, "places", prev.placesBlock);
+            it.nodeBlock = rd.blockRef(j, "nodeBlock", prev.nodeBlock);
+            it.tool = rd.named(j, "tool", kToolNames, prev.tool);
+            it.toolTier = rd.integer(j, "toolTier", prev.toolTier);
+            it.miningSpeed = rd.number(j, "miningSpeed", prev.miningSpeed);
+            it.armorSlot = rd.named(j, "armorSlot", kArmorSlotNames, prev.armorSlot);
+            it.armor = rd.number(j, "armor", prev.armor);
+            it.weaponDamage = rd.number(j, "weaponDamage", prev.weaponDamage);
             *at = it;
         }
 
@@ -378,21 +418,27 @@ namespace {
             if (!rd.wantObject(j)) continue;
             const std::string key = rd.str(j, "block");
             rd.where = "machine '" + key + "' ";
-            MachineTraits t{};
-            t.block = rd.block(key);
-            t.kind = rd.named(j, "kind", kKindNames, MachineKind::Processor);
-            t.demand = rd.integer(j, "demand", 5);
-            t.powerOutput = rd.integer(j, "powerOutput", 0);
-            t.burnsFuel = rd.boolean(j, "burnsFuel", false);
-            t.fuelMult = rd.number(j, "fuelMult", 1.0f);
-            t.collects = rd.item(rd.str(j, "collects", false));
-            t.collectCap = rd.integer(j, "collectCap", 0);
-            t.collectSeconds = rd.number(j, "collectSeconds", 0.0f);
-            t.recipeGroup = rd.block(rd.str(j, "recipeGroup", false));
-            t.speedMult = rd.number(j, "speedMult", 1.0f);
-            t.handCranked = rd.boolean(j, "handCranked", false);
+            const BlockId block = rd.block(key);
+            // Found FIRST, because it is what every absent field falls back to
+            // -- a machine row is a patch too. A block with no traits row yet
+            // starts from the struct's defaults, which is what a brand new
+            // machine should read as.
             const auto at = std::find_if(traits.begin(), traits.end(),
-                                         [&](const MachineTraits& r) { return r.block == t.block; });
+                                         [&](const MachineTraits& r) { return r.block == block; });
+            const MachineTraits prev = at != traits.end() ? *at : MachineTraits{};
+            MachineTraits t = prev;
+            t.block = block;
+            t.kind = rd.named(j, "kind", kKindNames, prev.kind);
+            t.demand = rd.integer(j, "demand", prev.demand);
+            t.powerOutput = rd.integer(j, "powerOutput", prev.powerOutput);
+            t.burnsFuel = rd.boolean(j, "burnsFuel", prev.burnsFuel);
+            t.fuelMult = rd.number(j, "fuelMult", prev.fuelMult);
+            t.collects = rd.itemRef(j, "collects", prev.collects);
+            t.collectCap = rd.integer(j, "collectCap", prev.collectCap);
+            t.collectSeconds = rd.number(j, "collectSeconds", prev.collectSeconds);
+            t.recipeGroup = rd.blockRef(j, "recipeGroup", prev.recipeGroup);
+            t.speedMult = rd.number(j, "speedMult", prev.speedMult);
+            t.handCranked = rd.boolean(j, "handCranked", prev.handCranked);
             if (at != traits.end()) *at = t;
             else traits.push_back(t);
         }
@@ -402,9 +448,11 @@ namespace {
             if (!rd.wantObject(j)) continue;
             const std::string key = rd.str(j, "item");
             rd.where = "fuel '" + key + "' ";
-            const FuelInfo f{rd.item(key), rd.number(j, "seconds", 0.0f)};
+            const ItemId fuelItem = rd.item(key);
             const auto at = std::find_if(fuels.begin(), fuels.end(),
-                                         [&](const FuelInfo& r) { return r.item == f.item; });
+                                         [&](const FuelInfo& r) { return r.item == fuelItem; });
+            const float was = at != fuels.end() ? at->seconds : 0.0f;
+            const FuelInfo f{fuelItem, rd.number(j, "seconds", was)};
             if (at != fuels.end()) *at = f;
             else fuels.push_back(f);
         }
@@ -428,51 +476,72 @@ namespace {
             return *it;
         };
 
+        // The row this one is a patch OF: the pack's own earlier row for the
+        // key if it has one, else the live table's. A recipe patches exactly
+        // like a block does -- "this craft, but four seconds faster" should not
+        // have to restate its inputs, and forgetting to would otherwise author
+        // a free one.
+        auto prior = [](const auto& staged, const auto& live, const std::string& key) {
+            using Row = typename std::decay_t<decltype(live)>::value_type;
+            const auto byKey = [&](const Row& r) { return key == r.key; };
+            const auto s = std::find_if(staged.rbegin(), staged.rend(), byKey);
+            if (s != staged.rend()) return *s;
+            const auto l = std::find_if(live.begin(), live.end(), byKey);
+            return l != live.end() ? *l : Row{};
+        };
+
         for (const json& j : section("hand")) {
-            Recipe r;
             rd.where = "a hand recipe ";
             if (!rd.wantObject(j)) continue;
-            r.key = rd.str(j, "key");
-            rd.where = "hand recipe '" + r.key + "' ";
-            r.inputs = rd.stackList(j, "inputs");
-            const auto out = j.find("output");
-            if (out == j.end()) rd.bad("has no \"output\"");
-            else r.output = rd.stack(*out);
+            const std::string key = rd.str(j, "key");
+            rd.where = "hand recipe '" + key + "' ";
+            Recipe r = prior(hand, recipes::handTable(), key);
+            r.key = key;
+            if (j.contains("inputs")) r.inputs = rd.stackList(j, "inputs");
+            if (const auto out = j.find("output"); out != j.end()) r.output = rd.stack(*out);
+            if (r.output.id == ItemId::None) rd.bad("has no \"output\"");
+            if (r.inputs.empty()) rd.bad("has no \"inputs\"");
             hand.push_back(std::move(r));
         }
 
         for (const json& j : section("machine")) {
-            MachineRecipe r;
             rd.where = "a machine recipe ";
             if (!rd.wantObject(j)) continue;
-            r.key = rd.str(j, "key");
-            rd.where = "machine recipe '" + r.key + "' ";
-            r.machine = rd.block(rd.str(j, "machine"));
-            r.inputs = rd.stackList(j, "inputs");
-            const auto outs = j.find("outputs");
-            if (outs == j.end() || !outs->is_array() || outs->empty()) {
-                rd.bad("has no \"outputs\" array");
-            } else {
-                for (const json& o : *outs) {
-                    // One entry is an ordinary deterministic craft; more than
-                    // one makes it a weighted roll.
-                    r.outputs.push_back({rd.stack(o), rd.number(o, "weight", 1.0f)});
+            const std::string key = rd.str(j, "key");
+            rd.where = "machine recipe '" + key + "' ";
+            MachineRecipe r = prior(mach, recipes::machineTable(), key);
+            r.key = key;
+            r.machine = rd.blockRef(j, "machine", r.machine);
+            if (j.contains("inputs")) r.inputs = rd.stackList(j, "inputs");
+            if (const auto outs = j.find("outputs"); outs != j.end()) {
+                if (!outs->is_array() || outs->empty()) rd.bad("has an empty \"outputs\"");
+                else {
+                    r.outputs.clear();
+                    for (const json& o : *outs) {
+                        // One entry is an ordinary deterministic craft; more
+                        // than one makes it a weighted roll.
+                        r.outputs.push_back({rd.stack(o), rd.number(o, "weight", 1.0f)});
+                    }
                 }
             }
-            r.seconds = rd.number(j, "seconds", 1.0f);
+            if (r.outputs.empty()) rd.bad("has no \"outputs\" array");
+            if (r.machine == BlockId::Air) rd.bad("has no \"machine\"");
+            if (r.inputs.empty()) rd.bad("has no \"inputs\"");
+            r.seconds = rd.number(j, "seconds", r.seconds > 0.0f ? r.seconds : 1.0f);
             if (r.seconds <= 0.0f) rd.bad("has a \"seconds\" of zero or less");
             mach.push_back(std::move(r));
         }
 
         for (const json& j : section("circle")) {
-            CircleRecipe r;
             rd.where = "a circle recipe ";
             if (!rd.wantObject(j)) continue;
-            r.key = rd.str(j, "key");
-            rd.where = "circle recipe '" + r.key + "' ";
+            const std::string key = rd.str(j, "key");
+            rd.where = "circle recipe '" + key + "' ";
+            CircleRecipe r = prior(circ, recipes::circleTable(), key);
+            r.key = key;
             const auto centre = j.find("center");
             if (centre != j.end()) r.center = rd.stack(*centre);
-            r.ring = rd.stackList(j, "ring");
+            if (j.contains("ring")) r.ring = rd.stackList(j, "ring");
             // Checked here as well as in validate() so the message can name the
             // count: 4 is the cardinals (a Lesser circle can run it), 8 is the
             // full ring, and nothing else is a necklace.
@@ -480,10 +549,9 @@ namespace {
                 rd.bad("has " + std::to_string(r.ring.size()) +
                        " ring slots; a pattern needs 4 (the cardinals) or 8");
             }
-            const auto out = j.find("output");
-            if (out == j.end()) rd.bad("has no \"output\"");
-            else r.output = rd.stack(*out);
-            r.seconds = rd.number(j, "seconds", 1.0f);
+            if (const auto out = j.find("output"); out != j.end()) r.output = rd.stack(*out);
+            if (r.output.id == ItemId::None) rd.bad("has no \"output\"");
+            r.seconds = rd.number(j, "seconds", r.seconds > 0.0f ? r.seconds : 1.0f);
             circ.push_back(std::move(r));
         }
 

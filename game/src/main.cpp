@@ -673,6 +673,13 @@ int runSelfTest() {
         const std::string packPath =
             (fs::temp_directory_path() / "voxel-factory-selftest-pack.json").string();
         const std::string before = content::dumpContent();
+        // The compiled content set, kept so each case below can put back
+        // exactly what it found and the next one starts from the build again.
+        const std::vector<BlockInfo> blockRows0 = blockRows();
+        const std::vector<ItemInfo> itemRows0 = itemRows();
+        const std::vector<MachineTraits> machineTraitRows0 = machineTraitRows();
+        const std::vector<FuelInfo> fuelRows0 = fuelRows();
+        const std::vector<MachineRecipe> machineRecipes0 = recipes::machineTable();
         {
             std::ofstream out(packPath, std::ios::binary);
             SELFTEST_CHECK(static_cast<bool>(out));
@@ -724,6 +731,57 @@ int runSelfTest() {
         SELFTEST_CHECK(unknown.front().find("mod:unobtainium") != std::string::npos);
         SELFTEST_CHECK(content::dumpContent() == before);
 
+        // ---- A row is a PATCH of the row it names, not a replacement -------
+        // The dump states every non-default field, so the round-trip above
+        // reads identically either way and cannot see this. What can is a pack
+        // written the way anyone actually writes one: name a key, state the
+        // one field you came to change. Under replacement semantics that Stone
+        // would come back black, untextured, dropping nothing and needing no
+        // pickaxe -- silently, since every one of those is a legal value.
+        const std::string patchPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-patchpack.json").string();
+        {
+            std::ofstream out(patchPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "blocks": [{"key": "core:stone", "hardness": 9.0}],
+                 "items": [{"key": "core:copper_sword", "weaponDamage": 4.0}],
+                 "machines": [{"block": "core:press", "demand": 11}],
+                 "recipes": {"machine": [{"key": "press/copper-plate", "seconds": 0.5}]}})";
+        }
+        const BlockInfo stone0 = blockInfo(BlockId::Stone);
+        const std::vector<std::string> patched = content::applyPacks({patchPath});
+        for (const std::string& msg : patched) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(patched.empty());
+        {
+            const BlockInfo& stone = blockInfo(BlockId::Stone);
+            SELFTEST_CHECK(stone.hardness == 9.0f);        // what the pack said
+            SELFTEST_CHECK(stone.drop.item == stone0.drop.item &&
+                           stone.drop.count == stone0.drop.count);
+            SELFTEST_CHECK(stone.tiles.side == stone0.tiles.side);
+            SELFTEST_CHECK(stone.color == stone0.color);
+            SELFTEST_CHECK(stone.tool == stone0.tool && stone.toolTier == stone0.toolTier);
+            SELFTEST_CHECK(std::string(stone.name) == stone0.name);
+            SELFTEST_CHECK(itemInfo(ItemId::CopperSword).weaponDamage == 4.0f);
+            SELFTEST_CHECK(itemInfo(ItemId::CopperSword).tool == ToolType::None);
+            SELFTEST_CHECK(machineTraits(BlockId::Press).demand == 11);
+            // The trait a patch did not mention: a Press is still a Processor
+            // that runs at full speed, not a defaulted stub.
+            SELFTEST_CHECK(machineTraits(BlockId::Press).kind == MachineKind::Processor);
+            const int at = recipeIndexForKey(BlockId::Press, "press/copper-plate");
+            SELFTEST_CHECK(at >= 0);
+            const MachineRecipe& r = *recipesForMachine(BlockId::Press)[static_cast<std::size_t>(at)];
+            SELFTEST_CHECK(r.seconds == 0.5f);
+            SELFTEST_CHECK(!r.inputs.empty() && !r.outputs.empty()); // not a free plate
+        }
+        // Restore before the next case, which asserts against the compiled set.
+        restoreBlocks(blockRows0);
+        restoreItems(itemRows0);
+        restoreMachineTraits(machineTraitRows0);
+        restoreFuels(fuelRows0);
+        recipes::machineTable() = machineRecipes0;
+        SELFTEST_CHECK(content::dumpContent() == before);
+
         // ---- A pack that ADDS content, and a save that survives it ---------
         // The whole point of the runtime registries: a block whose ordinal is
         // past BlockId::Count has to ride every path a compiled one does. Most
@@ -731,9 +789,6 @@ int runSelfTest() {
         // its key table are both sized by the content set, and a mismatch there
         // reads back as the wrong block rather than as an error. So this puts a
         // modded block in a world, round-trips it, and looks at what comes back.
-        const std::vector<BlockInfo> blocks0 = blockRows();
-        const std::vector<ItemInfo> items0 = itemRows();
-        const std::vector<MachineTraits> traits0 = machineTraitRows();
         const std::string addPath =
             (fs::temp_directory_path() / "voxel-factory-selftest-addpack.json").string();
         {
@@ -820,9 +875,9 @@ int runSelfTest() {
 
         // Put the compiled content back: everything after this is about the
         // build, not about a pack.
-        restoreBlocks(blocks0);
-        restoreItems(items0);
-        restoreMachineTraits(traits0);
+        restoreBlocks(blockRows0);
+        restoreItems(itemRows0);
+        restoreMachineTraits(machineTraitRows0);
         SELFTEST_CHECK(content::dumpContent() == before);
 
         std::error_code rmErr2;
@@ -830,6 +885,7 @@ int runSelfTest() {
         fs::remove(badPath, rmErr2);
         fs::remove(unknownPath, rmErr2);
         fs::remove(addPath, rmErr2);
+        fs::remove(patchPath, rmErr2);
     }
 
     // ---- Pre-v20 lock migration ------------------------------------------

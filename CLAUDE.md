@@ -178,8 +178,8 @@ stay in their file's anonymous namespace.
   `ContentDump.cpp`, `ContentPack.cpp`, Aug 2026). `--dump-content` writes
   the whole content set as JSON, by KEY, and `ContentPack.cpp` reads exactly
   that back — the writer IS the format's spec, and `--selftest` holds a
-  dump → load → dump round-trip so the two cannot drift. A pack replaces a row
-  whose key matches (in PLACE, which is what makes the round-trip work and
+  dump → load → dump round-trip so the two cannot drift. A pack **patches** a
+  row whose key matches (in PLACE, which is what makes the round-trip work and
   what keeps a rebalanced circle pattern from falling behind the pattern that
   shadows it), appends anything new, and `"remove": [keys]` deletes. Two doors,
   deliberately different: `packs/*.json` beside the exe is the PLAYER's and
@@ -196,7 +196,20 @@ stay in their file's anonymous namespace.
   and fuels** (Aug 2026) — a new machine with its own recipes, a new ore, a
   better fuel, all from JSON. Rows may name content the same pack is adding,
   in either file order: `loadPack` declares every new key before resolving any
-  field. Still needs a compiler: block SHAPES (a Blockbench bake), new
+  field.
+  **A row is a PATCH of the row it names, in every table** (Aug 2026): an
+  absent field inherits what that row already had rather than resetting to the
+  type's default, so `{"key": "core:stone", "hardness": 6.0}` is Stone but
+  harder — not a black, untextured Stone that drops nothing and needs no
+  pickaxe. The dump-round-trip could never have caught the difference, because
+  a full dump states every non-default field and both readings agree on it;
+  what the difference governs is the small hand-written or generated pack,
+  which is the case the format exists for. Stating a field explicitly still
+  resets it, so nothing is lost. The same rule closed a hole in the recipe
+  tables, where an omitted `inputs` used to author a FREE craft in silence —
+  `inputs`/`outputs`/`machine` are now inherited when absent and complained
+  about when a new row has none.
+  Still needs a compiler: block SHAPES (a Blockbench bake), new
   `MachineKind`s/`CreatureKind`s (hand-written dispatch), item effects,
   worldgen presence.
 - **`content::validate()`** (`ContentValidate.h`) is the coherence check —
