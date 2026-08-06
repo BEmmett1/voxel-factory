@@ -154,6 +154,7 @@ CRUDEWOOD = (128, 96, 58)  # manual-tier timber
 CRUDESTONE = (112, 110, 104)  # manual-tier fieldstone
 IRON = (198, 200, 208)     # the structural metal
 HARVESTER = (158, 148, 78)  # reaper: brass reel over a straw-worn frame
+IRRIGATOR = (108, 132, 148)  # weathered pipework and a sprinkler head
 CHARCOAL = (48, 44, 42)
 
 GOLD = (255, 214, 51)
@@ -377,6 +378,15 @@ def terrain():
     t.rect(4, 3, 11, 8, shade(HARVESTER, 0.75))      # hopper
     t.hline(3, 4, 11, shade(HARVESTER, 1.25))
     t.rivets(shade(HARVESTER, 1.3))
+
+    t = paint(15)                                    # irrigator top: sprinkler
+    plate(t, IRRIGATOR)
+    t.disc(8, 8, 3, shade(IRRIGATOR, 0.5))           # standpipe collar
+    t.disc(8, 8, 2, shade(WATER, 1.1))
+    for a in range(4):                               # four spray arms
+        dx, dy = ((1, 0), (0, 1), (-1, 0), (0, -1))[a]
+        for r in range(4, 7):
+            t.px(8 + dx * r, 8 + dy * r, shade(WATER, 1.0 + (r - 4) * 0.15))
 
     t = paint(10)                                    # tilled soil side
     t.fill(DIRT, noise=0.16)
@@ -631,6 +641,16 @@ def machines():
     t.rect(3, 12, 12, 14, shade(PEDESTAL, 1.1))      # foot
     t.hline(14, 3, 12, shade(PEDESTAL, 0.5))
 
+
+    t = paint(45)                                    # irrigator side: pipe + jets
+    plate(t, IRRIGATOR)
+    t.vline(8, 2, 14, shade(IRRIGATOR, 0.45))        # standpipe
+    t.vline(7, 2, 14, shade(IRRIGATOR, 1.25))
+    for y in (5, 8, 11):                             # jets arcing out both ways
+        t.hline(y, 3, 7, shade(WATER, 1.15))
+        t.hline(y, 9, 13, shade(WATER, 0.95))
+        t.px(2, y + 1, shade(WATER, 1.35))
+        t.px(13, y + 1, shade(WATER, 1.35))
 
 def nodes_and_sources():
     t = paint(48)                                    # herb bush

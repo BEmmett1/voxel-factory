@@ -265,6 +265,20 @@ namespace {
             [&](const glm::ivec3& at, BlockId) { crops[at] = 0.0f; });
     }
 
+    // An irrigator spends one Rain Water per kIrrigateSeconds of WETNESS, which
+    // it banks in `progress` exactly as a generator banks its burn. The bank is
+    // what CropSystem reads (via activeIrrigators), so a field keeps growing
+    // through the gap between one bucket and the next instead of stuttering.
+    void tickIrrigator(Machine& m) {
+        if (m.progress > 0.0f) m.progress = std::max(0.0f, m.progress - kTickSeconds);
+        if (m.progress <= 0.0f && m.input.count(ItemId::SpringWater) > 0) {
+            m.input.remove(ItemId::SpringWater, 1);
+            m.progress = kIrrigateSeconds;
+        }
+        m.crafting = m.progress > 0.0f;
+        m.craftTime = kIrrigateSeconds;
+    }
+
     // The Rune Core reads the ring of Pedestals around it and runs whichever
     // CircleRecipe the necklace spells. A Lesser (4-pedestal) circle ignores
     // power entirely and runs slowly -- that unpowered path is what lets a
@@ -320,6 +334,10 @@ namespace {
             // deliver to it, and taking deliveries would let a belt silently
             // fill a buffer that never empties.
             case MachineKind::Harvester: return false;
+            // Water and nothing else: a belt from a Rain Barrel is the whole
+            // supply chain, and letting anything else in would just let a
+            // mixed line silently fill a buffer that never drains.
+            case MachineKind::Irrigator: return item == ItemId::SpringWater;
             case MachineKind::RuneCore: {
                 // The core's own buffer holds the CENTRE catalyst only; ring
                 // ingredients belong on the pedestals.
@@ -468,6 +486,10 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
             tickHarvester(world, pos, m, crops);
             continue;
         }
+        if (traits.kind == MachineKind::Irrigator) {
+            tickIrrigator(m);
+            continue;
+        }
 
         const MachineRecipe* active = nullptr;
         const auto candidates = recipesForMachine(m.type);
@@ -540,6 +562,17 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
             m.progress = 0.0f;
         }
     }
+}
+
+std::vector<glm::ivec3> activeIrrigators(const MachineMap& machines) {
+    std::vector<glm::ivec3> out;
+    for (const auto& [pos, m] : machines) {
+        if (machineTraits(m.type).kind != MachineKind::Irrigator) continue;
+        // `enabled` matters here as much as anywhere: switching an irrigator
+        // off has to actually stop the water, not merely stop it drinking.
+        if (m.enabled && m.progress > 0.0f) out.push_back(pos);
+    }
+    return out;
 }
 
 void beltStep(BeltMap& belts, MachineMap& machines) {

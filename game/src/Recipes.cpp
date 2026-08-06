@@ -324,6 +324,11 @@ namespace {
         // ahead of any two-ingredient pattern it would otherwise shadow.
         {"circle/harvester", {}, {{I::MachineFrame, 1}, {I::IronPlate, 3}, {I::CopperHoe, 1}, {}},
                                                            {I::HarvesterItem, 1}, 8.0f},
+        // Irrigation is the cheaper half of the pair on purpose: it answers a
+        // dry spell, and a player whose farm has stalled should not have to
+        // finish the iron chain before they can do anything about it.
+        {"circle/irrigator", {}, {{I::MachineFrame, 1}, {I::Bucket, 1}, {I::CopperPlate, 2}, {}},
+                                                           {I::IrrigatorItem, 1}, 6.0f},
         {"circle/distiller", {}, {{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}, {}},
                                                            {I::DistillerItem, 1}, 8.0f},
         {"circle/transmuter", {}, {{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}, {}},

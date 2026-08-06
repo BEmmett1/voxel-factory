@@ -620,6 +620,14 @@ void VoxelGame::drawMachineUi() {
             m_ui.text(L.px + L.panelW - 175, L.py + 15, 13.0f, status, col);
             break;
         }
+        case MachineKind::Irrigator: {
+            const bool wet = mac.progress > 0.0f;
+            const char* status = wet ? "WATERING" : "DRY";
+            m_ui.text(L.px + L.panelW - 150, L.py + 15, 13.0f, status,
+                      wet ? glm::vec4(0.45f, 0.7f, 0.95f, 1.0f)
+                          : glm::vec4(0.95f, 0.4f, 0.35f, 1.0f));
+            break;
+        }
         case MachineKind::Pedestal:
             break; // a pedestal draws no power, so "NO POWER" would be a lie
         case MachineKind::Storage: {
@@ -706,6 +714,10 @@ void VoxelGame::drawMachineUi() {
                 case MachineKind::Harvester:
                     label = "  REAPS RIPE CROPS ( RADIUS " +
                             std::to_string(kHarvestRadius) + " ) AND REPLANTS THEM";
+                    break;
+                case MachineKind::Irrigator:
+                    label = std::string("  SPENDS ") + itemName(ItemId::SpringWater) +
+                            " TO WATER RADIUS " + std::to_string(kIrrigateRadius);
                     break;
                 case MachineKind::Pedestal:
                     // Only reachable for an ORPHAN pedestal -- one with no Rune

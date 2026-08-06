@@ -201,6 +201,12 @@ Draws 5 power.
 
 _No recipes -- its behavior is code, not a table._
 
+### Irrigator
+
+Runs unpowered. 
+
+_No recipes -- its behavior is code, not a table._
+
 ## Alchemy Circle
 
 A `ring` of 4 entries is the CARDINAL pedestals clockwise from north
@@ -243,6 +249,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/iron-sword` | - | Iron Plate x2, -, Wood, - | Iron Sword | 5.0 |
 | `circle/miner` | - | Machine Frame, Copper Plate x3, Stone x4, - | Miner | 8.0 |
 | `circle/harvester` | - | Machine Frame, Iron Plate x3, Copper Hoe, - | Harvester | 8.0 |
+| `circle/irrigator` | - | Machine Frame, Bucket, Copper Plate x2, - | Irrigator | 6.0 |
 | `circle/distiller` | - | Machine Frame, Glass x2, Crystal, - | Distiller | 8.0 |
 | `circle/transmuter` | - | Machine Frame, Crystal x2, Essence, - | Transmuter | 8.0 |
 | `circle/infuser` | - | Machine Frame, Glass, Vial, - | Infuser | 6.0 |

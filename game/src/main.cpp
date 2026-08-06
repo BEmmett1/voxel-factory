@@ -1470,6 +1470,60 @@ int runSelfTest() {
         SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop3);
     }
 
+    // ---- Farming: irrigation buys weather independence --------------------
+    {
+        World iw;
+        MachineSystem::MachineMap im;
+        MachineSystem::BeltMap ib;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> is, isap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries ir{im, ib, is, isap, field};
+        PowerState dead;
+        std::uint32_t rc = 0;
+
+        const glm::ivec3 pump{230, 30, 230};
+        iw.setBlock(pump.x, pump.y, pump.z, BlockId::Irrigator);
+        im[pump].type = BlockId::Irrigator;
+
+        // Dry: no water in, nothing running, so the field is on the slow rate.
+        MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).empty());
+
+        // One Rain Water buys kIrrigateSeconds of wetness. It draws no power at
+        // all: what it spends is water, so a Barrel and a belt are the whole
+        // supply chain and no grid is needed.
+        im[pump].input.add(ItemId::SpringWater, 1);
+        MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+        SELFTEST_CHECK(im[pump].input.count(ItemId::SpringWater) == 0);
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).size() == 1);
+
+        // A crop in reach grows at the RAIN rate while it runs...
+        const glm::ivec3 soil = pump + glm::ivec3(3, 0, 0);
+        const glm::ivec3 plant = soil + glm::ivec3(0, 1, 0);
+        iw.setBlock(soil.x, soil.y, soil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(iw, ir, plant, BlockId::HerbCrop0, {}).placed);
+
+        // ...and one out of reach does not, on the very same ticks. Same world,
+        // same weather: the only difference is the water.
+        const glm::ivec3 farSoil = pump + glm::ivec3(vg::kIrrigateRadius + 4, 0, 0);
+        const glm::ivec3 far = farSoil + glm::ivec3(0, 1, 0);
+        iw.setBlock(farSoil.x, farSoil.y, farSoil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(iw, ir, far, BlockId::HerbCrop0, {}).placed);
+
+        const int ticks = static_cast<int>(vg::kCropStageSeconds / vg::kTickSeconds) + 1;
+        for (int i = 0; i < ticks; ++i) {
+            MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+            CropSystem::tick(iw, field, /*rainy=*/false,
+                             MachineSystem::activeIrrigators(im));
+        }
+        SELFTEST_CHECK(CropSystem::stageOf(iw.getBlock(plant.x, plant.y, plant.z)) >
+                       CropSystem::stageOf(iw.getBlock(far.x, far.y, far.z)));
+
+        // Switching it OFF has to stop the water, not merely stop it drinking.
+        im[pump].enabled = false;
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).empty());
+    }
+
     std::printf("selftest OK\n");
     return 0;
 }

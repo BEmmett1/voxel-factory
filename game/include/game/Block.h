@@ -132,6 +132,8 @@ enum class BlockId : std::uint16_t {
     HerbCrop3,
     // Reaps ripe crops in reach and replants the cell, so a field runs itself.
     Harvester,
+    // Spends Rain Water to keep the crops around it growing at the rain rate.
+    Irrigator,
     Count
 };
 

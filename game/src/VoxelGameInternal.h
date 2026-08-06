@@ -335,6 +335,12 @@ namespace vg {
     // should reward the walking rather than throttle it.
     inline constexpr int   kHarvestRadius    = 5;
     inline constexpr float kHarvestSeconds   = 2.0f;
+    // What one Rain Water buys, and how far it reaches. Generous on both, on
+    // purpose: irrigation exists so a dry spell is a problem you can SOLVE, and
+    // a machine you have to keep feeding by the bucketful would just move the
+    // frustration rather than answer it.
+    inline constexpr float kIrrigateSeconds  = 30.0f;
+    inline constexpr int   kIrrigateRadius   = 5;
 
     // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
     // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.

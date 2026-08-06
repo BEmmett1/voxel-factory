@@ -7,6 +7,7 @@
 #include "VoxelGameInternal.h"
 #include "game/World.h"
 
+#include <cstdlib>
 #include <vector>
 
 using namespace vg;
@@ -38,8 +39,22 @@ BlockId cropAtStage(int stage) {
 
 bool isRipe(BlockId id) { return id == BlockId::HerbCrop3; }
 
-void tick(World& world, CropMap& crops, bool rainy) {
+void tick(World& world, CropMap& crops, bool rainy,
+          const std::vector<glm::ivec3>& wetSources) {
     std::vector<glm::ivec3> done;
+
+    // Cheap because the list is the RUNNING irrigators, not every machine --
+    // usually empty, rarely more than a handful.
+    const auto irrigated = [&](const glm::ivec3& p) {
+        for (const glm::ivec3& s : wetSources) {
+            const glm::ivec3 d = p - s;
+            if (std::abs(d.x) <= kIrrigateRadius && std::abs(d.z) <= kIrrigateRadius &&
+                std::abs(d.y) <= 3) {
+                return true;
+            }
+        }
+        return false;
+    };
 
     for (auto& [pos, timer] : crops) {
         const BlockId here = world.getBlock(pos.x, pos.y, pos.z);
@@ -54,7 +69,8 @@ void tick(World& world, CropMap& crops, bool rainy) {
 
         // Rain and irrigation share ONE multiplier on purpose: a machine that
         // buys weather independence must not also stack into a third rate.
-        timer += kTickSeconds * (rainy ? kRainGrowthMult : 1.0f);
+        const bool wet = rainy || irrigated(pos);
+        timer += kTickSeconds * (wet ? kRainGrowthMult : 1.0f);
         if (timer < kCropStageSeconds) continue;
 
         // Soil can be dug out from under a planted crop, and a crop with

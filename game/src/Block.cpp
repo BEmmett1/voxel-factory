@@ -306,6 +306,10 @@ namespace {
          .name = "Harvester", .color = {0.62f, 0.58f, 0.30f},
          .machine = true, .drop = {I::HarvesterItem, 1}, .tiles = {13, 14, 14},
          .hardness = 0.5f},
+        {.id = B::Irrigator, .key = "core:irrigator",
+         .name = "Irrigator", .color = {0.42f, 0.58f, 0.72f},
+         .machine = true, .drop = {I::IrrigatorItem, 1}, .tiles = {15, 45, 45},
+         .hardness = 0.5f},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

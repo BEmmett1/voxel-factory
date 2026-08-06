@@ -10,6 +10,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 class World;
 
@@ -79,6 +80,11 @@ namespace MachineSystem {
     void tickPowered(World& world, MachineMap& machines, const PowerState& power,
                      std::uint32_t seed, std::uint32_t& rngCounter,
                      CropSystem::CropMap& crops);
+
+    // Where the water is right now: the positions of irrigators that are
+    // switched on and still have wetness banked. Handed to CropSystem::tick,
+    // which must not know what a machine is (and is included BY this header).
+    std::vector<glm::ivec3> activeIrrigators(const MachineMap& machines);
 
     // Advance conduits one step: deliver into accepting machines ahead, hop
     // items belt -> belt (snapshot + claims prevent chaining/merging), pull

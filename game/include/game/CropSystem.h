@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include <unordered_map>
+#include <vector>
 
 class World;
 
@@ -36,9 +37,19 @@ namespace CropSystem {
     // The last stage: what a Harvester takes and the only one worth anything.
     bool isRipe(BlockId id);
 
-    // Advance every registered crop one tick, growing faster while `rainy`.
+    // Advance every registered crop one tick.
+    //
+    // `rainy` is the weather and `wetSources` are the positions of irrigators
+    // currently running (MachineSystem::activeIrrigators). A crop within
+    // kIrrigateRadius of one counts as rainy: ONE multiplier shared by both,
+    // deliberately, so buying weather independence with a machine can never
+    // stack into a third growth rate nobody tuned. Positions rather than the
+    // machine map because a growth system has no business knowing what a
+    // machine is -- and because CropSystem is included BY MachineSystem.
+    //
     // Stale entries (the block was broken, or was never a crop) are dropped.
     // A ripe crop stops accruing: it waits to be picked.
-    void tick(World& world, CropMap& crops, bool rainy);
+    void tick(World& world, CropMap& crops, bool rainy,
+              const std::vector<glm::ivec3>& wetSources = {});
 
 } // namespace CropSystem

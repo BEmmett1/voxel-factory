@@ -185,6 +185,7 @@ enum class ItemId : std::uint16_t {
     // -- and the reachability closure needs no special case for it.
     HerbSeed,
     HarvesterItem,
+    IrrigatorItem,
     Count
 };
 

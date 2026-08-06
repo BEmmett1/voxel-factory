@@ -78,14 +78,17 @@ enum class MachineKind : std::uint8_t {
     // and a field that harvested itself into bare soil would need re-sowing by
     // hand forever, which is the opposite of automation.
     Harvester,
+    // Spends Rain Water to keep a radius growing at the rain rate. The answer
+    // to a dry spell, which without one is frustration rather than tension.
+    Irrigator,
 };
 
 // Enum spellings for the content pack format -- see kToolNames in Item.h.
 inline constexpr const char* kKindNames[] = {
     "processor", "generator", "collector", "miner", "rune_core", "pedestal",
-    "storage", "harvester",
+    "storage", "harvester", "irrigator",
 };
-static_assert(std::size(kKindNames) == 8,
+static_assert(std::size(kKindNames) == 9,
               "kKindNames needs one name per MachineKind");
 
 // What burns, and for how long. A shared registry rather than a per-machine
@@ -239,6 +242,14 @@ inline constexpr MachineTraits kMachineTraitSeed[] = {
     // and the manual tier already has an answer for reaping by hand -- your
     // hands.
     {.block = BlockId::Harvester, .kind = MachineKind::Harvester},
+    // demand 0, the Rain Barrel precedent: what it spends is WATER, not
+    // electricity, so it stays off the power graph entirely. That also makes
+    // Barrel -> belt -> Irrigator a complete, electricity-free answer to the
+    // weather, which is the right tier for it -- a dry spell should be
+    // solvable by the player who has a farm, not only by the one who has a
+    // grid.
+    {.block = BlockId::Irrigator, .kind = MachineKind::Irrigator, .demand = 0,
+     .collects = ItemId::SpringWater},
 };
 
 // Every cranked machine is a manual twin -- but NOT every twin is cranked.
