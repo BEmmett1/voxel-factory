@@ -31,7 +31,8 @@ you want to *discard* hand edits and start over.
 | 6 | 6 | log ends (rings; top + bottom) |
 | 7 | 7 | log bark (sides) |
 | 8 | 8 | leaves |
-| 9-15 | | spare |
+| 9 | 10 | tilled soil (furrowed top; bottom borrows dirt) |
+| 11-15 | | spare |
 
 ## Rows 1-2 — machines (tiles 16-47)
 
@@ -101,7 +102,7 @@ you want to *discard* hand edits and start over.
 | 110 | aegis chestplate | 111 | aegis boots |
 | 112 | copper rod | 113 | gear |
 | 114 | machine casing | 115 | etched plate |
-| 116-127 | spare | | |
+| 116 | copper hoe | 117-127 | spare |
 
 ## Row 8 — the smelting & sifting tier (tiles 128-135)
 
@@ -151,8 +152,8 @@ surface in the powered twin's accent color, every side tile carries the same
 
 Empty. This is the headroom the 8→16 row growth bought.
 
-All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63,
-116-127, 162-175, 189-191, 194-255) are free for new blocks/items. Claim a tile here,
+All tiles above are painted by `make_atlas.py`. The rest (11-15, 45-47, 63,
+117-127, 162-175, 189-191, 194-255) are free for new blocks/items. Claim a tile here,
 add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
 on the kBlocks row for blocks, `atlasTile` on the kItems row for material
 items).

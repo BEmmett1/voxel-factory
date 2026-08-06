@@ -226,6 +226,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/copper-axe` | - | Copper Plate x3, Wood x2, -, - | Copper Axe | 4.0 |
 | `circle/copper-pickaxe` | - | Copper Plate x3, -, Wood x2, - | Copper Pickaxe | 4.0 |
 | `circle/copper-shovel` | - | Copper Plate x2, -, Wood x2, - | Copper Shovel | 4.0 |
+| `circle/copper-hoe` | - | Copper Plate x2, Wood x2, -, - | Copper Hoe | 4.0 |
 | `circle/copper-sword` | - | Copper Plate x2, -, Wood, - | Copper Sword | 4.0 |
 | `circle/conduit` | - | Copper Plate x2, -, -, - | Conduit x2 | 3.0 |
 | `circle/wrench` | - | Copper Plate, -, Copper Plate, - | Wrench | 3.0 |

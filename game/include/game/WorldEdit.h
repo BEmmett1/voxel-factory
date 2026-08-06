@@ -45,8 +45,9 @@ namespace WorldEdit {
         bool powerChanged = false; // a power node joined the grid: re-solve
     };
 
-    // Place `id` at `pos` if the world allows it (cell not solid; saplings
-    // only take root on Grass/Dirt), registering whatever it is. Belts face
+    // Place `id` at `pos` if the world allows it (cell not solid; a plant only
+    // takes root on ground offering at least its `needsSoil`), registering
+    // whatever it is. Belts face
     // `beltFacing`. Player-side rules — stock, not-inside-the-player — are
     // the caller's to check first; a world-side refusal is a silent no-op.
     PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& pos,
@@ -65,5 +66,12 @@ namespace WorldEdit {
     // in sync. Returns false (no change) if there is no valid pair. The
     // caller owns the catalyst spend + the sound.
     bool fuseSources(World& world, const Registries& regs, const glm::ivec3& aimed);
+
+    // Till `aimed` into Tilled Soil if it is ground a hoe can work and nothing
+    // is sitting on it. The fuseSources shape: a tool RMB transmuting the cell
+    // it points at. False = not workable, and the caller plays the deny. The
+    // caller owns the sound; there is nothing to spend, because a hoe is a tool
+    // and nothing in this game has durability.
+    bool tillSoil(World& world, const glm::ivec3& aimed);
 
 } // namespace WorldEdit

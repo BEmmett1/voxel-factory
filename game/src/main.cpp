@@ -1296,6 +1296,46 @@ int runSelfTest() {
         SELFTEST_CHECK(!st.energized(gen.x, gen.y, gen.z));
     }
 
+    // ---- Farming: the hoe, and what a plant will sit on --------------------
+    {
+        World fw;
+        MachineSystem::MachineMap fm;
+        MachineSystem::BeltMap fb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> fs, fsap;
+        const WorldEdit::Registries fr{fm, fb, fs, fsap};
+
+        const glm::ivec3 g{200, 30, 200};
+        fw.setBlock(g.x, g.y, g.z, BlockId::Grass);
+
+        // Tilling is a tool RMB transmuting the aimed cell -- the fuseSources
+        // shape -- and it only works on plain ground.
+        SELFTEST_CHECK(WorldEdit::tillSoil(fw, g));
+        SELFTEST_CHECK(fw.getBlock(g.x, g.y, g.z) == BlockId::TilledSoil);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, g)); // already worked: no-op
+        const glm::ivec3 rock = g + glm::ivec3(1, 0, 0);
+        fw.setBlock(rock.x, rock.y, rock.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, rock)); // stone is not ground
+
+        // Tilling under a placed block would strand it on soil it no longer
+        // sits on, so a covered cell refuses.
+        const glm::ivec3 covered = g + glm::ivec3(0, 0, 1);
+        fw.setBlock(covered.x, covered.y, covered.z, BlockId::Grass);
+        fw.setBlock(covered.x, covered.y + 1, covered.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, covered));
+
+        // A sapling wants soil, and TILLED ground still counts -- `provides`
+        // and `needsSoil` are ordered, so worked ground satisfies a plant that
+        // only asked for dirt without anything having to say so.
+        const glm::ivec3 above = g + glm::ivec3(0, 1, 0);
+        SELFTEST_CHECK(WorldEdit::placeBlock(fw, fr, above, BlockId::Sapling, {}).placed);
+        SELFTEST_CHECK(fsap.count(above) == 1);
+
+        // ...but stone is not soil, and the refusal is a silent no-op.
+        const glm::ivec3 onRock = rock + glm::ivec3(0, 1, 0);
+        SELFTEST_CHECK(!WorldEdit::placeBlock(fw, fr, onRock, BlockId::Sapling, {}).placed);
+        SELFTEST_CHECK(fw.getBlock(onRock.x, onRock.y, onRock.z) == BlockId::Air);
+    }
+
     std::printf("selftest OK\n");
     return 0;
 }

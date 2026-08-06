@@ -117,6 +117,10 @@ enum class BlockId : std::uint16_t {
     // -- with belt filters -- the sorter, since every belt pointing away from
     // one drains it independently.
     StorageCrate,
+    // Farming: worked ground a crop can be planted on. Laying a field out is
+    // a deliberate build step (a Copper Hoe RMB'd at Grass/Dirt), not a side
+    // effect of walking around.
+    TilledSoil,
     Count
 };
 
@@ -128,6 +132,22 @@ enum class ToolType : std::uint8_t;
 // Defined in BlockShape.h (which includes THIS header, so it can only be
 // forward-declared); same fixed-underlying-type trick as ToolType.
 enum class ShapeId : std::uint8_t;
+
+// What a block offers underfoot, and what a plant demands of the cell below it.
+// ORDERED, and the check is one comparison (`provides >= needsSoil`), so Tilled
+// Soil satisfies a sapling for free without anything having to say so: tilled
+// ground is still ground. This replaced a hardcoded
+// `if (id == BlockId::Sapling)` in WorldEdit, which crops would have had to
+// grow a second branch of -- and which a content pack could never have reached.
+enum class SoilKind : std::uint8_t {
+    None = 0, // not plantable at all
+    Soil,     // Grass or Dirt: a sapling takes root here
+    Tilled,   // worked ground: what crops need, and laying it out is a build step
+};
+
+// Spellings for the content pack format -- see kToolNames in Item.h. Index
+// matches the enum.
+inline constexpr const char* kSoilNames[] = {"none", "soil", "tilled"};
 
 // What mining a block yields ({None, 0} = nothing).
 struct BlockDrop {
@@ -179,6 +199,12 @@ struct BlockInfo {
     float       hardness = 0.0f;
     ToolType    tool = ToolType{};  // ToolType::None (0)
     int         toolTier = 0;
+    // Farming's two halves of the same question. `provides` is what standing on
+    // this block offers a plant; `needsSoil` is what this block demands of the
+    // cell beneath it when placed. Both default to None, so an ordinary block
+    // neither grows things nor cares what it sits on.
+    SoilKind    provides = SoilKind::None;
+    SoilKind    needsSoil = SoilKind::None;
     // Which sub-cube geometry the block occupies (BlockShape.h). Default is
     // ShapeId::FullCube — the implicit unit cube every block was before shapes
     // existed. Presentation only: never saved, so ShapeId may be reordered.
@@ -237,3 +263,10 @@ inline BlockId sourceSpawnsNode(BlockId id){ return blockInfo(id).spawnsNode; }
 inline float blockHardness(BlockId id)     { return blockInfo(id).hardness; }
 inline ToolType blockTool(BlockId id)      { return blockInfo(id).tool; }
 inline int  blockToolTier(BlockId id)      { return blockInfo(id).toolTier; }
+
+// Can `id` be placed on top of `under`? One ordered comparison: a block that
+// needs nothing goes anywhere, a sapling needs Soil or better, a crop needs
+// Tilled exactly.
+inline bool soilAccepts(BlockId under, BlockId id) {
+    return blockInfo(under).provides >= blockInfo(id).needsSoil;
+}

@@ -209,6 +209,9 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::Essence, 12);
         m_inventory.add(ItemId::Sand, 32);
         m_inventory.add(ItemId::DirtItem, 32);
+        // Farming: the hoe on the bar, since a field starts with tilling and
+        // there is nothing else in the kit that can make Tilled Soil.
+        give(ItemId::CopperHoe, 1, kHotbarSlots - 6);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }
@@ -473,6 +476,16 @@ void VoxelGame::onUpdate(float dt) {
                                    kCraftVolume, pitchJitter(tb));
                     m_inventory.remove(held, 1);
                     updateTitle();
+                } else {
+                    audio().play("deny", kCraftVolume);
+                }
+            } else if (pressed && held == ItemId::CopperHoe) {
+                // Till the aimed cell into a bed a crop will take. A tool, so
+                // nothing is spent and nothing wears out -- the cost of a field
+                // is the walking, not the hoe.
+                if (WorldEdit::tillSoil(*m_world, tb)) {
+                    audio().playAt("place", glm::vec3(tb) + glm::vec3(0.5f),
+                                   kPlaceVolume, pitchJitter(tb));
                 } else {
                     audio().play("deny", kCraftVolume);
                 }

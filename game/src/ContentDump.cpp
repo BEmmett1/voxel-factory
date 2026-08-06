@@ -114,6 +114,12 @@ namespace {
             put(j, "hardness", info.hardness, 0.0f);
             if (info.tool != ToolType::None) j["tool"] = kToolNames[static_cast<std::size_t>(info.tool)];
             put(j, "toolTier", info.toolTier, 0);
+            if (info.provides != SoilKind::None) {
+                j["provides"] = kSoilNames[static_cast<std::size_t>(info.provides)];
+            }
+            if (info.needsSoil != SoilKind::None) {
+                j["needsSoil"] = kSoilNames[static_cast<std::size_t>(info.needsSoil)];
+            }
             // Omitted when it is the plain unit cube, like every other default.
             if (info.shape != ShapeId::FullCube) j["shape"] = shapeName(info.shape);
             a.push_back(j);

@@ -173,6 +173,13 @@ enum class ItemId : std::uint16_t {
     HandDistillerItem,
     HandTransmuterItem,
     StorageCrateItem,
+    // ---- Farming ------------------------------------------------------
+    // The Hoe is a hotbar TOOL, not a mining tool: it has no ToolType, so it
+    // breaks nothing faster and gates nothing. RMB at Grass/Dirt tills.
+    // (Tilled Soil has no item of its own: it drops Dirt, so tilling can never
+    // duplicate soil, and you make more of it with the hoe rather than by
+    // carrying it around.)
+    CopperHoe,
     Count
 };
 

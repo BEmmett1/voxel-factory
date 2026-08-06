@@ -333,6 +333,24 @@ def terrain():
     t.speckle(shade(LEAVES, 1.4), 8, seed=12)        # lit clusters
     t.speckle(shade(SAPLING, 1.1), 3, seed=13)
 
+    t = paint(9)                                     # tilled soil top: furrows
+    t.fill(shade(DIRT, 0.85), noise=0.12)
+    for x in range(T):                               # raked ridges, damp valleys
+        for y in range(T):
+            band = (y // 3) % 2
+            t.px(x, y, shade(DIRT, (1.15 if band else 0.68) +
+                             n2(x, y, 131) * 0.2))
+    t.speckle(shade(DIRT, 1.35), 6, seed=52)         # turned clods
+    t.speckle(shade(DIRT, 0.5), 5, seed=53)
+
+    t = paint(10)                                    # tilled soil side
+    t.fill(DIRT, noise=0.16)
+    t.speckle(shade(DIRT, 0.6), 8, seed=54)
+    for x in range(T):                               # the worked crust on top
+        depth = 2 + int(n2(x, 0, 132) * 2)
+        for y in range(depth):
+            t.px(x, y, shade(DIRT, 0.72 + n2(x, y, 133) * 0.25))
+
 
 def machines():
     t = paint(16)                                    # generator top
@@ -865,6 +883,11 @@ def tool_icon(t, head, kind):
         t.rect(hx - 2, hy - 2, hx + 2, hy + 1, head)  # scoop
         t.hline(hy - 2, hx - 2, hx + 2, shade(head, 1.3))
         t.px(hx, hy + 2, shade(head, 0.8))
+    elif kind == "hoe":
+        t.hline(hy, hx - 4, hx + 1, head)             # blade, square to the haft
+        t.hline(hy + 1, hx - 4, hx, shade(head, 0.75))
+        t.px(hx - 4, hy - 1, shade(head, 1.3))
+        t.px(hx + 1, hy - 1, shade(head, 1.1))        # socket over the haft
     t.px(hx - 1, hy - 1, (255, 255, 255), 180)       # glint
 
 
@@ -962,6 +985,8 @@ def parts():
     t.hline(8, 5, 10, shade(CRYSTAL, 1.2))
     t.vline(8, 5, 11, shade(CRYSTAL, 1.2))
     t.px(8, 8, shade(CRYSTAL, 1.6))
+
+    tool_icon(paint(116), COPPER, "hoe")              # copper hoe
 
 
 def smelting_tier():

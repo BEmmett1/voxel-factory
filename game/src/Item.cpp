@@ -318,6 +318,12 @@ namespace {
         {.id = I::StorageCrateItem, .key = "core:storage_crate_item",
          .name = "Storage Crate", .placeable = true,
          .placesBlock = B::StorageCrate},
+        // ---- Farming ------------------------------------------------------
+        // No ToolType and no miningSpeed: the hoe is a hotbar tool like the
+        // Bucket or the Teleport Key, and tools are not placeable, so the place
+        // path already refuses to try to set a block with it.
+        {.id = I::CopperHoe, .key = "core:copper_hoe",
+         .name = "Copper Hoe", .atlasTile = 116},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

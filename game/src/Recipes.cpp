@@ -280,6 +280,13 @@ namespace {
                                                            {I::CopperPickaxe, 1}, 4.0f},
         {"circle/copper-shovel", {}, {{I::CopperPlate, 2}, {}, {I::Wood, 2}, {}},
                                                            {I::CopperShovel, 1},  4.0f},
+        // The Hoe is the Shovel's two items laid BESIDE each other instead of
+        // opposite. It must stay listed after the Axe, which is the same
+        // arrangement with a third plate and therefore a superset of it under
+        // "holds at least this many" -- the documented ordering trap, and the
+        // circle-shadowing check in --selftest is what enforces it.
+        {"circle/copper-hoe", {}, {{I::CopperPlate, 2}, {I::Wood, 2}, {}, {}},
+                                                           {I::CopperHoe, 1},     4.0f},
         {"circle/copper-sword", {}, {{I::CopperPlate, 2}, {}, {I::Wood, 1}, {}},
                                                            {I::CopperSword, 1},   4.0f},
         {"circle/conduit", {}, {{I::CopperPlate, 2}, {}, {}, {}},

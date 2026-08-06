@@ -27,10 +27,12 @@ namespace {
         // (Every other row keeps the default ShapeId::FullCube.)
         {.id = B::Grass, .key = "core:grass",
          .name = "Grass", .color = {0.30f, 0.62f, 0.26f},
-         .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel},
+         .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel,
+         .provides = SoilKind::Soil},
         {.id = B::Dirt, .key = "core:dirt",
          .name = "Dirt", .color = {0.45f, 0.31f, 0.18f},
-         .drop = {I::DirtItem, 1}, .tiles = {2, 2, 2}, .hardness = 0.75f, .tool = T::Shovel},
+         .drop = {I::DirtItem, 1}, .tiles = {2, 2, 2}, .hardness = 0.75f, .tool = T::Shovel,
+         .provides = SoilKind::Soil},
         {.id = B::Stone, .key = "core:stone",
          .name = "Stone", .color = {0.50f, 0.50f, 0.53f},
          .drop = {I::Stone, 1}, .tiles = {3, 3, 3},
@@ -129,7 +131,8 @@ namespace {
         // wood (fuel AND structure).
         {.id = B::Sapling, .key = "core:sapling",
          .name = "Sapling", .color = {0.45f, 0.72f, 0.28f},
-         .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f},
+         .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f,
+         .needsSoil = SoilKind::Soil},
         {.id = B::Log, .key = "core:log",
          .name = "Log", .color = {0.45f, 0.33f, 0.18f},
          .drop = {I::Wood, 2}, .tiles = {6, 7, 6},
@@ -267,6 +270,15 @@ namespace {
          .name = "Storage Crate", .color = {0.55f, 0.40f, 0.22f},
          .machine = true, .drop = {I::StorageCrateItem, 1}, .tiles = {192, 193, 193},
          .hardness = 0.5f}, // lid on top, slatted sides
+        // ---- Farming ------------------------------------------------------
+        // Worked ground. Drops Dirt, so tilling is not a way to duplicate soil,
+        // and it must SURVIVE a harvest -- the Harvester resets a cell to
+        // stage 0 and never untills, or an automated field would need
+        // re-tilling by hand forever. Softer than Dirt: it has been broken up.
+        {.id = B::TilledSoil, .key = "core:tilled_soil",
+         .name = "Tilled Soil", .color = {0.36f, 0.24f, 0.13f},
+         .drop = {I::DirtItem, 1}, .tiles = {9, 10, 2}, .hardness = 0.5f,
+         .tool = T::Shovel, .provides = SoilKind::Tilled},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

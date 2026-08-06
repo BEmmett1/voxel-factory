@@ -45,10 +45,12 @@ PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& p
     PlaceResult r;
     if (isSolid(world.getBlock(pos.x, pos.y, pos.z))) return r; // cell taken
 
-    // Saplings only take root in soil.
-    if (id == BlockId::Sapling) {
-        const BlockId under = world.getBlock(pos.x, pos.y - 1, pos.z);
-        if (under != BlockId::Grass && under != BlockId::Dirt) return r;
+    // Plants are picky about what they sit on: a sapling wants soil, a crop
+    // wants ground that has been worked. Both are one registry field now, so a
+    // content pack can add a third plant without touching this file.
+    if (blockInfo(id).needsSoil != SoilKind::None &&
+        !soilAccepts(world.getBlock(pos.x, pos.y - 1, pos.z), id)) {
+        return r;
     }
 
     world.setBlock(pos.x, pos.y, pos.z, id);
@@ -109,6 +111,20 @@ bool fuseSources(World& world, const Registries& regs, const glm::ivec3& aimed) 
         return true;
     }
     return false;
+}
+
+bool tillSoil(World& world, const glm::ivec3& aimed) {
+    const BlockId under = world.getBlock(aimed.x, aimed.y, aimed.z);
+    // Only plain soil works: tilling already-tilled ground is a no-op rather
+    // than a deny, and nothing else is ground.
+    if (blockInfo(under).provides != SoilKind::Soil) return false;
+    // A field needs open sky above it to be worth anything, and more to the
+    // point tilling under a placed block would strand it on soil it no longer
+    // sits on.
+    if (isSolid(world.getBlock(aimed.x, aimed.y + 1, aimed.z))) return false;
+
+    world.setBlock(aimed.x, aimed.y, aimed.z, BlockId::TilledSoil);
+    return true;
 }
 
 } // namespace WorldEdit
