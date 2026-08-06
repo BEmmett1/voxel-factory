@@ -30,6 +30,11 @@ the mesh, so the two split: geometry is EXACT, collision uses the rotated
 box's bounding box. Slightly generous to walk into, and the reason quads and
 boxes are separate arrays.
 
+FLAT elements (zero extent on exactly one axis) are supported, which is what a
+crossed-plane crop is made of: they bake to 2 quads rather than 6-with-slivers,
+and collide as a thin slab so they can still be walked into and aimed at. Flat
+on two axes -- a line, a point -- is still degenerate and skipped.
+
 What it still rejects, loudly: non-cube (mesh) elements, geometry reaching
 outside its own cell, and textures past the first.
 """
@@ -63,6 +68,15 @@ TEXEL_INSET = 0.5
 # zero would reject perfectly ordinary 45-degree elements; a whole unit is
 # still far below "this model was designed to span two cells".
 CELL_OVERHANG_TOLERANCE = 1.0
+
+# A FLAT element -- zero extent on exactly one axis -- is a legitimate model: the
+# crossed planes a crop is made of. Only two-or-more flat axes (a line, a point)
+# are genuinely degenerate. Rendering handles a plane exactly, but collision
+# cannot: `boxes` feeds boxOverlapsWorld and the raycast, and a zero-thickness
+# AABB overlaps nothing, so a plane would be un-walkable-into AND un-aimable-at.
+# So the COLLISION box alone is given a minimum thickness, centred on the plane;
+# the drawn geometry stays exactly where it was authored.
+MIN_COLLISION_UNITS = 1.0
 
 # Face order matches ChunkMesher's kFaces: +X, -X, +Y, -Y, +Z, -Z.
 FACE_ORDER = ["east", "west", "up", "down", "south", "north"]
@@ -257,7 +271,7 @@ def load_model(path):
     model.frames = frames
     model.frame_time = tex.get("frame_time", 0)
 
-    meshes, blank, nrot, thin = 0, 0, 0, 0
+    meshes, blank, nrot, thin, planes = 0, 0, 0, 0, 0
     for el in doc.get("elements", []):
         if el.get("type", "cube") != "cube":
             meshes += 1
@@ -270,9 +284,15 @@ def load_model(path):
         inflate = float(el.get("inflate", 0.0))
         lo = [min(frm[i], to[i]) - inflate for i in range(3)]
         hi = [max(frm[i], to[i]) + inflate for i in range(3)]
-        if any(hi[i] - lo[i] <= 0.0 for i in range(3)):
+        # Flat on ONE axis is a plane, which is real geometry (see
+        # MIN_COLLISION_UNITS). Flat on two or more is a line or a point.
+        flat_axes = [i for i in range(3) if hi[i] - lo[i] <= 0.0]
+        if len(flat_axes) >= 2:
             blank += 1
             continue
+        flat_axis = flat_axes[0] if flat_axes else -1
+        if flat_axis >= 0:
+            planes += 1
 
         # Element rotation. Minecraft allows one axis at a time; Blockbench
         # writes all three, so take the non-zero one and say so if there are
@@ -307,12 +327,33 @@ def load_model(path):
                            lo[2] if i & 4 else hi[2])) for i in range(8)]
         blo = tuple(min(c[a] for c in corners8) for a in range(3))
         bhi = tuple(max(c[a] for c in corners8) for a in range(3))
-        model.boxes.append((blo, bhi))
+        # Give a collapsed COLLISION axis its minimum thickness, symmetrically.
+        # Done on the AABB rather than on `lo`/`hi` so a ROTATED plane -- whose
+        # flat axis is no longer a world axis -- is covered by the same line.
+        # `blo`/`bhi` themselves stay exact: they also bound the quads, and
+        # inflating them there would let a face look sealed inside the model.
+        # Only a genuinely FLAT element gets this: a merely thin box (a trim
+        # ring, a rim) already has extent on every axis and collides as
+        # authored, and inflating those would quietly fatten four shipped
+        # models' collision.
+        clo, chi = list(blo), list(bhi)
+        if flat_axis >= 0:
+            thick = MIN_COLLISION_UNITS / MODEL_UNITS
+            for a in range(3):
+                if chi[a] - clo[a] < thick:
+                    mid = 0.5 * (clo[a] + chi[a])
+                    clo[a], chi[a] = mid - 0.5 * thick, mid + 0.5 * thick
+        model.boxes.append((tuple(clo), tuple(chi)))
         model.box_rotated.append(rmat is not None)
 
         for fi, fname in enumerate(FACE_ORDER):
             face = el.get("faces", {}).get(fname)
             if not face or face.get("texture") is None:
+                continue
+            # On a flat element only the two faces PERPENDICULAR to the flat
+            # axis have any area; the other four are zero-area slivers. Drop
+            # them, so a plane costs exactly 2 quads instead of 6.
+            if flat_axis >= 0 and fi // 2 != flat_axis:
                 continue
             uv = [float(v) for v in face["uv"]]
             # A face whose uv rect is degenerate on one axis is NOT dropped:
@@ -362,6 +403,9 @@ def load_model(path):
         print(f"  ! {name}: skipped {meshes} non-cube (mesh) element(s)")
     if blank:
         print(f"  ! {name}: skipped {blank} zero-area box(es)")
+    if planes:
+        print(f"  {planes} flat element(s): 2 quads each, collided as a "
+              f"{MIN_COLLISION_UNITS:g}-unit slab")
     if thin:
         print(f"  {thin} face(s) on sub-unit-thick elements sample a single "
               "texel line (box-UV floors box size)")
