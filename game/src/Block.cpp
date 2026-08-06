@@ -302,6 +302,10 @@ namespace {
          .name = "Ripe Herb", .fullCube = false, .color = {0.52f, 0.72f, 0.36f},
          .drop = {I::Herb, 2}, .tiles = {12, 12, 12}, .hardness = 0.15f,
          .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop3},
+        {.id = B::Harvester, .key = "core:harvester",
+         .name = "Harvester", .color = {0.62f, 0.58f, 0.30f},
+         .machine = true, .drop = {I::HarvesterItem, 1}, .tiles = {13, 14, 14},
+         .hardness = 0.5f},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

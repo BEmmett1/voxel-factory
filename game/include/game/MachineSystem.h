@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/Belt.h"
+#include "game/CropSystem.h"
 #include "game/HashIVec3.h"
 #include "game/Machine.h"
 #include "game/PowerSystem.h"
@@ -70,8 +71,14 @@ namespace MachineSystem {
     // demands no power — the manual and fuel-fired tiers — run regardless).
     // `seed` + `rngCounter` drive weighted recipe outputs, sharing the world's
     // saved roll sequence so a sifting line is deterministic across saves.
+    //
+    // `crops` is here for the Harvester alone, which replants the cell it
+    // reaped and so has to hand the new seedling its growth timer -- the same
+    // registry-sync duty WorldEdit does for a hand-placed one. Passed rather
+    // than reached for, because MachineSystem takes its state as parameters.
     void tickPowered(World& world, MachineMap& machines, const PowerState& power,
-                     std::uint32_t seed, std::uint32_t& rngCounter);
+                     std::uint32_t seed, std::uint32_t& rngCounter,
+                     CropSystem::CropMap& crops);
 
     // Advance conduits one step: deliver into accepting machines ahead, hop
     // items belt -> belt (snapshot + claims prevent chaining/merging), pull

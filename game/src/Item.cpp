@@ -329,6 +329,8 @@ namespace {
         // painted as loose seeds and not as a tiny plant.
         {.id = I::HerbSeed, .key = "core:herb_seed",
          .name = "Herb Seed", .placeable = true, .placesBlock = B::HerbCrop0},
+        {.id = I::HarvesterItem, .key = "core:harvester_item",
+         .name = "Harvester", .placeable = true, .placesBlock = B::Harvester},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

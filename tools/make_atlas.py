@@ -153,6 +153,7 @@ COMPACTOR = (124, 122, 116)  # rammed-earth press
 CRUDEWOOD = (128, 96, 58)  # manual-tier timber
 CRUDESTONE = (112, 110, 104)  # manual-tier fieldstone
 IRON = (198, 200, 208)     # the structural metal
+HARVESTER = (158, 148, 78)  # reaper: brass reel over a straw-worn frame
 CHARCOAL = (48, 44, 42)
 
 GOLD = (255, 214, 51)
@@ -356,6 +357,26 @@ def terrain():
         t.hline(y, 9, 12, shade(LEAVES, 1.0))
     t.disc(8, 4, 2, (186, 142, 214))                 # flower crown
     t.px(8, 4, (232, 206, 128))
+
+    t = paint(13)                                    # harvester top: reel + blades
+    plate(t, HARVESTER)
+    t.ring(8, 8, 5, shade(HARVESTER, 0.5))
+    for a in range(8):                               # sickle spokes
+        dx, dy = (1, 0, 1, -1, 0, 0, -1, 1)[a], (0, 1, 1, 0, -1, 1, -1, -1)[a]
+        t.px(8 + dx * 3, 8 + dy * 3, shade(HARVESTER, 1.4))
+        t.px(8 + dx * 4, 8 + dy * 4, shade(HARVESTER, 1.15))
+    t.disc(8, 8, 2, shade(HARVESTER, 0.7))
+
+    t = paint(14)                                    # harvester side: cutter bar
+    t.fill(HARVESTER, noise=0.10)
+    t.outline(shade(HARVESTER, 0.55))
+    t.hline(11, 1, 15, shade(HARVESTER, 0.45))       # bar
+    for x in range(2, 15, 2):                        # teeth
+        t.px(x, 12, shade(HARVESTER, 1.45))
+        t.px(x, 13, shade(HARVESTER, 1.15))
+    t.rect(4, 3, 11, 8, shade(HARVESTER, 0.75))      # hopper
+    t.hline(3, 4, 11, shade(HARVESTER, 1.25))
+    t.rivets(shade(HARVESTER, 1.3))
 
     t = paint(10)                                    # tilled soil side
     t.fill(DIRT, noise=0.16)

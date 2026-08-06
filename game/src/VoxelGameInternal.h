@@ -329,6 +329,12 @@ namespace vg {
     // throughput is meant to come from AREA rather than from any one plant --
     // that is the whole reason farming exists next to the r=4 source patches.
     inline constexpr float kCropStageSeconds = 20.0f;
+    // The Harvester's reach and cadence. Wider than a Miner's r=4 and quicker
+    // per take, because a Miner is rate-limited by a patch it cannot enlarge
+    // while a Harvester is limited by the field YOU laid -- so its numbers
+    // should reward the walking rather than throttle it.
+    inline constexpr int   kHarvestRadius    = 5;
+    inline constexpr float kHarvestSeconds   = 2.0f;
 
     // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
     // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.

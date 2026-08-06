@@ -703,6 +703,10 @@ void VoxelGame::drawMachineUi() {
                           std::to_string(kMineRadius) + " )";
                     break;
                 }
+                case MachineKind::Harvester:
+                    label = "  REAPS RIPE CROPS ( RADIUS " +
+                            std::to_string(kHarvestRadius) + " ) AND REPLANTS THEM";
+                    break;
                 case MachineKind::Pedestal:
                     // Only reachable for an ORPHAN pedestal -- one with no Rune
                     // Core behind it, so it is not part of any circle yet.

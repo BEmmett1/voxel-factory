@@ -157,22 +157,24 @@ namespace {
         }
     }
 
-    // A miner harvests the nearest grown resource node in reach instead of
-    // running recipes; the patch regrows from its source, bounding the rate.
-    void tickMiner(World& world, const glm::ivec3& pos, Machine& m) {
-        // A raw item in the input buffer acts as a filter: mine only that
-        // node type. Empty input = mine anything nearby.
-        const BlockId filterNode = nodeForRaw(minerFilter(m));
-
-        // The miner commits to one node per harvest. One cheap read per
-        // tick validates it (it may be mined away or the filter changed);
-        // the full reach scan runs only to acquire, every few ticks.
-        if (m.hasTarget) {
-            const BlockId t = world.getBlock(m.target.x, m.target.y, m.target.z);
-            if (!isResourceNode(t) ||
-                (filterNode != BlockId::Air && t != filterNode)) {
-                m.hasTarget = false;
-            }
+    // A reaping machine takes the nearest block it wants from the cells around
+    // it, banks that block's drop, and leaves something behind. Two machines
+    // are exactly this and differ only in those two answers: a Miner wants
+    // resource nodes and leaves Air, a Harvester wants ripe crops and leaves a
+    // fresh seedling so the field replants itself.
+    //
+    // `wants(BlockId)` is the target test and `leaves(BlockId)` says what the
+    // cell becomes; `onReap` is the registry sync for whatever `leaves` put
+    // there. Shared because the interesting parts -- committing to one target
+    // and revalidating it cheaply per tick instead of re-scanning, and checking
+    // the output cap BEFORE the take rather than after -- are the parts worth
+    // getting right once.
+    template <typename Wants, typename Leaves, typename OnReap>
+    void tickReaper(World& world, const glm::ivec3& pos, Machine& m,
+                    float seconds, int radius,
+                    Wants wants, Leaves leaves, OnReap onReap) {
+        if (m.hasTarget && !wants(world.getBlock(m.target.x, m.target.y, m.target.z))) {
+            m.hasTarget = false;
         }
         if (!m.hasTarget) {
             if (--m.rescanCooldown > 0) {
@@ -183,13 +185,11 @@ namespace {
 
             glm::ivec3 best{0};
             int bestDist2 = INT_MAX;
-            for (int dz = -kMineRadius; dz <= kMineRadius; ++dz) {
-                for (int dx = -kMineRadius; dx <= kMineRadius; ++dx) {
+            for (int dz = -radius; dz <= radius; ++dz) {
+                for (int dx = -radius; dx <= radius; ++dx) {
                     for (int dy = -3; dy <= 3; ++dy) {
                         const glm::ivec3 c = pos + glm::ivec3(dx, dy, dz);
-                        const BlockId node = world.getBlock(c.x, c.y, c.z);
-                        if (!isResourceNode(node)) continue;
-                        if (filterNode != BlockId::Air && node != filterNode) continue;
+                        if (!wants(world.getBlock(c.x, c.y, c.z))) continue;
                         const int d2 = dx * dx + dy * dy + dz * dz;
                         if (d2 < bestDist2) {
                             bestDist2 = d2;
@@ -199,36 +199,70 @@ namespace {
                 }
             }
             if (bestDist2 == INT_MAX) {
-                m.progress = 0.0f; // nothing in reach; idle until the patch regrows
+                m.progress = 0.0f; // nothing in reach; idle until it regrows
                 return;
             }
             m.target = best;
             m.hasTarget = true;
         }
 
-        // A full output stops the drill instead of mining a patch into a
-        // bottomless bucket. The target is already chosen, so its yield is
-        // known before the harvest rather than after.
+        // A full output stops the machine instead of reaping into a bottomless
+        // bucket. The target is already chosen, so its yield is known before
+        // the take rather than after.
         const ItemStack yield =
             blockDrop(world.getBlock(m.target.x, m.target.y, m.target.z));
         if (yield.id != ItemId::None &&
             m.output.count(yield.id) + yield.count > outputCap(m)) {
             m.jammed = true;
             m.crafting = true;
-            m.craftTime = kMineSeconds;
+            m.craftTime = seconds;
             return;
         }
 
         m.crafting = true;
-        m.craftTime = kMineSeconds;
+        m.craftTime = seconds;
         m.progress += kTickSeconds;
-        if (m.progress >= kMineSeconds) {
+        if (m.progress >= seconds) {
             m.progress = 0.0f;
-            const ItemStack drop = blockDrop(world.getBlock(m.target.x, m.target.y, m.target.z));
+            const BlockId took = world.getBlock(m.target.x, m.target.y, m.target.z);
+            const ItemStack drop = blockDrop(took);
             m.output.add(drop.id, drop.count);
-            world.setBlock(m.target.x, m.target.y, m.target.z, BlockId::Air);
+            const BlockId left = leaves(took);
+            world.setBlock(m.target.x, m.target.y, m.target.z, left);
+            onReap(m.target, left);
             m.hasTarget = false;
         }
+    }
+
+    // A miner harvests the nearest grown resource node in reach instead of
+    // running recipes; the patch regrows from its source, bounding the rate.
+    void tickMiner(World& world, const glm::ivec3& pos, Machine& m) {
+        // A raw item in the input buffer acts as a filter: mine only that
+        // node type. Empty input = mine anything nearby.
+        const BlockId filterNode = nodeForRaw(minerFilter(m));
+        tickReaper(
+            world, pos, m, kMineSeconds, kMineRadius,
+            [&](BlockId b) {
+                return isResourceNode(b) &&
+                       (filterNode == BlockId::Air || b == filterNode);
+            },
+            [](BlockId) { return BlockId::Air; },
+            [](const glm::ivec3&, BlockId) {});
+    }
+
+    // A harvester takes RIPE crops only and resets the cell to stage 0, so the
+    // field replants itself and the tilled soil is never disturbed -- untilling
+    // on harvest would mean re-tilling every automated field by hand forever.
+    void tickHarvester(World& world, const glm::ivec3& pos, Machine& m,
+                       CropSystem::CropMap& crops) {
+        tickReaper(
+            world, pos, m, kHarvestSeconds, kHarvestRadius,
+            [](BlockId b) { return CropSystem::isRipe(b); },
+            [](BlockId) { return CropSystem::cropAtStage(0); },
+            // The replanted seedling needs its growth timer, exactly as a
+            // hand-placed one gets from WorldEdit -- without this the field
+            // reaps once and then stands still.
+            [&](const glm::ivec3& at, BlockId) { crops[at] = 0.0f; });
     }
 
     // The Rune Core reads the ring of Pedestals around it and runs whichever
@@ -282,6 +316,10 @@ namespace {
             case MachineKind::Collector: return false; // the environment fills it
             case MachineKind::Miner:     return nodeForRaw(item) != BlockId::Air;
                                          // raws are filters (not consumed)
+            // A harvester reads the field, not its input: there is nothing to
+            // deliver to it, and taking deliveries would let a belt silently
+            // fill a buffer that never empties.
+            case MachineKind::Harvester: return false;
             case MachineKind::RuneCore: {
                 // The core's own buffer holds the CENTRE catalyst only; ring
                 // ingredients belong on the pedestals.
@@ -378,7 +416,8 @@ bool tickSelfPowered(const World& world, MachineMap& machines,
 }
 
 void tickPowered(World& world, MachineMap& machines, const PowerState& power,
-                 std::uint32_t seed, std::uint32_t& rngCounter) {
+                 std::uint32_t seed, std::uint32_t& rngCounter,
+                 CropSystem::CropMap& crops) {
     for (auto& [pos, m] : machines) {
         const MachineTraits& traits = machineTraits(m.type);
         // Generators and collectors ran in tickSelfPowered (their state does
@@ -423,6 +462,10 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
 
         if (traits.kind == MachineKind::Miner) {
             tickMiner(world, pos, m);
+            continue;
+        }
+        if (traits.kind == MachineKind::Harvester) {
+            tickHarvester(world, pos, m, crops);
             continue;
         }
 

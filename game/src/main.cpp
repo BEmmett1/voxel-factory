@@ -132,6 +132,9 @@ bool renameKeyInSave(const std::string& path, const std::string& from,
 // truncated file is rejected. Returns a process exit code.
 int runSelfTest() {
     namespace fs = std::filesystem;
+    // The crop registry every tickPowered takes. Only the Harvester touches it,
+    // so the cases below that are not about farming share one empty map.
+    CropSystem::CropMap noCrops;
     const std::string path =
         (fs::temp_directory_path() / "voxel-factory-selftest.vxf").string();
     std::error_code ec;
@@ -949,7 +952,7 @@ int runSelfTest() {
 
         std::uint32_t rc = 0;
         for (int i = 0; i < 400; ++i) { // 20 seconds of being ignored
-            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         }
         SELFTEST_CHECK(cm[p].progress == 0.0f);
         SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 0);
@@ -957,7 +960,7 @@ int runSelfTest() {
 
         // One turn of the handle, and it moves by exactly that much.
         cm[p].crankBanked = vg::kCrankProgress;
-        MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+        MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(cm[p].progress == vg::kCrankProgress);
         SELFTEST_CHECK(cm[p].crankBanked == 0.0f);
 
@@ -965,7 +968,7 @@ int runSelfTest() {
         // manual twin owes kManualSlowdown times that.
         for (int i = 0; cm[p].output.count(ItemId::CrystalDust) == 0 && i < 64; ++i) {
             cm[p].crankBanked = vg::kCrankProgress;
-            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         }
         SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 1);
         SELFTEST_CHECK(cm[p].input.count(ItemId::Crystal) == 7);
@@ -977,7 +980,7 @@ int runSelfTest() {
         pm[q].type = BlockId::Furnace;
         pm[q].input.add(ItemId::CopperOre, 8);
         pm[q].fuel.add(ItemId::Charcoal, 4);
-        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(pm[q].output.count(ItemId::CopperIngot) > 0);
     }
 
@@ -1009,7 +1012,7 @@ int runSelfTest() {
 
         std::uint32_t rc = 0;
         for (int i = 0; i < 400; ++i) { // left completely alone
-            MachineSystem::tickPowered(bw, bm, dead, 1u, rc);
+            MachineSystem::tickPowered(bw, bm, dead, 1u, rc, noCrops);
         }
         SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) > 0); // it ran
         SELFTEST_CHECK(bm[p].input.count(ItemId::CopperOre) < 8);    // it ate ore
@@ -1024,7 +1027,7 @@ int runSelfTest() {
         fm2[q].input.add(ItemId::CopperOre, 8);
         fm2[q].fuel.add(ItemId::Charcoal, 4);
         std::uint32_t rc2 = 0;
-        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, fm2, dead, 1u, rc2);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, fm2, dead, 1u, rc2, noCrops);
         SELFTEST_CHECK(fm2[q].output.count(ItemId::CopperIngot) >
                        bm[p].output.count(ItemId::CopperIngot));
 
@@ -1033,7 +1036,7 @@ int runSelfTest() {
         bm[p].fuel.remove(ItemId::Charcoal, bm[p].fuel.count(ItemId::Charcoal));
         bm[p].burnLeft = 0.0f;
         const int made = bm[p].output.count(ItemId::CopperIngot);
-        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, bm, dead, 1u, rc);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, bm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) == made);
     }
 
@@ -1056,7 +1059,7 @@ int runSelfTest() {
 
         std::uint32_t rc = 7;
         const std::uint32_t rcBefore = rc;
-        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(jm[p].jammed);
         SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) == vg::kMachineOutputCap);
         SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) == 8);   // inputs untouched
@@ -1065,7 +1068,7 @@ int runSelfTest() {
 
         // Drain it and the same craft resumes; a jam holds, it doesn't cancel.
         jm[p].output.remove(ItemId::CopperIngot, vg::kMachineOutputCap);
-        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(!jm[p].jammed);
         SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) > 0);
         SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) < 8);
@@ -1123,7 +1126,7 @@ int runSelfTest() {
         SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 1);
 
         // The migration is the whole behaviour: what was fed in becomes stock.
-        MachineSystem::tickPowered(kw, km, dead, 1u, rc);
+        MachineSystem::tickPowered(kw, km, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 0);
         SELFTEST_CHECK(km[c].output.count(ItemId::CopperOre) == 1);
 
@@ -1236,7 +1239,7 @@ int runSelfTest() {
         // Off: no product, no ore eaten, no fuel burned, however long it sits.
         sm[p].enabled = false;
         std::uint32_t rc = 0;
-        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) == 0);
         SELFTEST_CHECK(sm[p].input.count(ItemId::CopperOre) == 8);
         SELFTEST_CHECK(sm[p].fuel.count(ItemId::Charcoal) == 4);
@@ -1245,7 +1248,7 @@ int runSelfTest() {
         // ...but it is a PAUSE, not a reset: the buffers are still there and it
         // picks straight back up.
         sm[p].enabled = true;
-        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) > 0);
 
         // An off machine still ACCEPTS and still gives up its output. This is
@@ -1402,6 +1405,69 @@ int runSelfTest() {
         // the seed while it is growing, the herb once it is ripe.
         SELFTEST_CHECK(WorldEdit::breakBlock(cw, cr, plant).drop.id == ItemId::Herb);
         SELFTEST_CHECK(field.count(plant) == 0);
+    }
+
+    // ---- Farming: the Harvester reaps and REPLANTS -------------------------
+    {
+        World hw;
+        MachineSystem::MachineMap hm;
+        MachineSystem::BeltMap hb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> hs, hsap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries hr{hm, hb, hs, hsap, field};
+        PowerState dead;
+        std::uint32_t rc = 0;
+
+        const glm::ivec3 mac{220, 30, 220};
+        hw.setBlock(mac.x, mac.y, mac.z, BlockId::Harvester);
+        hm[mac].type = BlockId::Harvester;
+
+        // One ripe plant and one still growing, both in reach.
+        const glm::ivec3 ripeSoil = mac + glm::ivec3(2, 0, 0);
+        const glm::ivec3 ripe = ripeSoil + glm::ivec3(0, 1, 0);
+        const glm::ivec3 youngSoil = mac + glm::ivec3(-2, 0, 0);
+        const glm::ivec3 young = youngSoil + glm::ivec3(0, 1, 0);
+        hw.setBlock(ripeSoil.x, ripeSoil.y, ripeSoil.z, BlockId::TilledSoil);
+        hw.setBlock(youngSoil.x, youngSoil.y, youngSoil.z, BlockId::TilledSoil);
+        hw.setBlock(ripe.x, ripe.y, ripe.z, BlockId::HerbCrop3);
+        SELFTEST_CHECK(WorldEdit::placeBlock(hw, hr, young, BlockId::HerbCrop0, {}).placed);
+
+        // An UNPOWERED harvester does nothing: it is a powered machine, because
+        // the point of a farm is that it runs while you are elsewhere.
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, dead, 1u, rc, field);
+        }
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop3);
+
+        PowerState live;
+        live.setEnergized(mac);
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, live, 1u, rc, field);
+        }
+        // The ripe one is banked as Herb...
+        SELFTEST_CHECK(hm[mac].output.count(ItemId::Herb) > 0);
+        // ...and the cell is a SEEDLING on intact tilled soil, not Air and not
+        // bare dirt. Untilling on harvest would mean re-tilling every automated
+        // field by hand forever, which is the opposite of automation.
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop0);
+        SELFTEST_CHECK(hw.getBlock(ripeSoil.x, ripeSoil.y, ripeSoil.z) == BlockId::TilledSoil);
+        // ...and it is REGISTERED, or the field would reap once and stand still.
+        SELFTEST_CHECK(field.count(ripe) == 1);
+
+        // The unripe plant was never touched.
+        SELFTEST_CHECK(hw.getBlock(young.x, young.y, young.z) == BlockId::HerbCrop0);
+
+        // A full output jams and holds, like every other machine: no reaping
+        // into a bottomless bucket.
+        hw.setBlock(ripe.x, ripe.y, ripe.z, BlockId::HerbCrop3);
+        hm[mac].hasTarget = false;
+        hm[mac].rescanCooldown = 0;
+        hm[mac].output.add(ItemId::Herb, 10000);
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, live, 1u, rc, field);
+        }
+        SELFTEST_CHECK(hm[mac].jammed);
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop3);
     }
 
     std::printf("selftest OK\n");

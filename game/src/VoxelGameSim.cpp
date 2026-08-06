@@ -368,7 +368,8 @@ void VoxelGame::onTick() {
     updateBucketFill();
 
     // Powered machines process their input buffers into outputs over time.
-    MachineSystem::tickPowered(overworld(), m_machines, m_power, m_worldSeed, m_sourceRng);
+    MachineSystem::tickPowered(overworld(), m_machines, m_power, m_worldSeed, m_sourceRng,
+                               m_crops);
 
     // Advance conduits on a slower cadence so items visibly travel.
     if (++m_beltTimer >= kBeltStepTicks) {

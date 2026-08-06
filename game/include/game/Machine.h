@@ -73,14 +73,19 @@ enum class MachineKind : std::uint8_t {
     RuneCore,  // reads the ring of Pedestals around it and runs CircleRecipes
     Pedestal,  // passive one-item-type holder; a ring slot for the Rune Core
     Storage,   // bulk stockpile; belts both fill and drain it
+    // Reaps ripe crops in reach and REPLANTS the cell at stage 0. Its own kind
+    // rather than a Miner variant for exactly that reason: a Miner leaves Air,
+    // and a field that harvested itself into bare soil would need re-sowing by
+    // hand forever, which is the opposite of automation.
+    Harvester,
 };
 
 // Enum spellings for the content pack format -- see kToolNames in Item.h.
 inline constexpr const char* kKindNames[] = {
     "processor", "generator", "collector", "miner", "rune_core", "pedestal",
-    "storage",
+    "storage", "harvester",
 };
-static_assert(std::size(kKindNames) == 7,
+static_assert(std::size(kKindNames) == 8,
               "kKindNames needs one name per MachineKind");
 
 // What burns, and for how long. A shared registry rather than a per-machine
@@ -228,6 +233,12 @@ inline constexpr MachineTraits kMachineTraitSeed[] = {
     // `output`, so one buffer swap makes a crate both feedable and drainable
     // with no belt code at all.
     {.block = BlockId::StorageCrate, .kind = MachineKind::Storage, .demand = 0},
+
+    // Farming's automation payoff: the Miner one field over. Powered, because
+    // the whole point of a farm is that it runs while you are somewhere else,
+    // and the manual tier already has an answer for reaping by hand -- your
+    // hands.
+    {.block = BlockId::Harvester, .kind = MachineKind::Harvester},
 };
 
 // Every cranked machine is a manual twin -- but NOT every twin is cranked.

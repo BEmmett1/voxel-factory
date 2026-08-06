@@ -213,6 +213,7 @@ void VoxelGame::onUpdate(float dt) {
         // there is nothing else in the kit that can make Tilled Soil.
         give(ItemId::CopperHoe, 1, kHotbarSlots - 6);
         give(ItemId::HerbSeed, 32, kHotbarSlots - 7);
+        give(ItemId::HarvesterItem, 2, kHotbarSlots - 8);
         m_inventory.add(ItemId::Herb, 32);
         updateTitle();
         audio().play("craft", kCraftVolume);

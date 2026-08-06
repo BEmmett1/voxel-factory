@@ -318,6 +318,12 @@ namespace {
         // patterns first, so they win over their two-ingredient prefixes.
         {"circle/miner", {}, {{I::MachineFrame, 1}, {I::CopperPlate, 3}, {I::Stone, 4}, {}},
                                                            {I::MinerItem, 1},     8.0f},
+        // The Harvester is the Miner's sibling and costs about the same, but in
+        // IRON rather than stone -- it is a blade, and iron is the structural
+        // metal. Three ingredients, so it sits with the rest of this tier
+        // ahead of any two-ingredient pattern it would otherwise shadow.
+        {"circle/harvester", {}, {{I::MachineFrame, 1}, {I::IronPlate, 3}, {I::CopperHoe, 1}, {}},
+                                                           {I::HarvesterItem, 1}, 8.0f},
         {"circle/distiller", {}, {{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}, {}},
                                                            {I::DistillerItem, 1}, 8.0f},
         {"circle/transmuter", {}, {{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}, {}},

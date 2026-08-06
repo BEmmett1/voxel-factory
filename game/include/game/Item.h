@@ -184,6 +184,7 @@ enum class ItemId : std::uint16_t {
     // the wild bushes that already grow on the island and then sustains itself
     // -- and the reachability closure needs no special case for it.
     HerbSeed,
+    HarvesterItem,
     Count
 };
 
