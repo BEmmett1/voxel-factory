@@ -9,6 +9,7 @@
 #include "game/ContentPack.h"
 #include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
+#include "game/CropSystem.h"
 #include "game/MachineSystem.h"
 #include "game/Recipes.h"
 #include "game/SaveSystem.h"
@@ -183,6 +184,8 @@ int runSelfTest() {
     sources[glm::ivec3{4, 2, 4}] = 3.5f;
     std::unordered_map<glm::ivec3, float, IVec3Hash> saplings;
     saplings[glm::ivec3{6, 2, 6}] = 9.0f;
+    CropSystem::CropMap crops;
+    crops[glm::ivec3{7, 2, 7}] = 12.5f;
 
     Weather weather;
     weather.raining = true;
@@ -218,7 +221,7 @@ int runSelfTest() {
     std::array<ItemId, kArmorSlots> armor{ItemId::CopperHelm, ItemId::AegisChest,
                                           ItemId::None};
 
-    SaveData src{world, inv, {machines, belts, sources, saplings},
+    SaveData src{world, inv, {machines, belts, sources, saplings, crops},
                  weather, player, bucketFill,
                  camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated,
                  tempestDefeated, playtime, drops, armor};
@@ -229,6 +232,7 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines2;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts2;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources2, saplings2;
+    CropSystem::CropMap crops2;
     Weather weather2; // defaults: clear sky, fresh timer
     PlayerController player2;
     float bucketFill2 = 0.0f;
@@ -246,7 +250,7 @@ int runSelfTest() {
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kArmorSlots> armor2;
     armor2.fill(ItemId::Wood);
-    SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
+    SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2, crops2},
                  weather2, player2, bucketFill2,
                  camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
                  tempestDefeated2, playtime2, drops2, armor2};
@@ -303,6 +307,9 @@ int runSelfTest() {
 
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
+    // v25's tail append: how far a plant is into its current stage. The stage
+    // itself rides the chunk data, so this is the only part that needed a bump.
+    SELFTEST_CHECK(crops2.size() == 1 && crops2.at(glm::ivec3{7, 2, 7}) == 12.5f);
 
     SELFTEST_CHECK(weather2.raining == true);
     SELFTEST_CHECK(weather2.timer == 42.0f && bucketFill2 == 0.25f);
@@ -368,9 +375,10 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines3;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts3;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
+    CropSystem::CropMap crops3;
     std::vector<DroppedItem> drops3;
     std::array<ItemId, kArmorSlots> armor3{};
-    SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
+    SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3, crops3},
                     weather2, player2, bucketFill2,
                     camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
                     tempestDefeated2, playtime2, drops3, armor3};
@@ -459,6 +467,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr, sp;
+        CropSystem::CropMap cr;
         Weather wt;
         PlayerController pl;
         float bf = 0.0f;
@@ -473,7 +482,7 @@ int runSelfTest() {
         std::vector<DroppedItem> dr;
         std::array<ItemId, kArmorSlots> ar{};
 
-        SaveData sv{w, iv, {ms, bs, sr, sp}, wt, pl, bf, cp, yw, pt,
+        SaveData sv{w, iv, {ms, bs, sr, sp, cr}, wt, pl, bf, cp, yw, pt,
                     sd, rng, sl, hb, bd, td, play, dr, ar};
         SELFTEST_CHECK(SaveSystem::save(p, sv));
 
@@ -487,6 +496,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms2;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs2;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr2, sp2;
+        CropSystem::CropMap cr2;
         Weather wt2;
         PlayerController pl2;
         float bf2 = 0.0f;
@@ -500,7 +510,7 @@ int runSelfTest() {
         std::vector<DroppedItem> dr2;
         std::array<ItemId, kArmorSlots> ar2{};
 
-        SaveData sv2{w2, iv2, {ms2, bs2, sr2, sp2}, wt2, pl2, bf2, cp2, yw2, pt2,
+        SaveData sv2{w2, iv2, {ms2, bs2, sr2, sp2, cr2}, wt2, pl2, bf2, cp2, yw2, pt2,
                      sd2, rng2, sl2, hb2, bd2, td2, play2, dr2, ar2};
         SELFTEST_CHECK(SaveSystem::load(p, sv2));
 
@@ -523,6 +533,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms3;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs3;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr3, sp3;
+        CropSystem::CropMap cr3;
         Weather wt3;
         PlayerController pl3;
         float bf3 = 0.0f;
@@ -535,7 +546,7 @@ int runSelfTest() {
         double play3 = 0.0;
         std::vector<DroppedItem> dr3;
         std::array<ItemId, kArmorSlots> ar3{};
-        SaveData sv3{w3, iv3, {ms3, bs3, sr3, sp3}, wt3, pl3, bf3, cp3, yw3, pt3,
+        SaveData sv3{w3, iv3, {ms3, bs3, sr3, sp3, cr3}, wt3, pl3, bf3, cp3, yw3, pt3,
                      sd3, rng3, sl3, hb3, bd3, td3, play3, dr3, ar3};
         SELFTEST_CHECK(!SaveSystem::load(p, sv3));
 
@@ -841,7 +852,8 @@ int runSelfTest() {
             std::unordered_map<glm::ivec3, Machine, IVec3Hash> mmach;
             std::unordered_map<glm::ivec3, Belt, IVec3Hash> mbelt;
             std::unordered_map<glm::ivec3, float, IVec3Hash> msrc, msap;
-            SaveData ms{mw, minv, {mmach, mbelt, msrc, msap}, mwx, mp, mfill, mpos, myaw, mpitch,
+            CropSystem::CropMap mcrop;
+            SaveData ms{mw, minv, {mmach, mbelt, msrc, msap, mcrop}, mwx, mp, mfill, mpos, myaw, mpitch,
                         mseed, mrng, mslot, mhot, mb1, mb2, mplay, mdrops, marmor};
             SELFTEST_CHECK(SaveSystem::save(modSave, ms));
 
@@ -862,7 +874,8 @@ int runSelfTest() {
             std::unordered_map<glm::ivec3, Machine, IVec3Hash> rmach;
             std::unordered_map<glm::ivec3, Belt, IVec3Hash> rbelt;
             std::unordered_map<glm::ivec3, float, IVec3Hash> rsrc, rsap;
-            SaveData rs{rw, rinv, {rmach, rbelt, rsrc, rsap}, rwx, rp, rfill, rpos, ryaw, rpitch,
+            CropSystem::CropMap rcrop;
+            SaveData rs{rw, rinv, {rmach, rbelt, rsrc, rsap, rcrop}, rwx, rp, rfill, rpos, ryaw, rpitch,
                         rseed, rrng, rslot, rhot, rb1, rb2, rplay, rdrops, rarmor};
             SELFTEST_CHECK(SaveSystem::load(modSave, rs));
             SELFTEST_CHECK(rw.getBlock(3, 4, 5) == modBlock);
@@ -1302,7 +1315,8 @@ int runSelfTest() {
         MachineSystem::MachineMap fm;
         MachineSystem::BeltMap fb;
         std::unordered_map<glm::ivec3, float, IVec3Hash> fs, fsap;
-        const WorldEdit::Registries fr{fm, fb, fs, fsap};
+        CropSystem::CropMap fc;
+        const WorldEdit::Registries fr{fm, fb, fs, fsap, fc};
 
         const glm::ivec3 g{200, 30, 200};
         fw.setBlock(g.x, g.y, g.z, BlockId::Grass);
@@ -1334,6 +1348,60 @@ int runSelfTest() {
         const glm::ivec3 onRock = rock + glm::ivec3(0, 1, 0);
         SELFTEST_CHECK(!WorldEdit::placeBlock(fw, fr, onRock, BlockId::Sapling, {}).placed);
         SELFTEST_CHECK(fw.getBlock(onRock.x, onRock.y, onRock.z) == BlockId::Air);
+    }
+
+    // ---- Farming: crops ripen, on tilled soil only -------------------------
+    {
+        World cw;
+        MachineSystem::MachineMap cm;
+        MachineSystem::BeltMap cb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> cs, csap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries cr{cm, cb, cs, csap, field};
+
+        const glm::ivec3 soil{210, 30, 210};
+        const glm::ivec3 plant = soil + glm::ivec3(0, 1, 0);
+        cw.setBlock(soil.x, soil.y, soil.z, BlockId::TilledSoil);
+
+        // A seed refuses plain dirt: a field is laid out on purpose.
+        const glm::ivec3 dirt{212, 30, 210};
+        cw.setBlock(dirt.x, dirt.y, dirt.z, BlockId::Dirt);
+        SELFTEST_CHECK(!WorldEdit::placeBlock(cw, cr, dirt + glm::ivec3(0, 1, 0),
+                                              BlockId::HerbCrop0, {}).placed);
+
+        SELFTEST_CHECK(WorldEdit::placeBlock(cw, cr, plant, BlockId::HerbCrop0, {}).placed);
+        SELFTEST_CHECK(field.count(plant) == 1);
+
+        // One stage per kCropStageSeconds. Run three stages' worth plus slack
+        // and the plant must be RIPE and no further -- ripe is the end of the
+        // line, so it waits to be picked rather than looping round.
+        const int perStage = static_cast<int>(vg::kCropStageSeconds / vg::kTickSeconds) + 1;
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(plant.x, plant.y, plant.z) == BlockId::HerbCrop1);
+        for (int i = 0; i < perStage * 8; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(plant.x, plant.y, plant.z) == BlockId::HerbCrop3);
+        SELFTEST_CHECK(CropSystem::isRipe(cw.getBlock(plant.x, plant.y, plant.z)));
+
+        // Rain is the rate. The same ticks get a second plant further along.
+        const glm::ivec3 wetSoil{214, 30, 210};
+        const glm::ivec3 wet = wetSoil + glm::ivec3(0, 1, 0);
+        cw.setBlock(wetSoil.x, wetSoil.y, wetSoil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(cw, cr, wet, BlockId::HerbCrop0, {}).placed);
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, true);
+        SELFTEST_CHECK(CropSystem::stageOf(cw.getBlock(wet.x, wet.y, wet.z)) > 1);
+
+        // Dig the soil out from under a crop and it dies rather than ripening
+        // in mid-air -- and the registry entry goes with it, so a field cannot
+        // leak timers for plants that are not there.
+        cw.setBlock(wetSoil.x, wetSoil.y, wetSoil.z, BlockId::Air);
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(wet.x, wet.y, wet.z) == BlockId::Air);
+        SELFTEST_CHECK(field.count(wet) == 0);
+
+        // Breaking a crop unregisters it and hands back what it was worth:
+        // the seed while it is growing, the herb once it is ripe.
+        SELFTEST_CHECK(WorldEdit::breakBlock(cw, cr, plant).drop.id == ItemId::Herb);
+        SELFTEST_CHECK(field.count(plant) == 0);
     }
 
     std::printf("selftest OK\n");

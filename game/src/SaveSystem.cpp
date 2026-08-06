@@ -19,7 +19,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 24;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 25;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -73,6 +73,11 @@ namespace {
     // shape again. A pre-v24 machine loads ENABLED, which is the only honest
     // default: every machine in every older save was built before a switch
     // existed, so all of them were running.
+    //
+    // v25 appends the crop growth timers at the END of the file, the v15/v16/
+    // v18 shape. The crop BLOCKS ride the chunk data like any other block and
+    // need nothing (v22's key tables already carry them); this is only how far
+    // into its current stage each plant is. A pre-v25 save has no crops.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -409,6 +414,18 @@ bool save(const std::string& path, const SaveData& d) {
         writeId(out, static_cast<std::uint32_t>(id));
     }
 
+    // Crop growth timers (appended in v25). A tail append like v15/v16/v18, so
+    // kOldestLoadable does not move and a pre-v25 save loads with an empty
+    // field -- which is what it had. The BLOCKS are already in the chunk data;
+    // this is only how far into its current stage each one is.
+    writePod(out, static_cast<std::uint32_t>(d.registries.crops.size()));
+    for (const auto& [pos, timer] : d.registries.crops) {
+        writePod(out, pos.x);
+        writePod(out, pos.y);
+        writePod(out, pos.z);
+        writePod(out, timer);
+    }
+
     out.close();
     if (!out.good()) return false;
 
@@ -679,6 +696,22 @@ bool load(const std::string& path, SaveData& d) {
             std::uint32_t v = 0;
             if (!readId(in, version, v) || v >= itemLimit) return false;
             cell = map.item(v);
+        }
+    }
+
+    // Crop timers: appended in v25; older saves have no crops, which is
+    // exactly what they had. The stage itself came back with the chunk data,
+    // so a missing timer only costs a plant its progress toward the next one.
+    d.registries.crops.clear();
+    if (version >= 25) {
+        std::uint32_t cropCount = 0;
+        if (!readPod(in, cropCount) || cropCount > 1000000u) return false;
+        for (std::uint32_t i = 0; i < cropCount; ++i) {
+            std::int32_t x = 0, y = 0, z = 0;
+            float timer = 0.0f;
+            if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
+            if (!readPod(in, timer)) return false;
+            d.registries.crops[{x, y, z}] = timer;
         }
     }
 

@@ -180,6 +180,10 @@ enum class ItemId : std::uint16_t {
     // duplicate soil, and you make more of it with the hoe rather than by
     // carrying it around.)
     CopperHoe,
+    // Planted onto tilled soil. Ground from Herb, so the loop bootstraps off
+    // the wild bushes that already grow on the island and then sustains itself
+    // -- and the reachability closure needs no special case for it.
+    HerbSeed,
     Count
 };
 

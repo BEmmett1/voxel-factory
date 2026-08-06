@@ -343,6 +343,20 @@ def terrain():
     t.speckle(shade(DIRT, 1.35), 6, seed=52)         # turned clods
     t.speckle(shade(DIRT, 0.5), 5, seed=53)
 
+    t = paint(11)                                    # herb seed (crop item icon)
+    for sx, sy in ((5, 6), (8, 5), (10, 8), (6, 10), (9, 11)):
+        t.disc(sx, sy, 1, shade(SAPLING, 0.9))       # a scatter of seeds
+        t.px(sx, sy - 1, shade(SAPLING, 1.4))
+        t.px(sx + 1, sy + 1, shade(SAPLING, 0.55))
+
+    t = paint(12)                                    # ripe herb (crop item icon)
+    t.vline(8, 4, 13, shade(SAPLING, 0.85))          # stem
+    for y in (6, 8, 10):                             # leaf pairs
+        t.hline(y, 4, 7, shade(LEAVES, 1.15))
+        t.hline(y, 9, 12, shade(LEAVES, 1.0))
+    t.disc(8, 4, 2, (186, 142, 214))                 # flower crown
+    t.px(8, 4, (232, 206, 128))
+
     t = paint(10)                                    # tilled soil side
     t.fill(DIRT, noise=0.16)
     t.speckle(shade(DIRT, 0.6), 8, seed=54)

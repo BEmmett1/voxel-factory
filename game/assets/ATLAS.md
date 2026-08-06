@@ -4,7 +4,10 @@ The atlas is **256x256**: a **16x16 grid of 16px tiles**. Tile index =
 `row * 16 + col`. Repaint any tile in any pixel editor and rebuild
 (`cmake --build out/build/x64-Debug` copies it next to the exe) — no code
 changes needed unless you *move* a tile. World tiles must stay fully opaque;
-item icons (rows 4-7, 11) may use transparency.
+item icons (rows 4-7, 11) may use transparency. Tiles 11-12 are the one
+exception in a world row: they are icons for SHAPED crop blocks, which draw
+from `shapes.png` and never sample these, so their transparency is only ever
+seen by `UiRenderer`.
 
 The sheet was 8 rows until the recipe overhaul. Because the index is
 `row * 16 + col` and the **column count never changed**, growing downward left
@@ -32,7 +35,9 @@ you want to *discard* hand edits and start over.
 | 7 | 7 | log bark (sides) |
 | 8 | 8 | leaves |
 | 9 | 10 | tilled soil (furrowed top; bottom borrows dirt) |
-| 11-15 | | spare |
+| 11 | 11 | herb seed / unripe crop — the ITEM icon for the seed, since a placeable borrows its block's side tile |
+| 12 | 12 | ripe herb — the same for the ripe stage |
+| 13-15 | | spare |
 
 ## Rows 1-2 — machines (tiles 16-47)
 
@@ -152,7 +157,7 @@ surface in the powered twin's accent color, every side tile carries the same
 
 Empty. This is the headroom the 8→16 row growth bought.
 
-All tiles above are painted by `make_atlas.py`. The rest (11-15, 45-47, 63,
+All tiles above are painted by `make_atlas.py`. The rest (13-15, 45-47, 63,
 117-127, 162-175, 189-191, 194-255) are free for new blocks/items. Claim a tile here,
 add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
 on the kBlocks row for blocks, `atlasTile` on the kItems row for material

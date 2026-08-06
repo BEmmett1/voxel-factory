@@ -125,7 +125,7 @@ private:
     // The registry bundle WorldEdit keeps in sync with the block grid
     // (player edits go through WorldEdit::breakBlock / placeBlock).
     WorldEdit::Registries editRegistries() {
-        return {m_machines, m_belts, m_sources, m_saplings};
+        return {m_machines, m_belts, m_sources, m_saplings, m_crops};
     }
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
@@ -206,6 +206,7 @@ private:
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources;  // pos -> spawn timer
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
+    CropSystem::CropMap                                m_crops;    // pos -> seconds into this stage
     int m_beltTimer = 0;           // ticks since the last belt step
     int m_leafPity = 0;            // chopped leaves since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass

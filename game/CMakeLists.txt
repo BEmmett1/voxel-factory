@@ -24,6 +24,7 @@ add_executable(voxel-factory
     src/MachineSystem.cpp
     src/AlchemyCircle.cpp
     src/DropSystem.cpp
+    src/CropSystem.cpp
     src/VoxelGame.cpp
     src/VoxelGameWorldGen.cpp
     src/VoxelGameSim.cpp

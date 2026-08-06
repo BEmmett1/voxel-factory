@@ -72,6 +72,14 @@ enum class ShapeId : std::uint8_t {
     AlchemicalAlembic,
     AugerMiningRig,
     ArcaneInfuser,
+    // Farming's four growth stages. Crossed planes rather than a detailed
+    // model, deliberately: this is the first content placed in BULK, and 4
+    // quads (0.8 KB of chunk mesh) against the Infuser's 367 is what keeps a
+    // field from costing megabytes.
+    HerbCrop0,
+    HerbCrop1,
+    HerbCrop2,
+    HerbCrop3,
     Count
 };
 
@@ -114,6 +122,26 @@ inline constexpr BlockShape kBlockShapes[] = {
      .boxes = kShapeBoxesArcaneInfuser,
      .bounds = kShapeBoundsArcaneInfuser,
      .anim = kShapeAnimArcaneInfuser},
+    {.id = ShapeId::HerbCrop0,
+     .quads = kShapeQuadsHerbCrop0,
+     .boxes = kShapeBoxesHerbCrop0,
+     .bounds = kShapeBoundsHerbCrop0,
+     .anim = kShapeAnimHerbCrop0},
+    {.id = ShapeId::HerbCrop1,
+     .quads = kShapeQuadsHerbCrop1,
+     .boxes = kShapeBoxesHerbCrop1,
+     .bounds = kShapeBoundsHerbCrop1,
+     .anim = kShapeAnimHerbCrop1},
+    {.id = ShapeId::HerbCrop2,
+     .quads = kShapeQuadsHerbCrop2,
+     .boxes = kShapeBoxesHerbCrop2,
+     .bounds = kShapeBoundsHerbCrop2,
+     .anim = kShapeAnimHerbCrop2},
+    {.id = ShapeId::HerbCrop3,
+     .quads = kShapeQuadsHerbCrop3,
+     .boxes = kShapeBoxesHerbCrop3,
+     .bounds = kShapeBoundsHerbCrop3,
+     .anim = kShapeAnimHerbCrop3},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -142,6 +170,7 @@ inline const BlockShape& blockShape(BlockId id) {
 inline constexpr const char* kShapeNames[] = {
     "full_cube", "empty", "brewing_cauldron",
     "alchemical_alembic", "auger_mining_rig", "arcane_infuser",
+    "herb_crop_0", "herb_crop_1", "herb_crop_2", "herb_crop_3",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

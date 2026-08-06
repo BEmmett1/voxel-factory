@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/Block.h"
+#include "game/CropSystem.h"
 #include "game/HashIVec3.h"
 #include "game/Item.h"
 #include "game/MachineSystem.h"
@@ -25,6 +26,7 @@ namespace WorldEdit {
         MachineSystem::BeltMap&    belts;
         std::unordered_map<glm::ivec3, float, IVec3Hash>& sources;
         std::unordered_map<glm::ivec3, float, IVec3Hash>& saplings;
+        CropSystem::CropMap& crops;
     };
 
     struct BreakResult {

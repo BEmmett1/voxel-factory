@@ -171,6 +171,7 @@ Draws 5 power. Hand tier: **Sieve** (3x slower).
 |---|---|---|---|
 | `sifter/sand` | Sand x4 | Iron Nugget (30%), Copper Nugget (20%), Pebble (20%), Crystal (5%), nothing (25%) | 4.0 |
 | `sifter/soil` | Dirt x4 | Pebble x2 (45%), Sand (30%), Stick (15%), nothing (10%) | 3.0 |
+| `sifter/herb-seed` | Herb | Herb Seed | 2.0 |
 
 ### Glassblower
 

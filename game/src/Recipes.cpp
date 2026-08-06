@@ -185,6 +185,15 @@ namespace {
              {{I::Sand, 1}, 30.0f},
              {{I::Stick, 1}, 15.0f},
              {{}, 10.0f}},                                                              3.0f},
+        // Farming's way in. Seeds come off the SIEVE tier deliberately: the
+        // Sieve is hand-craftable (Wood + Sticks), so a field is reachable
+        // before the Circle, and the wild Herb Bushes the island already grows
+        // are the bootstrap. Deterministic, not a roll -- the point of farming
+        // is that it scales with area, and a seed you might not get would put
+        // that behind luck. One in, one out; a ripe plant yields two, and THAT
+        // is the doubling.
+        {"sifter/herb-seed", B::Sifter, {{I::Herb, 1}},
+                                                       {{{I::HerbSeed, 1}}},           2.0f},
 
         // ---- Glassblower -------------------------------------------------
         // One recipe today. It exists as its own machine rather than as a

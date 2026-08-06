@@ -279,6 +279,29 @@ namespace {
          .name = "Tilled Soil", .color = {0.36f, 0.24f, 0.13f},
          .drop = {I::DirtItem, 1}, .tiles = {9, 10, 2}, .hardness = 0.5f,
          .tool = T::Shovel, .provides = SoilKind::Tilled},
+        // Crops: crossed planes, so they do not fill their cell (no occlusion,
+        // no keeping the rain off the field below). They stay SOLID, which is
+        // what lets you aim at one and break it -- walking through wheat is a
+        // later change that splits ray boxes from physics boxes, and today's
+        // Sapling is a whole solid cube, so a crop is already strictly better.
+        // Pull one early and you get the seed back; only the ripe stage is
+        // worth anything.
+        {.id = B::HerbCrop0, .key = "core:herb_crop_0",
+         .name = "Herb Seedling", .fullCube = false, .color = {0.42f, 0.66f, 0.30f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop0},
+        {.id = B::HerbCrop1, .key = "core:herb_crop_1",
+         .name = "Herb Sprout", .fullCube = false, .color = {0.42f, 0.68f, 0.30f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop1},
+        {.id = B::HerbCrop2, .key = "core:herb_crop_2",
+         .name = "Herb Plant", .fullCube = false, .color = {0.44f, 0.70f, 0.32f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop2},
+        {.id = B::HerbCrop3, .key = "core:herb_crop_3",
+         .name = "Ripe Herb", .fullCube = false, .color = {0.52f, 0.72f, 0.36f},
+         .drop = {I::Herb, 2}, .tiles = {12, 12, 12}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop3},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

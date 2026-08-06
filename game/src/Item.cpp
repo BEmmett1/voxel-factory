@@ -324,6 +324,11 @@ namespace {
         // path already refuses to try to set a block with it.
         {.id = I::CopperHoe, .key = "core:copper_hoe",
          .name = "Copper Hoe", .atlasTile = 116},
+        // Placeable, so iconTile() borrows the seedling BLOCK's side tile
+        // rather than an atlasTile of its own -- which is why tile 11 is
+        // painted as loose seeds and not as a tiny plant.
+        {.id = I::HerbSeed, .key = "core:herb_seed",
+         .name = "Herb Seed", .placeable = true, .placesBlock = B::HerbCrop0},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

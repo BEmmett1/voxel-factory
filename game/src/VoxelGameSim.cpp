@@ -355,6 +355,9 @@ void VoxelGame::onTick() {
     updateSaplings();
     updateLeafDecay();
     updateGrassSpread();
+    // Crops are the same shape of job one file over, because unlike the three
+    // above it has to be testable without a GL context (CropSystem.h).
+    CropSystem::tick(overworld(), m_crops, m_weather.raining);
 
     // Generators and collectors first: a burn flip re-solves the network so
     // the powered machines below see fresh power in this same tick.

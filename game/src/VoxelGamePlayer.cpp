@@ -212,6 +212,8 @@ void VoxelGame::onUpdate(float dt) {
         // Farming: the hoe on the bar, since a field starts with tilling and
         // there is nothing else in the kit that can make Tilled Soil.
         give(ItemId::CopperHoe, 1, kHotbarSlots - 6);
+        give(ItemId::HerbSeed, 32, kHotbarSlots - 7);
+        m_inventory.add(ItemId::Herb, 32);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }

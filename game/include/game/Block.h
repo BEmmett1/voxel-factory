@@ -121,6 +121,15 @@ enum class BlockId : std::uint16_t {
     // a deliberate build step (a Copper Hoe RMB'd at Grass/Dirt), not a side
     // effect of walking around.
     TilledSoil,
+    // The crop's four growth stages. Each visible stage costs a row because the
+    // mesher picks a shape from the BlockId alone and Chunk is a flat BlockId
+    // array with no per-cell metadata -- the timer can live in a side registry,
+    // the LOOK cannot. Stage 3 is ripe; that is the only one the Harvester takes
+    // and the only one that yields Herb.
+    HerbCrop0,
+    HerbCrop1,
+    HerbCrop2,
+    HerbCrop3,
     Count
 };
 

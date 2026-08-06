@@ -322,6 +322,14 @@ namespace vg {
     inline constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)
     inline constexpr int   kLeafReach        = 2;      // leaves survive within this of a log
 
+    // ---- Farming ----
+    // Seconds per growth stage, so four stages is 4x this from seed to ripe
+    // (a third of that in the rain). Slower than a tree per stage but with
+    // three of them, because a field is meant to be laid out and left, and its
+    // throughput is meant to come from AREA rather than from any one plant --
+    // that is the whole reason farming exists next to the r=4 source patches.
+    inline constexpr float kCropStageSeconds = 20.0f;
+
     // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
     // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.
     // Single source of truth for world-gen, sapling growth, and space checks.

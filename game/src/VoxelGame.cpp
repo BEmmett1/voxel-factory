@@ -213,6 +213,7 @@ bool VoxelGame::loadGame() {
         m_belts.clear();
         m_sources.clear();
         m_saplings.clear();
+        m_crops.clear();
         m_drops.clear();
         m_armor.fill(ItemId::None);
         m_weather = Weather{};

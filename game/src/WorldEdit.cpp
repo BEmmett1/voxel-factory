@@ -35,6 +35,7 @@ BreakResult breakBlock(World& world, const Registries& regs, const glm::ivec3& p
     }
     if (isSource(r.broken)) regs.sources.erase(pos);   // its item drops instead
     if (r.broken == BlockId::Sapling) regs.saplings.erase(pos);
+    if (CropSystem::isCrop(r.broken)) regs.crops.erase(pos);
 
     world.setBlock(pos.x, pos.y, pos.z, BlockId::Air);
     return r;
@@ -61,6 +62,7 @@ PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& p
     }
     if (isSource(id)) regs.sources[pos] = 0.0f;        // starts growing a patch
     if (id == BlockId::Sapling) regs.saplings[pos] = 0.0f; // starts the grow timer
+    if (CropSystem::isCrop(id)) regs.crops[pos] = 0.0f;    // starts ripening
     if (id == BlockId::Belt) {
         Belt b;
         b.facing = beltFacing;
