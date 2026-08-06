@@ -222,113 +222,61 @@ the pillar slips to post-launch.
   one Press, AUTO picks the first recipe it has inputs for (Plate is listed
   first for the bootstrap's sake), so dedicating Presses per part is the
   intended logistics pressure. Tune costs in play.
-- **Farming (user vision).** The one renewable system the island doesn't have,
-  and it has a concrete economic job rather than being flavour: **plant inputs
-  are hard-capped today.** A Source grows at most 5 nodes within r=4 and a Miner
-  takes the nearest one every 4 s, so the entire Herb → Ground Herb → Tincture →
-  Healing Draught branch is bounded by patch regrowth no matter how much factory
-  you point at it. Farming is the answer that scales with **area and layout**
-  instead of with a point source — which is the game's stated difficulty axis
-  (logistics distance) applied to agriculture. It also gives two existing
-  systems a second customer: the **Composter** (plant matter → Dirt) becomes
-  part of a real loop (compost → soil → crops → compost), and **Rain Water**
-  stops being Cauldron-only.
-  - **Crops reuse the sapling machinery almost exactly.** `updateSaplings` is
-    already the pattern: a `pos → timer` registry, ticked at `kRainGrowthMult`
-    while raining, validated against the block still being there, and
-    retried-not-lost when growth is blocked. A crop is that plus a stage
-    counter, so the sim cost is one more `update*` call, not a system
-  - **Author the crop in Blockbench like the machines** (user preference) — same
-    `tools/bbmodel_to_shape.py` route as the Cauldron/Alembic/Miner/Infuser, not
-    hand-written quads. A crop is the classic crossed-plane model, and that is
-    an input the bake has never seen, so it needs three small changes first.
-    They are prerequisites, not polish — without them the model errors out at
-    bake time or draws as solid rectangles:
-    - **The bake drops flat boxes today.** `bbmodel_to_shape.py` rejects any
-      element with a zero extent on ANY axis as a "zero-area box", so a crop
-      plane is skipped and a two-plane model dies on the next line with
-      "nothing to bake". Loosen that guard to reject only boxes flat on TWO or
-      more axes (a line or a point is genuinely degenerate; a plane is not),
-      and then drop the four zero-area FACES of a flat box so a plane costs
-      exactly **2 quads** instead of 6 with four invisible slivers. Note this
-      is the opposite call from the existing zero-height *UV rect* case, which
-      is deliberately kept — thin geometry with a collapsed rect is real, and
-      the comment there explains why
-    - **Alpha cutout in `voxel.frag`.** It samples `texture(uAtlas, vUv).rgb`
-      and there is no `discard` or blending anywhere in the world pass, so a
-      crossed-plane crop would draw as two opaque rectangles. Sample `.a` and
-      `discard` below a threshold: cutout, NOT alpha blending, because cutout
-      is order-independent and needs no depth sorting or second pass. The bake
-      already decodes and carries RGBA, so the texture side works today — and
-      this is the same change CLAUDE.md predicted the glass Conduit/tube would
-      need, so farming pays for that item too
-    - **Quad budget is the real constraint on the model.** Farming is the first
-      feature to place shaped blocks in BULK, which is exactly what CLAUDE.md
-      warns against: the Infuser is 367 quads (~50× a plain block), so a field
-      of detailed plants would cost megabytes of chunk mesh. A 2-plane cross is
-      4 quads, which is fine at field scale — so the discipline is on the
-      model, not on the pipeline. The bake already prints a KB-of-chunk-mesh
-      estimate per model, so the budget is visible while authoring
-    - Either cross works: a **"+"** of two axis-aligned planes needs no rotation
-      at all, and a diagonal **"X"** needs ±45°, which the bake already supports
-  - **Crops collide at first, and that is not a regression.** `solid` bundles
-    physics AND raycasts, and a shape's `boxes` array feeds both, so a crop is
-    currently either fully collidable or impossible to aim at and break. Ship
-    collidable — today's Sapling is a full solid cube, so a shaped crop is
-    already strictly better. Walking through wheat is then a follow-on that
-    splits ray boxes from physics boxes, which is the same move the codebase
-    already made once when `isSolid` came apart into `solid` + `fullCube`
-  - **Growth stages cost a BlockId row each.** The mesher picks a shape from
-    the BlockId alone and `Chunk` is a flat BlockId array with no per-cell
-    metadata, so each visible stage is its own `kBlocks` row (the timer can live
-    in the side registry, but the *look* cannot). Ship **one crop at 3-4
-    stages** first to prove the loop; each later crop is then N more rows and
-    nothing else. Note this got cheaper in Aug 2026: since save v22 those rows
-    are no longer append-only-forever — a stage that turns out wrong can be
-    reordered or deleted, and the enum has `uint16_t` of headroom — so the cost
-    is now a row and a stable key rather than a permanent commitment
-  - **Tilling: yes — decided July 2026.** Crops require a **Tilled Soil** block
-    rather than planting straight onto Dirt/Grass, so laying out a field is a
-    deliberate build step instead of a side effect of walking around. A new
-    **Copper Hoe** (hotbar tool) RMB'd at Dirt/Grass converts the aimed cell,
-    which is precisely the `WorldEdit::fuseSources` shape — a tool RMB
-    transmuting the cell it points at — so it routes through `WorldEdit` with
-    no new interaction model. Tools already can't place blocks (the place path
-    guards `itemInfo(held).placeable`), so the Hoe needs no special-casing
-    there. Reusable, and emphatically NOT a durability system: nothing in the
-    game has durability and farming is a bad reason to invent it.
-    - **Tilled Soil must survive harvest**, or automation dies: the Harvester
-      resets a cell to stage 0 to replant, and if harvesting untilled the soil
-      then every automated field would need re-tilling by hand forever. Till
-      once when you lay the field out; the loop runs on top of it
-    - **No water-adjacency rule** (Minecraft's farmland-needs-water). Rain and
-      the irrigation machine below are already the water story, and a proximity
-      rule would just fight them. Soil is the substrate; water is the RATE
-    - The Hoe's circle necklace has to be told apart from the three existing
-      copper tools, and there is a free arrangement: Plate ×2 + Wood ×2
-      **beside** each other, versus the Shovel's same two items **opposite**.
-      Watch the documented ordering trap — the Axe (Plate ×3 + Wood ×2 beside)
-      is a superset of that under "holds at least", so the Axe must stay listed
-      first, which it already is
-  - **The Harvester is the automation payoff**, and it is the Miner rewritten:
-    a machine that takes a RIPE crop in radius, drops the produce into its
-    output for belts, and resets the cell to stage 0 so the field replants
-    itself. Same shape as `MachineKind::Miner`, same reach-and-cadence knobs
-  - **Irrigation closes the weather loop.** Growth leaning on `kRainGrowthMult`
-    means a dry spell stalls the farm, which is either the tension or the
-    frustration depending on whether there's an answer to it. The answer should
-    be a machine that spends **Rain Water** to water a radius, giving the Rain
-    Barrel and Bucket a real sink and letting a player buy weather independence
-    with automation
-  - **No hunger — decided July 2026.** There is no hunger meter and there will
-    not be one: hardcore death already supplies all the pressure the game needs,
-    and a food bar would turn farming into compulsory chore-work rather than an
-    optional throughput play. Crops feed the **factory**, not the player:
-    alchemy inputs (Herb is already the chain's first link), soil supply through
-    the Composter, and fuel if a crop earns a burn time. Food that isn't
-    hunger-food still fits — a meal granting a **timed buff** reuses the
-    `m_vigorTimer` machinery the Elixir of Vigor already has, with no new
-    system and no meter to keep topped up
+- [x] **Farming** (Aug 2026, user vision): the island's last renewable landed,
+  and it had a concrete economic job rather than being flavour. **Plant inputs
+  were hard-capped**: a Source grows at most 5 nodes within r=4 and a Miner
+  takes the nearest every 4 s, so the whole Herb -> Tincture -> Healing Draught
+  branch was bounded by patch regrowth no matter how much factory you pointed at
+  it. A field is bounded by AREA and LAYOUT instead, which is the game's stated
+  difficulty axis applied to agriculture. The crop is **Herb** for exactly that
+  reason -- it uncaps a branch the player can already feel.
+  Shipped in five commits: the bake change, Tilled Soil + the Copper Hoe, the
+  crop and its growth, the Harvester, and the Irrigator. See CLAUDE.md for the
+  full shape of it. Five things the plan above got right and two it got wrong,
+  worth keeping:
+  - **Right: crops reuse the sapling machinery almost exactly** -- a pos->timer
+    registry, faster in the rain, validated against the block still being there.
+    But it lives in a new **`CropSystem`** (free functions, the MachineSystem
+    precedent) rather than a fifth `VoxelGame::update*`, because a member of the
+    GL-owning VoxelGame cannot be exercised by `--selftest` at all, and "does a
+    field ripen" is exactly the question a headless test should ask
+  - **Right: the bake dropped flat boxes**, exactly as predicted, and loosening
+    it to reject only two-or-more flat axes plus dropping a flat box's four
+    zero-area faces gave a crop **4 quads and 0.8 KB of chunk mesh** against the
+    Infuser's 367 and 77 KB. What the plan MISSED is that collision cannot
+    survive a plane: `boxes` feeds boxOverlapsWorld and the raycast, and a
+    zero-thickness AABB overlaps nothing, so a crop would have been neither
+    walk-into-able nor breakable. A flat element's collision box alone now gets
+    a one-unit thickness -- and only a genuinely flat one, since the first cut
+    applied it to any thin box and quietly fattened four shipped models
+  - **Right: tilling, and Tilled Soil surviving harvest.** Laying out a field is
+    a deliberate build step; the Harvester resets to stage 0 and never untills
+  - **Right: growth stages cost a BlockId row each**, and the Harvester is the
+    Miner rewritten -- so literally rewritten that `tickMiner` became a shared
+    `tickReaper` parameterized by what it wants and what it leaves behind
+  - **Right: alpha cutout was already there.** It shipped inert in July 2026
+    predicting "a crossed-plane crop", and the crop is the first content to
+    exercise it. Two of this item's three stated prerequisites were therefore
+    already done before it started
+  - **Wrong by omission: the replant needs its TIMER.** Setting the cell back to
+    stage 0 is only half the job -- without registering it, a field reaps exactly
+    once and then stands perfectly still, looking planted. That is why
+    `MachineSystem::tickPowered` now takes the crop registry
+  - **Wrong by omission: `SoilKind` had to be ORDERED, not a block id.** A
+    sapling accepts Grass or Dirt, so "the block below must equal this one"
+    could not express it. `provides >= needsSoil` can, and it pays immediately:
+    tilled ground satisfies a sapling for free, because worked ground is still
+    ground
+  - Irrigation landed as designed and shares ONE multiplier with rain, so
+    buying weather independence can never stack into a third rate. It draws no
+    power (demand 0) -- what it spends is water -- so Barrel -> belt ->
+    Irrigator is a complete answer that needs no grid, which is the right tier:
+    a stalled farm should be solvable by the player who has a farm
+  - Still open, all deliberately: walking THROUGH crops (needs ray boxes split
+    from physics boxes -- the same move `isSolid` already made once), a second
+    crop (N more rows and nothing else), and food granting a timed buff (which
+    would reuse `m_vigorTimer` and needs no new system). **No hunger meter, ever**
+    -- hardcore death is the pressure and crops feed the FACTORY, not the player
 - Combat foundations:
   - Mobile entity layer: position/velocity/AABB/health + simple AI stepped in
     `onTick`, rendered via the existing Mesh/Shader path, saved as versioned
@@ -616,6 +564,13 @@ Kept here so they don't get lost — none are architectural dead-ends:
   the energized glow (bank 0 = `ShapeId::FullCube` = offset 0 = a dead machine
   parked on frame 0). Gating on *crafting* instead would not be free — it flips
   constantly and would thrash remeshes
+- Farming shipped Aug 2026, so the island's renewables are complete (wood,
+  stone, sand, dirt, grass, and now crops). Its one loose end is that you
+  COLLIDE with a crop: `solid` still bundles physics and raycasts, so walking
+  through wheat means splitting ray boxes from physics boxes -- the same move
+  `isSolid` already made once when it came apart into `solid` + `fullCube`.
+  Shipping collidable was the right call regardless: today's Sapling is a whole
+  solid cube, so a shaped crop is already strictly better
 - Block shapes still ship one loose end: **parts don't move** — no spinning
   drill, no rocking lid. The models already carry the rig (named groups with
   correct pivots), but the bake reads only `elements` and discards `groups`,

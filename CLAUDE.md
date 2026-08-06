@@ -684,6 +684,84 @@ becomes a puzzle):
   feeds two belts one item each per step, filters pull only their item and
   refuse the rest, and a belt filter round-trips through the save.
 
+Farming (Aug 2026 — the island's last renewable, and the one with an
+economic job rather than flavour):
+- **The problem it solves is a hard cap.** A Source grows at most 5 nodes
+  within r=4 and a Miner takes the nearest one every 4 s, so the whole
+  Herb → Ground Herb → Tincture → Healing Draught branch was bounded by patch
+  regrowth no matter how much factory you pointed at it. A field is bounded by
+  **area and layout** instead — the game's difficulty axis (logistics distance)
+  applied to agriculture. The crop is **Herb** for exactly that reason.
+- **`SoilKind`, ordered** (`provides` / `needsSoil` on `BlockInfo`). This
+  replaced a hardcoded `if (id == BlockId::Sapling)` in `WorldEdit::placeBlock`,
+  which crops would have grown a second branch of and which a content pack could
+  never have reached. The whole rule is `provides >= needsSoil`, and the
+  ordering pays immediately: Tilled Soil satisfies a sapling for free, because
+  worked ground is still ground.
+- **Tilled Soil + the Copper Hoe.** RMB the hoe at Grass/Dirt
+  (`WorldEdit::tillSoil`, the `fuseSources` shape — a tool RMB transmuting the
+  aimed cell). Tilled Soil drops Dirt, so tilling can never duplicate soil, and
+  has no item of its own. It **must survive a harvest** or every automated field
+  would need re-tilling by hand forever. Emphatically not a durability system.
+- **Four stages, four `kBlocks` rows** (`HerbCrop0..3`). The mesher picks a
+  shape from the BlockId alone and `Chunk` is a flat BlockId array with no
+  per-cell metadata: the timer can live in a side registry, the LOOK cannot.
+  Since save v22 those rows are no longer a permanent commitment.
+- **`CropSystem`** (CropSystem.h/.cpp) — free functions over
+  `(World&, CropMap&, ...)`, the MachineSystem/WorldEdit/DropSystem precedent,
+  rather than a fifth `VoxelGame::update*` beside `updateSaplings`. The
+  deciding reason is testability: a member of the GL-owning VoxelGame cannot be
+  exercised by `--selftest` at all. Timers RESET on each advance rather than
+  accumulating, so retuning one stage does not shift the ladder above it. Dig
+  the soil out from under a crop and it dies rather than ripening in mid-air.
+- **Seeds come off the Sifter**, which means the hand-craftable **Sieve**, so a
+  field is reachable before the Alchemy Circle and the island's wild bushes are
+  the bootstrap. Deterministic, not a weighted roll: farming's promise is that
+  it scales with area, and a seed you might not get would put that behind luck.
+- **The crop model is crossed planes** (`tools/make_crop_models.py` →
+  `models/herb_crop_*.bbmodel` → the usual bake). This is the first content
+  placed in BULK, so the quad budget is the real constraint: **4 quads and
+  0.8 KB of chunk mesh** against the Infuser's 367 and 77 KB. It needed one bake
+  change — the guard at `bbmodel_to_shape.py` counted ANY zero extent as
+  degenerate, so both planes were skipped and the model died on "nothing to
+  bake"; it now rejects only two-or-more flat axes and drops a flat box's four
+  zero-area faces. A flat element's COLLISION box alone gets a one-unit
+  thickness (a zero-thickness AABB overlaps nothing, so the crop would be
+  neither walk-into-able nor breakable); genuinely thin boxes are untouched, or
+  four shipped models would have quietly fattened. This is also what finally
+  **exercises the alpha cutout** in `voxel.frag`, inert since July 2026.
+  Crops stay `solid` so you can aim at one; walking through wheat is a later
+  change that splits ray boxes from physics boxes.
+- **The Harvester is the Miner one field over**, so `tickMiner` became
+  `tickReaper`, parameterized by what counts as a target and what the cell
+  becomes afterward. It is its own `MachineKind` precisely because of the
+  second: a Miner leaves Air, a Harvester must leave a stage-0 seedling on
+  intact tilled soil. The replant also needs its growth TIMER, which is why
+  `MachineSystem::tickPowered` now takes the crop registry — without it a field
+  reaps once and stands still, looking planted. Powered, deliberately: what the
+  powered tier sells is not having to be there.
+- **The Irrigator closes the weather loop.** It spends Rain Water to keep a
+  radius growing at the rain rate, giving the Rain Barrel and Bucket a real
+  sink. Rain and irrigation share ONE multiplier so they can never stack into a
+  third rate nobody tuned. `demand = 0` (the Rain Barrel precedent) — what it
+  spends is water, so Barrel → belt → Irrigator is a complete answer needing no
+  grid. `MachineSystem::activeIrrigators` hands CropSystem positions, never the
+  machine map: a growth system has no business knowing what a machine is, and
+  MachineSystem already includes CropSystem.
+- **Save v25** appends the crop timers at the end of the file (the v15/v16/v18
+  shape). The plants themselves ride the chunk data like any block, since v22's
+  key tables already name them; a pre-v25 save loads with an empty field.
+  Verified against a real v23 save: loads intact and re-saves losslessly.
+- **No hunger meter, ever** (decided July 2026). Hardcore death is the pressure;
+  crops feed the FACTORY, not the player.
+- Covered by `--selftest`: tilling only works on plain ground and refuses a
+  covered cell, a sapling accepts tilled ground, a crop refuses plain dirt,
+  a field ripens and STOPS at ripe, rain is faster, a crop with no soil dies and
+  drops its timer, the Harvester takes only ripe plants and leaves stage 0 on
+  intact soil and registers it, it jams on a full output, an unpowered one does
+  nothing, and two identical plants on identical ticks end at different stages
+  when one is in an irrigator's reach.
+
 The core loop is complete, closed, and fully automatable. Possible next directions:
 - **Generator tiers / better fuels:** charcoal or essence-based fuels with longer
   burns; higher-output generator tiers.
