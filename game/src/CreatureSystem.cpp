@@ -124,6 +124,45 @@ void CreatureSystem::loadAssets(const std::string& dir) {
     m_shaderReady = true;
 }
 
+std::vector<std::string> CreatureSystem::checkModels(const std::string& dir) {
+    std::vector<std::string> problems;
+    for (const CreatureSpecies& sp : kSpecies) {
+        // The registry row's name is empty for the ambient wanderer, so the
+        // model path is the identity that always reads.
+        const std::string who =
+            std::string(sp.model) + (*sp.name ? std::string(" (") + sp.name + ")" : "");
+        engine::BbModel model;
+        if (!engine::loadBbModel(dir + sp.model, model, kMaxEntityBones)) {
+            problems.push_back(who + ": model missing or unparsable -- this "
+                                     "species would silently never spawn");
+            continue; // everything below would only restate this
+        }
+        if (model.vertexData.empty()) {
+            problems.push_back(who + ": model has no geometry (nothing to draw)");
+        }
+        if (model.texture.rgba.empty()) {
+            problems.push_back(who + ": texture failed to decode -- would render "
+                                     "as the magenta checker");
+        }
+        // The two clips update() asks every species for by name. Missing ones
+        // are survivable (the creature holds its rest pose) and never what a
+        // shipped species wants.
+        for (const char* clip : {"idle", "walk"}) {
+            if (model.findAnimation(clip) < 0) {
+                problems.push_back(who + ": no '" + clip + "' clip");
+            }
+        }
+        // A telegraph nobody can see is worse than no telegraph: the row
+        // promises a wind-up the player is meant to read and dodge.
+        if (sp.swingImpact > 0.0f && model.findAnimation("attack") < 0) {
+            problems.push_back(who + ": swingImpact is set but the model has no "
+                                     "'attack' clip, so the wind-up the player "
+                                     "is supposed to read is invisible");
+        }
+    }
+    return problems;
+}
+
 void CreatureSystem::spawn(SpeciesId species, DimensionId dim, const World& world,
                            const glm::vec3& feetHint) {
     const std::size_t si = static_cast<std::size_t>(species);

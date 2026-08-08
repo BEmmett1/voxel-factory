@@ -91,6 +91,20 @@ public:
 
     void clearDimension(DimensionId dim); // despawn (arena reset / regen)
 
+    // Does every species' model file load, and does it carry the clips its
+    // registry row implies? Checked WITHOUT a window or GL (loadBbModel is
+    // pure parsing, and no Mesh/Texture is created), so `--selftest` can ask.
+    // Answers with English diagnostics rather than a bool -- the
+    // `content::validate()` shape -- and is empty when all is well.
+    //
+    // This exists because `loadAssets` is deliberately LENIENT: a missing model
+    // disables that species with one log line, which is right for a player
+    // (never crash over content) and wrong for CI, where boss #1 vanishing
+    // from a fresh clone should fail the build rather than be discovered by
+    // travelling to the arena and finding it empty. A whole launch pillar was
+    // in exactly that state until Aug 2026.
+    static std::vector<std::string> checkModels(const std::string& dir);
+
     // What update() observed this tick, for the caller to react to.
     struct Events {
         float damageToPlayer = 0.0f;   // boss strikes landed (hearts)

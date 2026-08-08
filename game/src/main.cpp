@@ -9,6 +9,7 @@
 #include "game/ContentPack.h"
 #include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
+#include "game/CreatureSystem.h"
 #include "game/CropSystem.h"
 #include "game/MachineSystem.h"
 #include "game/Recipes.h"
@@ -1522,6 +1523,22 @@ int runSelfTest() {
         // Switching it OFF has to stop the water, not merely stop it drinking.
         im[pump].enabled = false;
         SELFTEST_CHECK(MachineSystem::activeIrrigators(im).empty());
+    }
+
+    // ---- Every species' model is actually there -----------------------------
+    // The one asset check in here, and it earns the exception. Creature models
+    // load leniently by design -- a missing one disables that species with a
+    // log line and never crashes -- which meant boss #1 was absent from a fresh
+    // clone for weeks while every build stayed green, because its .bbmodel had
+    // never been committed. Leniency is right for a player and wrong for CI, so
+    // the same files a launch pillar depends on are parsed here (no window, no
+    // GL) and a problem fails the build. See CreatureSystem::checkModels.
+    {
+        const char* base = SDL_GetBasePath(); // owned by SDL; works pre-init
+        const std::vector<std::string> problems =
+            CreatureSystem::checkModels(base ? std::string(base) : std::string());
+        for (const std::string& msg : problems) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(problems.empty());
     }
 
     std::printf("selftest OK\n");
