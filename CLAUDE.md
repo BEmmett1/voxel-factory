@@ -803,8 +803,19 @@ Dimensions & the first boss (the combat pillar's opening move):
   arena rim is a real threat; `kBossKnockback`/`kBossKnockUp`). `tryMeleeAttack` returns a `MeleeResult` — a
   boss kill hands back its drop (**Void Catalyst**), sets `m_bossDefeated`
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
-  in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same
-  lenient loading as the creature). Knobs in `// ---- Boss & arena ----`.
+  in drawHud. Model: the hand-authored `game/assets/models/void_warden.bbmodel`
+  (`vg::kWardenModel`; same lenient loading as the creature), which is what
+  forced the four Blockbench-loader capabilities above. Knobs in
+  `// ---- Boss & arena ----`.
+- **Model files have a convention** (Aug 2026): `models/` holds **block-shape
+  bake sources only** — `bbmodel_to_shape.py` input, never loaded at runtime —
+  and every CREATURE `.bbmodel` lives only in `game/assets/models/`, which
+  `copy-assets` ships. A creature model in `models/` is a copy that will drift;
+  the bake correctly ignores it, silently. Generated starters
+  (`make_test_model.py`, `make_tempest_model.py`) write straight into
+  `game/assets/models/`, so a hand-authored replacement of the same name just
+  overwrites the starter — but then **delete the generator's half**, or the
+  next run silently reinstates the placeholder the game no longer loads.
 - **Boss #2 — THE TEMPEST** (rising tier): the **Storm Key** (Void Catalyst
   ×1 + Crystal ×4 + Rain Water ×4 — the warden's drop is the gate) opens the
   same BossArena dimension with a variant generation: a tighter ring with a
