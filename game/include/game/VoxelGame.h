@@ -111,6 +111,15 @@ private:
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
+    // The single refusal funnel: play the deny sound AND say why, on one line
+    // over the hotbar. Every rejection the player can act on goes through here
+    // rather than calling play("deny") directly, so a silent no-op is now a
+    // visible omission instead of an invisible one. Nothing in the game teaches
+    // the game (see ROADMAP onboarding), and these call sites are the moments
+    // the player is already asking the question. `why` is uppercase, short, and
+    // limited to the bitmap font's glyphs (A-Z 0-9 and a little punctuation --
+    // no apostrophes).
+    void deny(const std::string& why);
     // The selected hotbar item (None for an empty slot). m_selectedSlot stays
     // in [0, kHotbarSlots) — enforced at load, number keys, and wheel.
     ItemId heldItem() const { return m_hotbar[m_selectedSlot]; }
@@ -334,4 +343,10 @@ private:
     float m_attackCooldown = 0.0f; // seconds until the sword can swing again
     float m_castCooldown = 0.0f;   // seconds until the Mana Vial can cast again
     float m_vigorTimer = 0.0f;     // seconds of Elixir of Vigor buff remaining
+
+    // The reason for the last refusal, fading over kDenySeconds. Transient by
+    // nature -- never saved, and it decays on real frame time so it still
+    // fades while the sim is paused behind a panel.
+    std::string m_denyText;
+    float       m_denyTimer = 0.0f;
 };

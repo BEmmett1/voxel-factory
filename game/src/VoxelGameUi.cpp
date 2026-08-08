@@ -1384,7 +1384,17 @@ bool VoxelGame::canCraft(const Recipe& r) const {
 
 void VoxelGame::tryCraft(const Recipe& r) {
     if (!canCraft(r)) {
-        audio().play("deny", kCraftVolume);
+        // Name the FIRST thing you are short of and by how much. The row
+        // already tints unaffordable, but "you cannot" and "you need four more
+        // sticks" are different amounts of help.
+        for (const ItemStack& in : r.inputs) {
+            const int have = m_inventory.count(in.id);
+            if (have >= in.count) continue;
+            deny("NEED " + std::to_string(in.count - have) + " MORE " +
+                 itemName(in.id));
+            return;
+        }
+        deny("CANNOT CRAFT THAT YET");
         return;
     }
     for (const ItemStack& in : r.inputs) {
@@ -1722,6 +1732,22 @@ void VoxelGame::drawHud() {
         m_ui.rect(x0, by, bw, bh, glm::vec4(0.10f, 0.10f, 0.14f, 0.9f));
         m_ui.rect(x0, by, bw * (m_vigorTimer / kVigorSeconds), bh,
                   glm::vec4(0.45f, 0.85f, 0.35f, 0.95f));
+    }
+
+    // Why the last thing you tried was refused (see VoxelGame::deny). Centered
+    // above the hotbar, over its own backing so it reads against any terrain,
+    // and fading over the last third of its life so it leaves rather than
+    // blinking out. Drawn before the bars below so a long reason cannot cover
+    // the one bar that shares this band.
+    if (m_denyTimer > 0.0f && !m_denyText.empty()) {
+        const float fade = glm::clamp(m_denyTimer / (kDenySeconds / 3.0f), 0.0f, 1.0f);
+        const float ts = 13.0f;
+        const float tw = m_ui.textWidth(ts, m_denyText);
+        const float tx = (static_cast<float>(w) - tw) * 0.5f;
+        const float ty = y - 72.0f;
+        m_ui.rect(tx - 8, ty - 5, tw + 16, ts + 10,
+                  glm::vec4(0.06f, 0.04f, 0.05f, 0.78f * fade));
+        m_ui.text(tx, ty, ts, m_denyText, glm::vec4(1.0f, 0.72f, 0.45f, fade));
     }
 
     // Held-bucket rain collection: a small fill bar above the hotbar.

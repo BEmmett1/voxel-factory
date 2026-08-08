@@ -327,6 +327,14 @@ namespace vg {
     inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win
     inline constexpr float kRainVolume     = 0.5f;  // rain loop gain at intensity 1
 
+    // ---- Deny reasons ----
+    // How long a refusal's reason stays on screen (it fades over the last
+    // third). Long enough to read a short line after looking down from the
+    // crosshair; short enough that spamming a blocked click is not a wall of
+    // text. The reasons themselves live at their call sites, because the whole
+    // point is that the site that KNOWS why is the site that says so.
+    inline constexpr float kDenySeconds = 2.6f;
+
     inline constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
     inline constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
     inline constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)

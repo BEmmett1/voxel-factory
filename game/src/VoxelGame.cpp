@@ -347,6 +347,15 @@ void VoxelGame::onEscape() {
     }
 }
 
+void VoxelGame::deny(const std::string& why) {
+    // Sound and reason together, deliberately: the sound was already the
+    // universal "no" and every site that plays it is a site that knows the
+    // answer, so binding the two here is what stops the two drifting apart.
+    audio().play("deny", kCraftVolume);
+    m_denyText = why;
+    m_denyTimer = kDenySeconds;
+}
+
 void VoxelGame::updateTitle() {
     const ItemId held = heldItem();
     const std::string holding =
