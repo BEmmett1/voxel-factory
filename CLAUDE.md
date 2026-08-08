@@ -318,6 +318,23 @@ World & closed-loop economy:
   re-enables them. Fresh games and pre-v12 saves seed `vg::kDefaultHotbar` (the ten
   machine placeables). Tab/E/F1 overlays are mutually exclusive.
 
+**Refusals say why** (Aug 2026, the first onboarding item): `VoxelGame::deny()`
+is the single funnel — it plays the "deny" sound AND sets `m_denyText` /
+`m_denyTimer`, drawn as one amber line over the hotbar in `drawHud`, fading over
+its last third (`kDenySeconds`). **Never call `audio().play("deny", ...)`
+directly for a player-facing rejection**; the site that knows the reason is the
+site that must state it, and binding sound to reason in one call is what keeps
+the two from drifting. Messages are UPPERCASE and limited to the bitmap font's
+glyphs — A-Z 0-9 and `()-:/.,>+<%`, so **no apostrophes**. The timer decays on
+real frame time, not the pause-aware clock, because several call sites are inside
+panels where the sim is frozen. Reasons that name a keybind read it live
+(`SDL_GetScancodeName(key(Action::...))`) rather than hardcoding the default.
+Two of the sites re-derive a distinction the callee folded away
+(`tillSoil`/`placeBlock` both return one bool for several refusals) — that is
+deliberate: the player's mistake is different in each case. Sound-only "deny"
+survives where it is not a refusal at all: the master switch turning OFF, and a
+slipped crank grip.
+
 UI: an **F1 help overlay** (goal + quickstart + controls — the controls lines are
 built per draw from the current keybinds) on `UiRenderer`; the bitmap font also
 supports `>`, `+`, `<`, and `%`. Esc closes the topmost overlay (machine panel,
@@ -578,6 +595,15 @@ Entities (Blockbench import — the combat pillar's first brick):
   `render(Camera&, rainDim)` / `tryMeleeAttack` — takes engine services as
   parameters, never VoxelGame&. Knobs in the `// ---- Entities ----` block. Missing/corrupt model = creatureless
   launch + log; failed texture = magenta checker (never fatal).
+  **That leniency is player-facing only**: `CreatureSystem::checkModels(dir)`
+  (static, no window/GL — `loadBbModel` is pure parsing) parses every `kSpecies`
+  row's model and returns English diagnostics, and `--selftest` fails on any.
+  It exists because boss #1's `.bbmodel` was never committed and every build
+  stayed green for weeks while a launch pillar was absent from fresh clones. It
+  asks more than "does the file exist": no geometry, an undecodable texture, a
+  missing `idle`/`walk` clip, and a row with `swingImpact > 0` whose model has no
+  `attack` clip (a telegraph the player cannot see). **Adding a `kSpecies` row
+  therefore means committing its model**, under the convention above.
 
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine, extracted as the **`Weather`**
@@ -803,7 +829,19 @@ Dimensions & the first boss (the combat pillar's opening move):
   arena rim is a real threat; `kBossKnockback`/`kBossKnockUp`). `tryMeleeAttack` returns a `MeleeResult` — a
   boss kill hands back its drop (**Void Catalyst**), sets `m_bossDefeated`
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
-  in drawHud. Model: the hand-authored `game/assets/models/void_warden.bbmodel`
+  in drawHud. **A strike is telegraphed and dodgeable** (Aug 2026): a species
+  with `swingImpact > 0` COMMITS on contact — spending `strikeCooldown`, playing
+  its one-shot `"attack"` clip via `playOnce` — and the damage/knockback land
+  `swingImpact` seconds later *only if the player is still inside
+  `strikeRange`*, so stepping out means the axe hits nothing. The countdown
+  (`Creature::swingLeft`) runs down in `update` (the SIM), never in
+  `frameAdvance`: when the blow lands is gameplay and must not drift with frame
+  rate; `frameAdvance` owns only `attackLeft`, the render-side lock that stops
+  the next step cutting the swing off. `swingImpact = 0` keeps the old
+  on-contact behaviour, so it is **opt-in by AUTHORING** — a species without an
+  `attack` clip gets it for free, and `checkModels` fails a row that promises a
+  wind-up its model cannot show. Model: the hand-authored
+  `game/assets/models/void_warden.bbmodel`
   (`vg::kWardenModel`; same lenient loading as the creature), which is what
   forced the four Blockbench-loader capabilities above. Knobs in
   `// ---- Boss & arena ----`.

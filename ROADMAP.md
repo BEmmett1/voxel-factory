@@ -4,6 +4,99 @@ The core loop (mine → craft → power → automate, closed by craftable source
 complete. What remains is the commercial shell around it. Quarters below are
 calendar quarters counted from July 2026.
 
+## The next three weeks (from Aug 8 2026)
+
+A working checklist, not a new plan: every line below is an existing roadmap
+item, ordered so each week ends with the tree green, `--selftest` passing, and
+something visibly different in the game. Weeks are Sat→Fri.
+
+### Week 1 (Aug 8–14) — land what is in flight, then stop lying to fresh clones
+
+**Done Aug 8**, in five commits: the loader, the strikes (carrying the Warden
+asset, since the commit that points at a file should contain it), the model-file
+convention, the `--selftest` preflight, and the deny reasons. One thing is NOT
+verified: the deny toast has never been seen on screen — the agent session had
+no access to the interactive desktop, so it is proven only to compile, to draw
+from glyphs the font has, and to keep `--selftest` green. **Look at it before
+building on it.**
+
+- [x] **Commit the two in-flight items.** Telegraphed/dodgeable strikes
+      (`swingImpact` commit→impact, countdown in the SIM) and the four
+      Blockbench-loader capabilities (5.0 flat `groups`, box-UV, catmull-rom,
+      Bedrock clip names) are uncommitted in the working tree. Split them into
+      two commits — loader first (engine, no gameplay), strikes second — so a
+      bisect can tell an art-loading regression from a combat one
+- [x] **Fix the untracked-model bug** (Known gaps): `void_warden.bbmodel` is
+      untracked in BOTH `models/` and `game/assets/models/`, so a fresh clone
+      silently loses boss #1 and only says so in the log. Decide the convention
+      (proposal: `models/` = block-shape bake sources only; creature `.bbmodel`s
+      live only in `game/assets/models/`), then commit the Warden, delete the
+      orphaned `game/assets/models/boss.bbmodel` and the creature model sitting
+      in `models/`, and point `tools/make_boss_model.py` at the single home
+- [x] **Make a missing creature model LOUD in dev.** The lenient path is right
+      for players and wrong for CI: add the model files to the `--selftest`
+      preflight (exists + parses for every `kSpecies` row) so a missing boss
+      fails the build instead of disabling a launch pillar quietly
+- [x] **Say why, at the deny funnels** — the cheapest onboarding win in the
+      codebase and the one the Q1 2027 item says to do first. Every rejection
+      already funnels through a "deny" sound site; thread a one-line reason to a
+      short-lived HUD toast (wrong tool / no power / blocked / can't afford /
+      output full / not in this dimension). No new system, no save change
+- [x] Regenerate `RECIPES.md` (`--dump-recipes`) and reconcile CLAUDE.md with
+      the two newly committed items, since the docs-go-stale gap is a process
+      gap
+
+### Week 2 (Aug 15–21) — belts become tubes (the one save bump of the three weeks)
+
+Bundled deliberately: `Belt` gains slots + a sub-cell progress fraction, and
+that is the *same* layout change the tube visual wants. One save bump
+(**v26**), one visual payoff.
+
+- [ ] **Bake the thin set together, in ONE run** (the bake packs one
+      sheet): Conduit→**Tube** (hub box + an arm per connected neighbour),
+      **Wire**, **Pedestal**, **Rune Core**. Wire rides along free — same
+      change, no gameplay. Pedestal/Rune Core because the Circle is the
+      most-looked-at thing in the game
+- [ ] **Multi-item belts + `progress`** on `Belt`; cargo lerps against
+      `m_beltTimer / kBeltStepTicks` so reagents visibly flow. Keep `beltStep`'s
+      claim/snapshot discipline — it is what stops chaining and merging
+- [ ] **Draw cargo as world geometry inside the glass**, retiring the
+      `UiRenderer` billboard for belt items (today an item behind a wall still
+      draws, with no depth test and no distance cull)
+- [ ] Save **v26**: belt record grows. Tail-append within the belt record if it
+      can be (the v23 filter precedent) so `kOldestLoadable` need not move
+- [ ] `--selftest`: a multi-slot belt round-trips, a full belt refuses, a
+      filtered multi-slot belt still binds both ways, and a pre-v26 belt loads
+      as a one-slot belt
+- [ ] Leave **powered belts** alone — the roadmap says decide it in play, and
+      the tube change is the wrong commit to bury a difficulty decision in
+
+### Week 3 (Aug 22–28) — parts move, then the manual tier stops being 13 boxes
+
+- [ ] **`uPartRot[]` — make block parts move.** The last structural gap in
+      block shapes: bake a per-vertex pivot + part index from the `groups` the
+      bake currently discards (the models already carry correct pivots), and
+      shift by a per-part rotation uniform — the `uBones[32]`/`uAnimV[]` pattern
+      a third time. Chunk positions are world-space, so the pivot MUST be baked;
+      `floor(aPos)` is not safe. Gate it on power like `uAnimV`, so it stays a
+      uniform upload and never a remesh
+- [ ] First moving parts, on models that already exist: the Auger's `drill`
+      spins, the Cauldron's `contents` rock, the Infuser's `core`/`emitter`
+      pulse. Zero new art
+- [ ] **Model the manual tier (13 blocks)** — the worst offenders and the first
+      thing a new player meets. Author them near the CROP end of the budget, not
+      the Infuser end; they are hand tools, so a low-quad silhouette is both
+      cheaper and more honest. Anything whose appeal is motion (Anvil, Mortar,
+      any crank) now has `uPartRot[]` and may use it. Re-bake ALL models in one
+      command and update the `.inl` header comment
+- [ ] Confirm the quad/KB budget in F3 on a factory that places the whole tier,
+      and record the numbers in the Model coverage entry
+
+**Explicitly NOT this month:** fluids (a rewrite bought for flavour), the
+world-size ceiling decision (needs the boss-#3 driver), the in-game recipe
+browser + journal (Q1 2027, and it wants the deny-reason funnels first), and
+generation tooling (step 5 — out-of-game, and nothing blocks it).
+
 ## Q3 2026 — plumbing + foundations (in progress)
 
 - [x] Release build presets (`CMakePresets.json`) + product version
@@ -311,6 +404,53 @@ the pillar slips to post-launch.
     along the aim ray, its own cooldown), and **Elixir of Vigor** grants a timed
     weapon-damage buff (×`kVigorDamageMult` to sword AND bolt). Both alchemy
     branches (Infuser/Alembic) now feed combat
+  - [x] **Boss AI depth** (July 2026) — shipped, and recorded here late: it
+    lived in the code for weeks with no mention in either doc. The Void Warden
+    gained a **lunge** on its own cooldown (`lungeCooldown` / `lungeWindup` /
+    `lungeSpeed` / `lungeDuration` / `lungeDamageMult` on `CreatureSpecies`),
+    an **enrage** phase, and randomized knock-up
+    (`kBossKnockUpMinH`/`kBossKnockUpMaxH`). All of it is species-REGISTRY
+    data, in the kBlocks/kItems discipline, so boss #3 inherits the whole kit
+    by filling in a row rather than by writing AI
+  - [x] **Telegraphed, dodgeable strikes** (Aug 2026). The contact
+    strike splits into commit → impact: a species with `swingImpact > 0`
+    commits to the swing (spending `strikeCooldown`, playing a one-shot
+    `"attack"` clip) and the damage/knockback land `swingImpact` seconds
+    later, and **only if you are still inside `strikeRange`** — step out and
+    the axe hits nothing. The countdown ticks in the SIM, not `frameAdvance`,
+    so impact timing cannot drift with frame rate; `frameAdvance` owns only
+    the render-side animation lock. A species with `swingImpact = 0` keeps the
+    old on-contact behaviour, so this is opt-in BY AUTHORING and every other
+    creature is untouched. This is the first enemy attack a player can answer
+    with positioning rather than with armor, which is what turns boss #3's
+    move set into a data exercise
+  - [x] **The Blockbench loader grew up** (Aug 2026) — four
+    capabilities the hand-authored Warden forced, each one a file that simply
+    would not load before. **Blockbench 5.0 outliners**: 5.0 stripped the
+    outliner to `{uuid, children}` and moved name/origin/rotation into a flat
+    `groups` table, so without reading it every limb pivots about the model
+    origin. **Box-UV models load**, retiring the "author with per-face UVs"
+    restriction — the editor writes each face's own `uv` rect for box-UV too.
+    **Catmull-rom ("smooth") keyframes**, mirroring Blockbench's own
+    `Math.catmullrom`. And **Bedrock-style clip-name matching**, so
+    `animation.model.attack` answers to `"attack"`. Worth stating as a
+    consequence rather than a feature: the engine can now load a model
+    authored in a current Blockbench by someone who does not know the
+    loader's restrictions, which is the precondition for every entry in
+    **Model coverage** below. The Warden IS that model — 5.0 outliner, box-UV,
+    smooth keyframes and an `animation.model.attack`, all four at once — and
+    committing it (it had been untracked; see Known gaps) is what gave the
+    strikes above a wind-up to play
+  - [x] **Say why, at the deny funnels** (Aug 2026) — the first onboarding item
+    to land, and the cheapest, exactly as the Q1 2027 entry predicted.
+    `VoxelGame::deny()` plays the sound and puts the reason over the hotbar,
+    bound in one call so a refusal can no longer make a noise without saying
+    something. The eight existing deny sites got a reason; the win was the
+    **six that were silent** — chiefly a gated block breaking into nothing,
+    which reads as a broken game because the tool tier is invisible, plus the
+    two ways a plant refuses its ground. Two reasons do arithmetic instead of
+    restating a rule ("NEED 4 MORE STICK"). No new system, no save change; the
+    rest of the onboarding item (recipe browser, objectives) is untouched
 - [x] Main menu + multiple save slots (July 2026): the game boots into a
   NEW GAME / CONTINUE / SETTINGS / QUIT shell over an unbuilt world; three
   save slots (`save_<n>.vxf`) with a picker showing per-slot playtime +
@@ -333,6 +473,11 @@ the pillar slips to post-launch.
       Catalyst (boss #1 gates boss #2), a storm-lashed ring arena variant,
       a faster-than-walking hunter hitting 2 hearts, and the **Storm Core**
       drop (the better-fuels hook). Save v14 appends its flag
+- [x] Boss keys cost **100 catalysts** (July 2026) — a gating decision no doc
+      recorded until now. A key is meant to be a factory's output, not a
+      craft you stumble into: at 100 the Teleport Key is a production TARGET,
+      which is the whole "factories are the real weapon" thesis applied to
+      access rather than to gear. Tune in play alongside the boss numbers
 - Boss #3 (final: the Flight Stone) — one more species row, arena variant,
   and key recipe on the established pattern. Top-tier armor may earn
   keep-your-pack-on-death the way the relic earns flight; Void Catalyst has
@@ -364,9 +509,69 @@ the pillar slips to post-launch.
   creature spawn ground-scan — carried the same `floor()` assumption. A second
   model (the **Alembic**, `BlockId::Alembic`) then forced rotated-element
   support: quads became fully baked corners, and rotated geometry draws exactly
-  while colliding as its bounding box. The last loose end closed in July 2026:
+  while colliding as its bounding box. The **Miner** and **Infuser** followed,
+  bringing the shaped set to four machines, and the four **HerbCrop** stages
+  after them. Two later extensions:
   **animated shape textures now play, and only while the machine is powered**
-  (see the next item). Still open: block PARTS don't move
+  (July 2026, see the next item), and **flat elements are first-class**
+  (Aug 2026, forced by the crops and described until now only inside the
+  farming entry) — the degenerate-box guard rejects only two-or-more flat
+  axes, a flat box's four zero-area faces are dropped, and a flat element's
+  COLLISION box alone is given a one-unit thickness, since a zero-thickness
+  AABB overlaps nothing and the crop would have been neither walk-into-able
+  nor breakable. Only a genuinely flat element gets that; the first cut
+  applied it to any thin box and quietly fattened four shipped models.
+  Still open: block PARTS don't move, and 31 of 35 machines have no model at
+  all — see **Model coverage** below
+- **Model coverage — the art backlog.** Nothing has tracked this, and it is
+  the largest single gap between how the game plays and how it looks. **Four
+  of thirty-five machines are modelled** (Cauldron, Alembic, Miner, Infuser),
+  plus the four HerbCrop stages and Air's `Empty`; every other row in
+  `kMachineTraitSeed` is a painted cube, including the whole thirteen-machine
+  manual tier. The machinery to fix it all exists — bake, append a `ShapeId`
+  row and a `kBlockShapes` row, set `fullCube = false` and `shape` on the
+  kBlocks row — so this is authoring work, not engineering work.
+  The budget is the thing to design against: a detailed block costs **29-77 KB
+  of chunk mesh** (the Infuser's 367 quads are the ceiling, ~50× a plain
+  block) while a crop costs **4 quads and 0.8 KB**. Machines can afford the
+  top of that range because you place a handful; anything placed in bulk must
+  live near the bottom. Staged in value order:
+  - **Wire and Conduit — highest value, because their function IS being
+    thin.** A cube-shaped wire is the one place the art actively contradicts
+    the mechanic. Conduit is already scheduled as **belts become tubes**
+    below; Wire is the same change with no gameplay attached and should ride
+    along in the same bake
+  - **Pedestal and Rune Core.** A pedestal is inherently a sub-cube pillar,
+    and the Alchemy Circle is the most-looked-at thing in the game — you lay a
+    pattern by hand and then stare at it. Eight cubes in a ring read as
+    scaffolding rather than as a ritual
+  - **The manual tier (13 blocks) — the worst offenders, and the ones a new
+    player meets first.** Anvil, Mortar, Mixing Bowl, Blowpipe, Still,
+    Bloomery, Sieve, Hand Press, Tamper, Compost Heap, Infusion Stand, Hand
+    Distiller, Hand Transmuter are *hand tools*; rendering them as full cubes
+    is not merely plain, it misinforms. This ties directly to the onboarding
+    item above: a tier that looks like thirteen identical boxes teaches
+    nothing about what each one does
+  - **The powered tier** — Furnace, Sifter, Glassblower, Compactor (the
+    recipe-overhaul four), plus Press, Forge, Grinder, Distiller, Transmuter,
+    Composter, Generator, Rain Barrel, Storage Crate, Harvester, Irrigator.
+    Full machine budget is fine here
+  - **Nodes and sources** — HerbBush, CrystalNode, EssenceVent, ResonantNode
+    and the six Source blocks. These read as *objects sitting on the world*,
+    not as terrain, and the emissive sources are the island's landmarks and
+    the thing you navigate by. Crossed planes or a small cluster in the crop's
+    quad budget, never a machine-sized model: sources scatter across the whole
+    outer band
+  - **Cheap wins** — Sapling (a whole solid cube today, when the crop already
+    proves the plane path end to end), Scaffold, and Tilled Soil as a
+    slightly sunken slab so a worked field reads at a distance
+  Two constraints an implementer would otherwise rediscover the hard way. **The
+  bake packs ONE sheet**, so every model must be re-baked together or the
+  others drop out of `shapes.png` — the `.inl`'s header comment carries the
+  last full command line for exactly this reason. And **parts still don't
+  move** (see Known gaps), so any model whose appeal is motion — a spinning
+  Sifter, a rocking Anvil, a turning crank — should wait for the `uPartRot[]`
+  work rather than shipping a frozen pose of itself
 - **Belts become tubes:** the first real customer of block shapes, now
   unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
@@ -505,7 +710,11 @@ generate → validate → repair loop a model needs.
        defaulting everything it did not mention. That is the shape a generated
        pack wants, and the round-trip test could not have found it: a full dump
        states every non-default field, so both readings agree on the only
-       document the test feeds it. What still needs a compiler is a block SHAPE (a Blockbench
+       document the test feeds it.
+       A session also **says which packs it is running and writes it down**,
+       which is what makes a save diagnosable after a pack changes underneath
+       it — otherwise a world that loads wrong has no way to name the reason.
+       What still needs a compiler is a block SHAPE (a Blockbench
        bake), new `MachineKind`s and `CreatureKind`s (hand-written dispatch),
        item effects, and worldgen presence
 5. [ ] **Generation tooling** — an out-of-game companion tool that emits a
@@ -532,6 +741,11 @@ what a Factorio mod actually is. What needs an engine hook first: item effects
 presence, growth behaviours. What stays out of reach: new `MachineKind`s and
 `CreatureKind`s (6+ hand-written dispatch sites each) and new block shapes
 (these need a Blockbench model and a re-bake, so they are not text-authorable).
+That last one is the hard wall, and it is worth naming precisely because of
+the **Model coverage** backlog above: a generated pack can add a machine, its
+recipes, its fuel and its tier, and the result is playable — but it will be a
+painted cube, and no amount of generation changes that. Every model in that
+backlog is developer work by definition.
 
 Art needs no image model: `VoxelGameRender.cpp` already generates fallback
 tiles from `BlockInfo::color`, so a modded block with a chosen colour is
@@ -600,11 +814,33 @@ Kept here so they don't get lost — none are architectural dead-ends:
   no objective/journal system, so all discoverability rests on the F1 overlay
   plus out-of-game docs (`RECIPES.md`). Scheduled as the Q1 2027 onboarding item,
   ahead of the closed beta
-- There is no storage block of any kind, and logistics is one-item unfiltered
-  belts — no crates, filters, or splitters. Staged under Q4 2026's storage &
-  logistics item; the crate itself is nearly free because `Inventory` is an
-  unbounded count map
+- ~~There is no storage block of any kind, and logistics is one-item unfiltered
+  belts~~ — **stale as of Aug 2026**: the Storage Crate, buffer caps and belt
+  filters all shipped, and the crate turned out to be the splitter too. What is
+  genuinely still open is multi-item belts, powered belts (a tuning decision,
+  not a build), a machine pushing into an *adjacent* belt not aligned behind
+  it, and fluids. All staged under Q4 2026's storage & logistics item
 - No localization plan (bitmap font is digits + A-Z + punctuation only)
+- ~~**Model assets need a tidy-up, and one of them is a real bug.**~~
+  **Fixed Aug 2026.** `void_warden.bbmodel` was UNTRACKED in both `models/` and
+  `game/assets/models/` (byte-identical copies), so a fresh clone silently lost
+  boss #1 — `CreatureSystem` logged the missing model and disabled the species,
+  the lenient behaviour working exactly as designed and therefore failing
+  quietly. The convention chosen: **`models/` is block-shape bake sources only**
+  and creature models live only in `game/assets/models/`. So the Warden is
+  committed there, the `models/` copy is gone, the orphaned generated
+  `boss.bbmodel` is deleted, and `make_boss_model.py` — which had been
+  regenerating that orphan on every run — is now `make_tempest_model.py` and
+  makes only what is still generated. Byte-identical tempest output pins the
+  surgery. The quiet-failure half is closed separately by the model preflight in
+  `--selftest`: leniency is right for a player and wrong for CI, so a missing
+  or unparsable `kSpecies` model now fails the build
+- **Docs go stale silently, and that is a process gap rather than an
+  incident.** The Void Warden's lunge/enrage/knock-up kit lived in shipped
+  code with zero mentions in ROADMAP.md or CLAUDE.md until this pass found it.
+  The reliable sources for combat behaviour are the `kSpecies` rows in
+  `CreatureSystem.cpp` and the knob blocks in `VoxelGameInternal.h`; a doc
+  that disagrees with those is wrong, not authoritative
 - **Multiplayer: post-launch, but no longer "if ever" (Aug 2026).** The intent
   is now that the game eventually IS multiplayer, which changes what counts as
   a defensible shortcut today even though none of the work is scheduled. The
