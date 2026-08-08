@@ -52,6 +52,10 @@ struct CreatureSpecies {
     float  strikeRange = 0.0f;   // center-to-center hit distance
     float  damage = 0.0f;        // hearts per strike
     float  strikeCooldown = 0.0f;
+    // Seconds from committing to a swing until the blow lands, so a species
+    // with a wind-up animation hits when its weapon does. 0 = on contact,
+    // which is what a species with no swing clip wants.
+    float  swingImpact = 0.0f;
     ItemId drop = ItemId::None;  // awarded on the killing blow
     // Lunge: a telegraphed charge that closes distance a walk can't. Zero
     // cooldown disables it, so a species opts in by filling these five.
@@ -139,6 +143,10 @@ private:
         bool  walking = false, grounded = false;
         int   anim = -1;                    // index into the model's animations
         float animTime = 0.0f;              // frozen while the engine is paused
+        float attackLeft = 0.0f;            // >0: a one-shot swing owns the model
+        bool  swingPending = false;         // swing in flight; its axe hasn't landed
+        float swingLeft = 0.0f;             // seconds until it does
+        bool  swingLunged = false;          // that swing started mid-dash (bonus)
         std::uint32_t wanderRolls = 0;      // hash counter for wander decisions
         float     hp = 0.0f;                // set from the species row on spawn
         glm::vec3 knock{0.0f};              // decaying shove from being hit
@@ -159,6 +167,11 @@ private:
     };
 
     const Creature* firstBoss(DimensionId dim) const;
+
+    // Play a species' one-shot clip (the boss's swing) from the top, holding
+    // off walk/idle until it ends. A model without that clip is left alone,
+    // so a species opts in purely by having animated one.
+    void playOnce(Creature& c, const char* clip);
 
     // Nearest creature in `active` struck by the ray within `reach`, blocked by
     // a nearer solid block. Returns its index (-1 = miss). Shared by melee/ranged.

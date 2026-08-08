@@ -245,7 +245,9 @@ namespace vg {
     inline constexpr int   kMaxEntityBones       = 32;     // must match uBones[] in entity.vert
 
     // ---- Boss & arena (the BossArena dimension). Tune freely. ----
-    inline constexpr const char* kBossModel = "assets/models/boss.bbmodel";
+    // Authored in Blockbench (the generated boss.bbmodel it replaced is still
+    // in tools/make_boss_model.py, which the Tempest below still comes from).
+    inline constexpr const char* kWardenModel = "assets/models/void_warden.bbmodel";
     inline constexpr int   kArenaRadius        = 12;    // voidstone disc radius (blocks)
     inline constexpr int   kArenaY             = 20;    // arena ground height
     inline constexpr float kBossHealth         = 30.0f; // ~15 sword hits
@@ -257,6 +259,11 @@ namespace vg {
     inline constexpr float kBossStrikeRange    = 2.1f;  // center distance for a hit
     inline constexpr float kBossDamage         = 1.5f;  // hearts per hit
     inline constexpr float kBossStrikeCooldown = 1.5f;  // seconds between hits
+    // The warden commits to a swing on contact and the blow lands THIS far
+    // into it -- when the axe reaches the ground in the model's attack clip
+    // (its last keyframe sits at ~0.92 s), so the animation is the telegraph.
+    // Step out from under it in time and the axe hits nothing.
+    inline constexpr float kBossSwingImpact    = 1.0f;  // seconds into the swing
     inline constexpr float kBossKnockback      = 9.0f;  // player shove per hit, blocks/s
     // Vertical pop per hit, rolled per strike so no two hits feel alike.
     // Expressed as HEIGHT IN BLOCKS and converted to a launch velocity at the
@@ -267,7 +274,10 @@ namespace vg {
     // damage), so a high roll costs the strike plus up to ~1.5 more hearts.
     inline constexpr float kBossKnockUpMinH    = 1.0f;  // blocks of height
     inline constexpr float kBossKnockUpMaxH    = 5.0f;
-    inline constexpr float kBossScale          = 2.0f;  // render + reach scale
+    // The model stands 3.58 blocks tall as authored, so this is what puts it
+    // inside the collision box below (3.58 * 0.64 ~= 2.3, and its arm span
+    // lands just inside kBossHalfW) -- keeping the fight's tuned distances.
+    inline constexpr float kBossScale          = 0.64f; // render scale
     inline constexpr float kBossHalfW          = 0.85f; // collision half width
     inline constexpr float kBossHeight         = 2.3f;
     inline constexpr float kVictorySeconds     = 3.0f;  // linger before the ride home

@@ -15,6 +15,10 @@ Rerun after editing:  python tools/make_boss_model.py
 The outputs are *starters* -- replace either with any hand-made Blockbench
 model of the same name (Free format, per-face UVs, embedded texture). It
 overwrites hand edits!
+
+The warden took that offer: the game now loads the authored
+assets/models/void_warden.bbmodel (see vg::kWardenModel), so boss.bbmodel is
+kept only as the reference starter. The tempest still ships from here.
 """
 
 import base64
