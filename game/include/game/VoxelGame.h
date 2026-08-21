@@ -53,7 +53,11 @@ protected:
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildShapeSheet();      // load assets/shapes.png (optional; loud if absent)
-    void buildWorld();           // generate terrain + the demo structures
+    void buildWorld();           // generate terrain + the ruin + sources + the tree
+    // Stamp the derelict factory with its north row centred on `origin`. Split
+    // out of buildWorld so the thing can be SITED rather than hardcoded onto
+    // the plateau -- see the comment at the call site for why it moved.
+    void plantRuin(const glm::ivec3& origin);
     void buildArena(World& w, SpeciesId boss); // the boss's arena variant
     void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
     void returnHome();               // back to m_homePose in the Overworld

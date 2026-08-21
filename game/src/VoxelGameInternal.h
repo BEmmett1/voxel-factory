@@ -187,7 +187,26 @@ namespace vg {
     inline constexpr float kRainSpan        = 24.0f;   // vertical wrap span
     inline constexpr int   kSkyTopY         = 64;      // sky-visibility scan ceiling
     inline constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
-    inline constexpr int   kDemoFuelWood    = 8;       // wood preloaded in demo generators
+    // The ruin: a derelict factory out past the sources, not a starter kit on
+    // the plateau. It is stocked to LIMP -- enough to still be running when you
+    // find it and to die while you watch, which is the whole lesson, and far
+    // too little to skip the tree, the axe and the Bloomery the way a plateau
+    // full of free wood and herb did.
+    inline constexpr int   kRuinFuelWood    = 2;       // wood left in the ruin's generators
+    inline constexpr int   kRuinHerb        = 4;       // herb left in its grinder
+    // Where it sits: out in the same band as the sources, which is where the
+    // resources are and therefore where a factory would have been built. The
+    // outer bound only saves wasted attempts -- what actually keeps the pad on
+    // land is the per-column land test, since the coastline wobbles by +-7 and
+    // a radius alone cannot tell a headland from a bay.
+    inline constexpr float kRuinMinRadius   = 22.0f;   // = kSourceMinRadius
+    inline constexpr float kRuinMaxRadius   = 30.0f;
+    // How much levelling the ruin's builders are assumed to have done. The
+    // hills noise has a ~11-block wavelength and the pad is 17 wide, so a
+    // footprint routinely spans the full hill range; too small a slack and no
+    // site is ever found.
+    inline constexpr int   kRuinLevelSlack  = 4;
+    inline constexpr int   kRuinHeadroom    = 6;       // cells cleared above its floor
     inline constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
     // (Generator burn time / barrel fill cadence + cap are per-machine data
     // now: see kMachineTraits in Machine.h.)
