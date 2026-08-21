@@ -15,6 +15,7 @@
 #include <array>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -476,6 +477,132 @@ namespace {
         }
     }
 
+    // Balance checks report only on `core:` rows -- see checkRenewability.
+    bool isCorePart(const char* k) {
+        return std::string_view(k).substr(0, 5) == "core:";
+    }
+
+    // ---- Balance checks: is the economy a closed loop? --------------------
+    // The two below are BALANCE claims about the shipped game, not coherence
+    // claims about a content set, so both report only on `core:` rows. A mod is
+    // allowed to add a trophy with no sink or a boss drop that never regrows;
+    // the game this repo ships is not, and these are what keep it honest.
+    //
+    // They also run through content::validate(), which the PACK LOADER calls --
+    // so scoping is not decoration. Without it, installing any pack that adds
+    // an ornament would refuse the pack, and --selftest's own "a pack may add
+    // content" case (main.cpp) would fail.
+    // ---- Renewability: can you still get one on your thousandth hour? -----
+    // Reachability asks whether the tech tree OPENS. This asks whether it stays
+    // open: seeded from nothing but the faucets the SIMULATION refills, every
+    // item must still be producible. An item that only reachability can find is
+    // one the island happened to generate a finite pile of.
+    //
+    // What it is NOT: proof that any individual recipe is net-positive. It is a
+    // ratchet, not a discovery tool -- it should come back clean today and only
+    // ever speak up when an edit takes a faucet away.
+    void checkRenewability(std::vector<std::string>& out) {
+        std::vector<bool> have(itemCount(), false);
+        auto gain = [&](ItemId id) {
+            if (id != ItemId::None) have[static_cast<std::size_t>(id)] = true;
+        };
+
+        // GROWN. A source respawns its node forever (updateSources), and a
+        // source block itself survives being mined -- it drops its own item, so
+        // relocating one never destroys it. Both halves are needed: nothing
+        // crafts a Resonant Source, so without the second the hybrid line reads
+        // as finite when it is the opposite.
+        for (const BlockInfo& row : blockRows()) {
+            if (!row.source) continue;
+            gain(blockDrop(row.spawnsNode).id);
+            gain(blockDrop(row.id).id);
+        }
+
+        // GATHERED. Forestry is self-seeding (a tree returns ~8 saplings for
+        // the one that made it), grass spreads back over bare dirt on its own
+        // (updateGrassSpread), and terrain is CONSERVED -- digging a block and
+        // putting it back neither creates nor destroys it. None of these can be
+        // derived from a registry row; they are sim behaviour.
+        gain(ItemId::Wood);        // logs, from a tree a sapling grew
+        gain(ItemId::Stick);
+        gain(ItemId::SaplingItem);
+        gain(ItemId::PlantFiber);  // turf, which grass spread renews
+        gain(ItemId::Pebble);
+        gain(ItemId::GrassItem);
+        gain(ItemId::DirtItem);
+        // WEATHER, and the two the fights hand out. A boss is repeatable, so
+        // its drop is renewable in exactly the sense this check means.
+        gain(ItemId::SpringWater);
+        gain(ItemId::VoidCatalyst);
+        gain(ItemId::StormCore);
+
+        // Deliberately NOT seeded, and the interesting part of this check:
+        // Stone and Sand. The island generates both, so reachability never had
+        // to ask where the next one comes from -- and every producer of stone
+        // costs stone (compactor/stone needs a Compactor or Tamper, circle
+        // patterns cost Stone, hand/bloomery costs Stone x8). The one thing
+        // that breaks that cycle is hand/pebble-stone off sifted topsoil.
+        closeOverRecipes(have);
+
+        for (const ItemInfo& row : itemRows()) {
+            if (row.id == ItemId::None || !isCorePart(row.key)) continue;
+            if (have[static_cast<std::size_t>(row.id)]) continue;
+            // Worded to cover both shapes this catches: an item with no
+            // producer at all, and one whose every producer spends something
+            // finite. "No chain reaches it" is true of both.
+            out.push_back(std::string(row.name) + " is not renewable -- no chain of "
+                          "recipes reaches it from what the world regrows");
+        }
+    }
+
+    // ---- Orphans: does anything pile up with nowhere to go? ---------------
+    // The mirror of reachability. That one proves you can GET everything; this
+    // proves everything you get is for something. Four allowances, all derived
+    // rather than flagged on a registry row, so a new item earns its exemption
+    // by being what it claims to be.
+    void checkOrphans(std::vector<std::string>& out) {
+        std::vector<bool> consumed(itemCount(), false);
+        auto eat = [&](ItemId id) {
+            if (id != ItemId::None) consumed[static_cast<std::size_t>(id)] = true;
+        };
+        for (const Recipe& r : handcraftRecipes()) {
+            for (const ItemStack& in : r.inputs) eat(in.id);
+        }
+        for (const MachineRecipe& r : machineRecipes()) {
+            for (const ItemStack& in : r.inputs) eat(in.id);
+        }
+        for (const CircleRecipe& r : circleRecipes()) {
+            eat(r.center.id);
+            for (const ItemStack& in : r.ring) eat(in.id);
+        }
+
+        // Spent by a VERB rather than by a recipe. ContentValidate cannot see
+        // VoxelGamePlayer's right-click table, so the four items it consumes
+        // are named here -- the same reason the boss drops are named in
+        // checkReachability. A wrench is not eaten but it GATES the two conduit
+        // verbs, which is a job; without it there is no logistics tier at all.
+        constexpr ItemId kVerbSinks[] = {ItemId::Wrench, ItemId::TeleportKey,
+                                         ItemId::StormKey, ItemId::FusionCatalyst};
+        for (ItemId id : kVerbSinks) eat(id);
+
+        for (const ItemInfo& row : itemRows()) {
+            if (row.id == ItemId::None || !isCorePart(row.key)) continue;
+            if (consumed[static_cast<std::size_t>(row.id)]) continue;
+            // Placing IS a sink -- it is what a Conduit or a Storage Crate is
+            // FOR, and it is what gives Grass a job without a recipe (you lay
+            // it back down to farm fiber off it).
+            if (row.placesBlock != BlockId::Air) continue;
+            // Gear is terminal by nature: you wear it or you swing it.
+            if (row.tool != ToolType::None || row.weaponDamage > 0.0f ||
+                row.armorSlot != ArmorSlot::None) {
+                continue;
+            }
+            if (fuelSeconds(row.id) > 0.0f) continue; // burning it is a use
+            out.push_back(std::string(row.name) + " has no sink -- nothing consumes "
+                          "it, it places nothing, it is not gear and it does not burn");
+        }
+    }
+
 } // namespace
 
 namespace content {
@@ -486,6 +613,8 @@ namespace content {
         checkRecipeKeys(out);
         checkCircleShadowing(out);
         checkReachability(out);
+        checkRenewability(out);
+        checkOrphans(out);
         return out;
     }
 

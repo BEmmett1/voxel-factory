@@ -729,6 +729,48 @@ int runSelfTest() {
         SELFTEST_CHECK(content::dumpContent() == before);
         SELFTEST_CHECK(recipeIndexForKey(BlockId::Press, "press/copper-plate") >= 0);
 
+        // ---- A pack that breaks the RENEWABLE loop is refused --------------
+        // Reachability does not blink at this, and cannot: the island generates
+        // plenty of stone, so every recipe below stays reachable forever. What
+        // it costs is the thousandth hour.
+        //
+        // hand/pebble-stone is the whole hinge, and it is worth knowing why.
+        // compactor/stone would close the loop -- Dirt and Sand both regrow --
+        // but a Compactor costs Stone x8, a Tamper costs Stone x6, and the
+        // Circle you would build either on costs Stone too. EVERY producer of
+        // stone costs stone. Sifted topsoil is the only way in that does not,
+        // so deleting that one row turns the entire tech tree into a finite
+        // pile of whatever worldgen happened to bury.
+        const std::string finitePath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-finitepack.json").string();
+        {
+            std::ofstream out(finitePath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"remove": ["hand/pebble-stone"]}})";
+        }
+        const std::vector<std::string> finite = content::applyPacks({finitePath});
+        SELFTEST_CHECK(!finite.empty());
+        SELFTEST_CHECK(content::validate().empty());   // the rollback put it back
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // ---- An item nothing consumes is refused ---------------------------
+        // The mirror of the check above: reachability proves you can GET
+        // everything, this proves everything you get is FOR something. The key
+        // is deliberately `core:`, which also pins that the balance checks
+        // scope by NAMESPACE rather than being switched off -- the mod:widget
+        // pack further down adds exactly such an item and must still be taken.
+        const std::string orphanPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-orphanpack.json").string();
+        {
+            std::ofstream out(orphanPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "items": [{"key": "core:trophy", "name": "Trophy", "atlasTile": 64}]})";
+        }
+        const std::vector<std::string> orphan = content::applyPacks({orphanPath});
+        SELFTEST_CHECK(!orphan.empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
+
         // A pack naming content this build lacks is refused the same way, and
         // says which key -- the difference between a fixable complaint and a
         // shrug.
@@ -903,6 +945,8 @@ int runSelfTest() {
         fs::remove(unknownPath, rmErr2);
         fs::remove(addPath, rmErr2);
         fs::remove(patchPath, rmErr2);
+        fs::remove(finitePath, rmErr2);
+        fs::remove(orphanPath, rmErr2);
     }
 
     // ---- Pre-v20 lock migration ------------------------------------------
