@@ -140,6 +140,7 @@ Draws 5 power. Hand tier: **Hand Press** (3x slower).
 | `press/machine-casing` | Iron Plate x4 | Machine Casing | 5.0 |
 | `press/etched-plate` | Copper Plate + Crystal Dust x2 | Etched Plate | 4.0 |
 | `press/machine-frame` | Machine Casing + Gear x2 + Etched Plate | Machine Frame | 8.0 |
+| `press/copper-wire` | Copper Rod | Wire x2 | 2.0 |
 | `press/copper-rod` | Copper Ingot | Copper Rod x2 | 2.0 |
 
 ### Rune Core
@@ -164,7 +165,7 @@ Burns fuel. Hand tier: **Bloomery** (3x slower).
 | `furnace/iron-ingot` | Iron Nugget x4 | Iron Ingot | 4.0 |
 | `furnace/copper-from-nuggets` | Copper Nugget x4 | Copper Ingot | 4.0 |
 | `furnace/glass` | Sand | Glass | 3.0 |
-| `furnace/charcoal` | Wood x2 | Charcoal | 6.0 |
+| `furnace/charcoal` | Wood | Charcoal | 6.0 |
 
 ### Sifter
 

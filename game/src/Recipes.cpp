@@ -186,9 +186,20 @@ namespace {
         {"press/machine-frame", B::Press,
                     {{I::MachineCasing, 1}, {I::Gear, 2}, {I::EtchedPlate, 1}},
                                                                  {{{I::MachineFrame, 1}}},  8.0f},
-        // The Copper Rod survives only as a legacy part with no consumer --
-        // rods are iron now. Kept so an old save's stock is not orphaned, and
-        // listed LAST so AUTO never reaches for it.
+        // Wire is DRAWN from a rod, and the Press is where that happens. This
+        // is what retired the Copper Rod's long spell as a part with no
+        // consumer, and it gives the Press a job on the copper line: an ingot
+        // becomes two rods becomes four wire, against circle/wire's ingot ->
+        // two by hand. Automating wire is worth twice doing it yourself, which
+        // is the bargain every machine tier here is supposed to offer.
+        //
+        // Listed after the frame so a Press holding ingots still makes plates
+        // first, and before copper-rod so a Press holding rods drains them
+        // into wire rather than sitting on them.
+        {"press/copper-wire",   B::Press, {{I::CopperRod, 1}},    {{{I::WireItem, 2}}},      2.0f},
+        // Listed LAST so AUTO never reaches for it: rods cost the same single
+        // ingot as plates and plates must win that tie on a fresh Press. Lock
+        // the MAKE COPPER ROD row to run the wire line on a shared Press.
         {"press/copper-rod",    B::Press, {{I::CopperIngot, 1}}, {{{I::CopperRod, 2}}},     2.0f},
 
         // ---- Furnace: the smelter (fuel-fired, no power) -----------------
@@ -202,11 +213,19 @@ namespace {
                                                               {{{I::CopperIngot, 1}}}, 4.0f},
         {"furnace/glass",        B::Furnace, {{I::Sand, 1}},   {{{I::Glass, 1}}},       3.0f},
         // Charring wood is what makes a Furnace pay for itself: Charcoal
-        // burns 3x as long as the wood it came from, so a furnace line feeds
-        // its own fire (and the generators). A Furnace keeps fuel in its own
-        // buffer, so it can char wood and burn wood at the same time -- which
-        // the old shared buffer could not express (see usesFuelSlot).
-        {"furnace/charcoal",     B::Furnace, {{I::Wood, 2}},   {{{I::Charcoal, 1}}},    6.0f},
+        // burns 3x as long as the wood it came from (20s -> 60s), so a furnace
+        // line feeds its own fire (and the generators). A Furnace keeps fuel in
+        // its own buffer, so it can char wood and burn wood at the same time --
+        // which the old shared buffer could not express (see usesFuelSlot).
+        //
+        // ONE wood, not two, and the arithmetic is the reason. At 2:1 a
+        // BLOOMERY charring wood was a net energy LOSS: kManualSlowdown
+        // stretches the craft to 18s and fuelMult 0.6 shortens a wood to 12s,
+        // so it spent 1.5 wood burning plus 2 wood charring -- 70 burn-seconds
+        // in for 60 out. At 1:1 both tiers are positive (Furnace 2.3x,
+        // Bloomery 1.2x) and the tier gap survives where it belongs, in
+        // speedMult. Retune this ratio and check the Bloomery, not the Furnace.
+        {"furnace/charcoal",     B::Furnace, {{I::Wood, 1}},   {{{I::Charcoal, 1}}},    6.0f},
 
         // ---- Sifter: the only source of iron -----------------------------
         // A weighted roll, which is the point: sifting is a rate, not a
