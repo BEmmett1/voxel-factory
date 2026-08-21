@@ -1,5 +1,6 @@
 #include "game/ContentValidate.h"
 
+#include "VoxelGameInternal.h" // kMaxTreeSize: the tree shapes this build has
 #include "game/AlchemyCircle.h"
 #include "game/Atlas.h"
 #include "game/Block.h"
@@ -195,6 +196,21 @@ namespace {
             }
             if (b.source && b.spawnsNode == BlockId::Air) {
                 out.push_back(named + "is a source that grows nothing");
+            }
+            // treeCells() CLAMPS an unknown size rather than indexing past its
+            // shapes, so a bad value is not a crash -- it is a sapling that
+            // silently grows the wrong tree, which is worse. Say so instead.
+            if (b.treeSize < 0 || b.treeSize > vg::kMaxTreeSize) {
+                out.push_back(named + "grows tree size " + std::to_string(b.treeSize) +
+                              ", and this build only has 1.." +
+                              std::to_string(vg::kMaxTreeSize));
+            }
+            // A sapling that cannot be planted anywhere is a sapling that never
+            // grows: the timer is registered on PLACE, and place refuses a
+            // plant whose needsSoil no ground offers.
+            if (b.treeSize > 0 && b.needsSoil == SoilKind::None) {
+                out.push_back(named + "grows a tree but needs no soil, so nothing "
+                                      "roots it");
             }
         }
 

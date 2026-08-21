@@ -107,8 +107,9 @@ Draws 5 power. Hand tier: **Compost Heap** (3x slower).
 
 | key | inputs | output | seconds |
 |---|---|---|---|
-| `composter/dirt-from-sticks` | Stick x3 | Dirt x2 | 2.5 |
-| `composter/dirt-from-sapling` | Sapling | Dirt x3 | 3.0 |
+| `composter/compost` | Sapling x2 + Stick x2 | Compost | 3.0 |
+| `composter/dirt` | Compost | Dirt x4 | 2.5 |
+| `composter/briquette` | Compost x2 | Bio Briquette | 4.0 |
 
 ### Forge
 
@@ -223,6 +224,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/grinder` | - | Copper Ingot x3, -, Stone x4, - | Grinder | 6.0 |
 | `circle/generator` | - | Copper Ingot x2, Stone x2, Wood x2, - | Generator | 6.0 |
 | `circle/composter` | - | Wood x6, -, Stick x4, - | Composter | 5.0 |
+| `circle/grafted-sapling` | - | Sapling x2, -, Compost, - | Grafted Sapling | 5.0 |
 | `circle/rain-barrel` | - | Wood x6, -, Bucket, - | Rain Barrel | 5.0 |
 | `circle/wire` | - | Copper Ingot, -, -, - | Wire x2 | 2.0 |
 | `circle/press` | - | Copper Ingot x2, Stone x2, Copper Ingot x2, Stone x2 | Press | 8.0 |
@@ -279,6 +281,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | Stick | 5 |
 | Sapling | 5 |
 | Wood | 20 |
+| Bio Briquette | 35 |
 | Charcoal | 60 |
 
 A machine that both burns fuel and runs recipes has a FUEL buffer of its

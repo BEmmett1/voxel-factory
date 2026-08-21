@@ -103,11 +103,24 @@ namespace {
         {"grinder/ground-herb",  B::Grinder, {{I::Herb, 1}},    {{{I::GroundHerb, 1}}},  2.0f},
         {"grinder/crystal-dust", B::Grinder, {{I::Crystal, 1}}, {{{I::CrystalDust, 1}}}, 2.0f},
         {"grinder/sand",         B::Grinder, {{I::Stone, 1}},   {{{I::Sand, 2}}},        2.0f},
-        // Composter: renewable Dirt from plant matter (sticks / saplings).
-        {"composter/dirt-from-sticks",  B::Composter, {{I::Stick, 3}},
-                                                              {{{I::DirtItem, 2}}}, 2.5f},
-        {"composter/dirt-from-sapling", B::Composter, {{I::SaplingItem, 1}},
-                                                              {{{I::DirtItem, 3}}}, 3.0f},
+        // Composter: where the tree's surplus goes. A grown tree returns ~8
+        // saplings and ~11 sticks for the ONE sapling that made it, and only
+        // one of those saplings replaces it -- so without a sink here the
+        // forestry loop, the most net-positive loop in the game, dead-ends.
+        //
+        // Green (saplings) plus brown (sticks) makes compost, and compost is
+        // the branch point: soil, fuel, or the fertilizer that speeds a field.
+        // ORDER IS GAMEPLAY here as everywhere -- AUTO takes the first row
+        // whose inputs are present, so a Composter fed leaf litter must make
+        // compost rather than idle. There is deliberately no PlantFiber
+        // variant: a second compost row would make a mixed-input Composter
+        // non-deterministic under AUTO for no gain.
+        {"composter/compost",   B::Composter, {{I::SaplingItem, 2}, {I::Stick, 2}},
+                                                              {{{I::Compost, 1}}},      3.0f},
+        {"composter/dirt",      B::Composter, {{I::Compost, 1}},
+                                                              {{{I::DirtItem, 4}}},     2.5f},
+        {"composter/briquette", B::Composter, {{I::Compost, 2}},
+                                                              {{{I::BioBriquette, 1}}}, 4.0f},
         // Cauldron: powder + water -> solution/tincture
         {"cauldron/herbal-tincture",  B::Cauldron, {{I::GroundHerb, 1}, {I::SpringWater, 1}},
                                                               {{{I::HerbalTincture, 1}}},  3.0f},
@@ -262,6 +275,14 @@ namespace {
                                                            {I::GeneratorItem, 1}, 6.0f},
         {"circle/composter", {}, {{I::Wood, 6}, {}, {I::Stick, 4}, {}},
                                                            {I::ComposterItem, 1}, 5.0f},
+        // Two saplings bound with compost. This is where the forestry surplus
+        // stops being a nuisance: a tree returns ~8 saplings for the one that
+        // planted it, and only one of those replaces it -- so the rest either
+        // compost or become a bigger tree on the same plot. Deliberately on the
+        // Circle rather than in the hand menu, since it costs a machine product
+        // and the hand tier is meant to stay buildable from nothing.
+        {"circle/grafted-sapling", {}, {{I::SaplingItem, 2}, {}, {I::Compost, 1}, {}},
+                                                           {I::GraftedSaplingItem, 1}, 5.0f},
         {"circle/rain-barrel", {}, {{I::Wood, 6}, {}, {I::Bucket, 1}, {}},
                                                            {I::RainBarrelItem, 1}, 5.0f},
         {"circle/wire", {}, {{I::CopperIngot, 1}, {}, {}, {}},

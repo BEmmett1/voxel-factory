@@ -1466,6 +1466,167 @@ int runSelfTest() {
         SELFTEST_CHECK(costOf(*pick, ItemId::Pebble) < price);
     }
 
+    // ---- A grafted sapling grows a bigger tree ----------------------------
+    // Which tree a sapling becomes is a REGISTRY field, not a second
+    // `id == BlockId::Sapling` in WorldEdit -- that hardcode is the one
+    // SoilKind exists to have removed. The consequence worth pinning is that
+    // the block carries the kind, which is why the sapling registry is still a
+    // plain pos -> float and the save format did not move.
+    {
+        SELFTEST_CHECK(blockInfo(BlockId::Sapling).treeSize == 1);
+        SELFTEST_CHECK(blockInfo(BlockId::SaplingGrafted).treeSize == 2);
+        // Exactly two saplings, or the "is this a sapling" test above silently
+        // starts matching something that has no business growing.
+        int growers = 0;
+        for (const BlockInfo& b : blockRows()) {
+            if (b.treeSize > 0) ++growers;
+        }
+        SELFTEST_CHECK(growers == 2);
+
+        // Both shapes root at the sapling's own cell, which is what lets
+        // updateSaplings skip `cell != pos` when it checks for clear space.
+        SELFTEST_CHECK(vg::treeCells(1).front().offset == glm::ivec3(0, 0, 0));
+        SELFTEST_CHECK(vg::treeCells(2).front().offset == glm::ivec3(0, 0, 0));
+        SELFTEST_CHECK(vg::treeCells(2).size() > vg::treeCells(1).size());
+        // An out-of-range size CLAMPS rather than indexing past the shapes --
+        // a content pack may write any integer into treeSize.
+        SELFTEST_CHECK(vg::treeCells(99).size() == vg::treeCells(2).size());
+        SELFTEST_CHECK(vg::treeCells(0).size() == vg::treeCells(1).size());
+
+        World tw;
+        MachineSystem::MachineMap tm;
+        MachineSystem::BeltMap tb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> ts, tsap;
+        CropSystem::CropMap tc;
+        const WorldEdit::Registries tr{tm, tb, ts, tsap, tc};
+
+        const glm::ivec3 soil{240, 30, 240};
+        const glm::ivec3 seat = soil + glm::ivec3(0, 1, 0);
+        tw.setBlock(soil.x, soil.y, soil.z, BlockId::Grass);
+        SELFTEST_CHECK(
+            WorldEdit::placeBlock(tw, tr, seat, BlockId::SaplingGrafted, {}).placed);
+        SELFTEST_CHECK(tsap.count(seat) == 1); // registered by treeSize, not by id
+        SELFTEST_CHECK(WorldEdit::breakBlock(tw, tr, seat).drop.id ==
+                       ItemId::GraftedSaplingItem);
+        SELFTEST_CHECK(tsap.count(seat) == 0);
+
+        // The bigger tree really is bigger where it counts: more logs (wood)
+        // and more leaves (sticks and the next saplings), on one plot.
+        const auto count = [](int size, BlockId want) {
+            World w;
+            vg::placeTree(w, {0, 40, 0}, size);
+            int n = 0;
+            for (const vg::TreeCell& c : vg::treeCells(size)) {
+                if (w.getBlock(c.offset.x, 40 + c.offset.y, c.offset.z) == want) ++n;
+            }
+            return n;
+        };
+        SELFTEST_CHECK(count(2, BlockId::Log) > count(1, BlockId::Log));
+        SELFTEST_CHECK(count(2, BlockId::Leaves) > count(1, BlockId::Leaves));
+    }
+
+    // ---- Rich Soil is worked ground one rung further up --------------------
+    // Compost is the tree's surplus arriving in the field, and enriching is the
+    // hoe's shape a step later: a held item RMB transmuting the aimed cell. The
+    // ladder is Soil -> Tilled -> Rich, and it only climbs.
+    {
+        World rw;
+        MachineSystem::MachineMap rm;
+        MachineSystem::BeltMap rb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> rs, rsap;
+        CropSystem::CropMap rc;
+        const WorldEdit::Registries rr{rm, rb, rs, rsap, rc};
+
+        const glm::ivec3 g{220, 30, 220};
+        rw.setBlock(g.x, g.y, g.z, BlockId::Grass);
+
+        // Compost is not a hoe: it works worked ground, and nothing else. This
+        // is the refusal the deny line has to distinguish, since "wrong block"
+        // and "already rich" are different mistakes.
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, g));
+        SELFTEST_CHECK(WorldEdit::tillSoil(rw, g));
+        SELFTEST_CHECK(WorldEdit::enrichSoil(rw, g));
+        SELFTEST_CHECK(rw.getBlock(g.x, g.y, g.z) == BlockId::RichSoil);
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, g)); // already rich: a no-op
+        // ...and the ladder does not run backwards: rich ground is not plain
+        // soil, so the hoe has nothing to do with it.
+        SELFTEST_CHECK(!WorldEdit::tillSoil(rw, g));
+
+        // Same reason tilling refuses a covered cell: enriching under a placed
+        // block would strand it on ground it no longer sits on.
+        const glm::ivec3 covered = g + glm::ivec3(0, 0, 1);
+        rw.setBlock(covered.x, covered.y, covered.z, BlockId::TilledSoil);
+        rw.setBlock(covered.x, covered.y + 1, covered.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, covered));
+
+        // Rich satisfies everything tilled ground does, for free, because
+        // `provides >= needsSoil` is ordered -- a crop AND a sapling, neither
+        // of which had to be told about the new rung.
+        SELFTEST_CHECK(soilAccepts(BlockId::RichSoil, BlockId::HerbCrop0));
+        SELFTEST_CHECK(soilAccepts(BlockId::RichSoil, BlockId::Sapling));
+        // The rungs below are unchanged, which is the other half of the claim.
+        SELFTEST_CHECK(soilAccepts(BlockId::TilledSoil, BlockId::HerbCrop0));
+        SELFTEST_CHECK(!soilAccepts(BlockId::Grass, BlockId::HerbCrop0));
+        SELFTEST_CHECK(soilAccepts(BlockId::Grass, BlockId::Sapling));
+
+        // Drops Dirt like the tilled ground it came from: neither tilling nor
+        // enriching may be a way to duplicate soil.
+        SELFTEST_CHECK(WorldEdit::breakBlock(rw, rr, g).drop.id == ItemId::DirtItem);
+    }
+
+    // ---- Nutrition stacks with water; water does not stack with itself -----
+    // Rain and irrigation share ONE multiplier because they are the same thing
+    // arriving two ways. Rich Soil is a different axis and deliberately DOES
+    // stack, so a fed and watered field runs at the product. The last check is
+    // the load-bearing one: it pins the rule the new multiplier sits next to,
+    // so a later edit cannot read the departure as a licence to stack water.
+    {
+        // Ticks until ripe, which is monotone in the growth rate -- unlike
+        // "stage after N ticks", which piles four different rates up against
+        // the same stage-3 ceiling and cannot tell them apart. Each run gets
+        // its own world, so a plant from an earlier measurement cannot keep
+        // ticking through a later one's weather.
+        const auto ticksToRipe = [](BlockId soil, bool rainy, bool irrigate) {
+            World w;
+            MachineSystem::MachineMap m;
+            MachineSystem::BeltMap b;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> s, sap;
+            CropSystem::CropMap field;
+            const WorldEdit::Registries r{m, b, s, sap, field};
+
+            const glm::ivec3 base{230, 30, 230};
+            const glm::ivec3 top = base + glm::ivec3(0, 1, 0);
+            w.setBlock(base.x, base.y, base.z, soil);
+            WorldEdit::placeBlock(w, r, top, BlockId::HerbCrop0, {});
+            // The sprinkler sits in the soil cell itself: one below the plant,
+            // well inside kIrrigateRadius.
+            const std::vector<glm::ivec3> wet =
+                irrigate ? std::vector<glm::ivec3>{base} : std::vector<glm::ivec3>{};
+            for (int i = 0; i < 20000; ++i) {
+                if (CropSystem::isRipe(w.getBlock(top.x, top.y, top.z))) return i;
+                CropSystem::tick(w, field, rainy, wet);
+            }
+            return -1; // never ripened: a failed placement lands here too
+        };
+
+        const int dry     = ticksToRipe(BlockId::TilledSoil, false, false);
+        const int fed     = ticksToRipe(BlockId::RichSoil,   false, false);
+        const int watered = ticksToRipe(BlockId::TilledSoil, true,  false);
+        const int both    = ticksToRipe(BlockId::RichSoil,   true,  false);
+
+        SELFTEST_CHECK(dry > 0);
+        SELFTEST_CHECK(fed < dry);      // compost is worth something
+        SELFTEST_CHECK(watered < fed);  // ...and worth less than rain (2x vs 3x)
+        SELFTEST_CHECK(both < watered); // the deliberate departure: they stack
+
+        // The rule the departure sits BESIDE, pinned so a later edit cannot
+        // read it as a licence. Irrigating a field it is already raining on
+        // must change nothing, and irrigation alone must be exactly rain alone:
+        // one multiplier, two ways of earning it.
+        SELFTEST_CHECK(ticksToRipe(BlockId::TilledSoil, true, true) == watered);
+        SELFTEST_CHECK(ticksToRipe(BlockId::TilledSoil, false, true) == watered);
+    }
+
     // ---- Farming: the Harvester reaps and REPLANTS -------------------------
     {
         World hw;

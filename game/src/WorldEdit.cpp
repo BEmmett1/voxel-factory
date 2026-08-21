@@ -34,7 +34,7 @@ BreakResult breakBlock(World& world, const Registries& regs, const glm::ivec3& p
         }
     }
     if (isSource(r.broken)) regs.sources.erase(pos);   // its item drops instead
-    if (r.broken == BlockId::Sapling) regs.saplings.erase(pos);
+    if (blockInfo(r.broken).treeSize > 0) regs.saplings.erase(pos);
     if (CropSystem::isCrop(r.broken)) regs.crops.erase(pos);
 
     world.setBlock(pos.x, pos.y, pos.z, BlockId::Air);
@@ -61,7 +61,9 @@ PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& p
         regs.machines[pos] = m;
     }
     if (isSource(id)) regs.sources[pos] = 0.0f;        // starts growing a patch
-    if (id == BlockId::Sapling) regs.saplings[pos] = 0.0f; // starts the grow timer
+    // Any sapling, of any size: the BLOCK says which tree it becomes, so the
+    // registry stays a plain pos -> float and a second one needed no field.
+    if (blockInfo(id).treeSize > 0) regs.saplings[pos] = 0.0f; // starts the grow timer
     if (CropSystem::isCrop(id)) regs.crops[pos] = 0.0f;    // starts ripening
     if (id == BlockId::Belt) {
         Belt b;
@@ -126,6 +128,20 @@ bool tillSoil(World& world, const glm::ivec3& aimed) {
     if (isSolid(world.getBlock(aimed.x, aimed.y + 1, aimed.z))) return false;
 
     world.setBlock(aimed.x, aimed.y, aimed.z, BlockId::TilledSoil);
+    return true;
+}
+
+bool enrichSoil(World& world, const glm::ivec3& aimed) {
+    // Tilled ground only, and tested by BLOCK rather than by `provides < Rich`:
+    // this is one rung of a ladder you climb with the hoe first and compost
+    // second, and saying so directly is what makes enriching already-rich soil
+    // a silent no-op instead of an accident.
+    if (world.getBlock(aimed.x, aimed.y, aimed.z) != BlockId::TilledSoil) return false;
+    // Same reason tillSoil wants a clear cell: enriching under a placed block
+    // would strand it on ground it no longer sits on.
+    if (isSolid(world.getBlock(aimed.x, aimed.y + 1, aimed.z))) return false;
+
+    world.setBlock(aimed.x, aimed.y, aimed.z, BlockId::RichSoil);
     return true;
 }
 

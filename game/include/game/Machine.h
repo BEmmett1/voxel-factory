@@ -104,6 +104,11 @@ inline constexpr FuelInfo kFuelSeed[] = {
     {ItemId::Stick, 5.0f},
     {ItemId::SaplingItem, 5.0f},
     {ItemId::Wood, 20.0f},
+    // The rung between wood and charcoal, and the reason a Composter is worth
+    // building before you own a fire: it turns the tree's leftovers into fuel
+    // without spending the wood you want for building. Listed in burn order
+    // for readability only -- pickFuel scans by `seconds`, not by position.
+    {ItemId::BioBriquette, 35.0f},
     {ItemId::Charcoal, 60.0f},
 };
 

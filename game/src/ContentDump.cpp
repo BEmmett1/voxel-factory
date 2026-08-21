@@ -120,6 +120,7 @@ namespace {
             if (info.needsSoil != SoilKind::None) {
                 j["needsSoil"] = kSoilNames[static_cast<std::size_t>(info.needsSoil)];
             }
+            put(j, "treeSize", info.treeSize, 0);
             // Omitted when it is the plain unit cube, like every other default.
             if (info.shape != ShapeId::FullCube) j["shape"] = shapeName(info.shape);
             a.push_back(j);

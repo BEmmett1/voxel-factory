@@ -378,6 +378,7 @@ namespace {
             b.toolTier = rd.integer(j, "toolTier", prev.toolTier);
             b.provides = rd.named(j, "provides", kSoilNames, prev.provides);
             b.needsSoil = rd.named(j, "needsSoil", kSoilNames, prev.needsSoil);
+            b.treeSize = rd.integer(j, "treeSize", prev.treeSize);
             // Shapes are baked from Blockbench models, so a pack may only NAME
             // one that exists -- which is also why this is the one content
             // reference that is a plain name rather than a namespaced key.

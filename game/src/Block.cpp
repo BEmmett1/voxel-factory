@@ -132,7 +132,7 @@ namespace {
         {.id = B::Sapling, .key = "core:sapling",
          .name = "Sapling", .color = {0.45f, 0.72f, 0.28f},
          .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f,
-         .needsSoil = SoilKind::Soil},
+         .needsSoil = SoilKind::Soil, .treeSize = 1},
         {.id = B::Log, .key = "core:log",
          .name = "Log", .color = {0.45f, 0.33f, 0.18f},
          .drop = {I::Wood, 2}, .tiles = {6, 7, 6},

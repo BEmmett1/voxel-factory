@@ -76,4 +76,10 @@ namespace WorldEdit {
     // and nothing in this game has durability.
     bool tillSoil(World& world, const glm::ivec3& aimed);
 
+    // Enrich `aimed` from Tilled Soil into Rich Soil -- one rung further up the
+    // same ladder, same shape as tillSoil. False = not workable, and the caller
+    // plays the deny. UNLIKE tillSoil the caller must SPEND its compost, and
+    // only on a true return: compost is a plain material, not a tool.
+    bool enrichSoil(World& world, const glm::ivec3& aimed);
+
 } // namespace WorldEdit

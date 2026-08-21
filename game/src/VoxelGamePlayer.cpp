@@ -527,6 +527,25 @@ void VoxelGame::onUpdate(float dt) {
                 } else {
                     deny("THE HOE ONLY WORKS ON GRASS OR DIRT");
                 }
+            } else if (pressed && held == ItemId::Compost && m_inventory.has(held)) {
+                // One rung above the hoe: worked ground fed compost grows
+                // faster. Unlike the hoe and the catalyst this is a plain
+                // MATERIAL, so it is spent -- and only on a true return, or a
+                // misclick at a wall would eat it.
+                if (WorldEdit::enrichSoil(*m_world, tb)) {
+                    audio().playAt("place", glm::vec3(tb) + glm::vec3(0.5f),
+                                   kPlaceVolume, pitchJitter(tb));
+                    m_inventory.remove(held, 1);
+                    updateTitle();
+                } else if (m_world->getBlock(tb.x, tb.y, tb.z) == BlockId::RichSoil) {
+                    // Re-enriching is a no-op in WorldEdit, but silence here
+                    // would read as compost vanishing into nothing.
+                    deny("THIS SOIL IS ALREADY RICH");
+                } else if (isSolid(m_world->getBlock(tb.x, tb.y + 1, tb.z))) {
+                    deny("SOMETHING IS SITTING ON THIS GROUND");
+                } else {
+                    deny("COMPOST GOES ON TILLED SOIL - USE THE HOE FIRST");
+                }
             } else if (pressed && aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);
             } else {

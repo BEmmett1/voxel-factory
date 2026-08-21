@@ -258,7 +258,11 @@ void VoxelGame::updateSaplings() {
             timer += kTickSeconds * (m_weather.raining ? kRainGrowthMult : 1.0f);
             continue;
         }
-        if (overworld().getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
+        // Which tree this becomes is carried by the BLOCK, so a grafted sapling
+        // needs nothing here beyond reading it -- and a stale timer over a cell
+        // that is no longer any kind of sapling is dropped by the same test.
+        const int size = blockInfo(overworld().getBlock(pos.x, pos.y, pos.z)).treeSize;
+        if (size == 0) {
             done.push_back(pos); // the block went away; drop the stale timer
             continue;
         }
@@ -266,7 +270,7 @@ void VoxelGame::updateSaplings() {
         // Grow only into open space -- and never onto the player, who must
         // not wake up entombed in a canopy.
         bool clear = true;
-        for (const TreeCell& c : treeCells()) {
+        for (const TreeCell& c : treeCells(size)) {
             const glm::ivec3 cell = pos + c.offset;
             if (cell != pos && overworld().getBlock(cell.x, cell.y, cell.z) != BlockId::Air) {
                 clear = false;
@@ -277,9 +281,16 @@ void VoxelGame::updateSaplings() {
                 break;
             }
         }
-        if (!clear) continue; // blocked: stay ripe and retry next tick
+        if (!clear) {
+            // Blocked: back OFF rather than re-running the clear check twenty
+            // times a second forever. A fenced-in sapling used to cost a
+            // permanent 25-cell scan at 20 Hz, and a grafted one is 80. The
+            // timer IS the backoff -- no second field, so no save change.
+            timer = kTreeGrowSeconds - kTreeRetrySeconds;
+            continue;
+        }
 
-        placeTree(overworld(), pos);
+        placeTree(overworld(), pos, size);
         done.push_back(pos);
     }
 

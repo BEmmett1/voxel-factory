@@ -340,17 +340,25 @@ namespace vg {
     inline constexpr float kDenySeconds = 2.6f;
 
     inline constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
+    inline constexpr float kTreeRetrySeconds = 2.0f;   // recheck cadence when the spot is blocked
     inline constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
     inline constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)
     inline constexpr int   kLeafReach        = 2;      // leaves survive within this of a log
 
     // ---- Farming ----
-    // Seconds per growth stage, so four stages is 4x this from seed to ripe
-    // (a third of that in the rain). Slower than a tree per stage but with
-    // three of them, because a field is meant to be laid out and left, and its
-    // throughput is meant to come from AREA rather than from any one plant --
-    // that is the whole reason farming exists next to the r=4 source patches.
+    // Seconds per growth stage. Four stages means THREE transitions, so seed
+    // to ripe is 3x this (60s), or a third of that in the rain. Slower than a
+    // tree per stage but with three of them, because a field is meant to be
+    // laid out and left, and its throughput is meant to come from AREA rather
+    // than from any one plant -- that is the whole reason farming exists next
+    // to the r=4 source patches.
     inline constexpr float kCropStageSeconds = 20.0f;
+    // What compost buys. Multiplies WITH rain/irrigation rather than replacing
+    // it (see the comment at the site in CropSystem.cpp) -- water and nutrition
+    // are different axes, so a watered, fed field runs at 3x2 = 6x. Deliberately
+    // smaller than kRainGrowthMult: laying rich soil is permanent and free to
+    // run, while water costs a barrel, a belt and an Irrigator forever.
+    inline constexpr float kRichSoilMult = 2.0f;
     // The Harvester's reach and cadence. Wider than a Miner's r=4 and quicker
     // per take, because a Miner is rate-limited by a patch it cannot enlarge
     // while a Harvester is limited by the field YOU laid -- so its numbers
@@ -364,34 +372,56 @@ namespace vg {
     inline constexpr float kIrrigateSeconds  = 30.0f;
     inline constexpr int   kIrrigateRadius   = 5;
 
-    // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
-    // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.
+    // The tree shape as offsets from the sapling cell: a trunk of logs, a leaf
+    // ring around the top one, a full square layer, and a plus-shaped cap.
     // Single source of truth for world-gen, sapling growth, and space checks.
+    //
+    // Two sizes, from one builder. Size 1 is the wild tree (3 logs, 22 leaves);
+    // size 2 is what a GRAFTED sapling grows -- taller, one ring wider, and
+    // worth roughly twice as much wood and leaf litter for the same 45 seconds.
+    // The SIZE is carried by the sapling BLOCK (BlockInfo::treeSize), which is
+    // what lets the sapling registry stay a plain pos -> float and the save
+    // format not change at all.
     struct TreeCell {
         glm::ivec3 offset;
         BlockId    block;
     };
 
-    inline const std::vector<TreeCell>& treeCells() {
-        static const std::vector<TreeCell> cells = [] {
+    inline constexpr int kMaxTreeSize = 2;
+
+    inline const std::vector<TreeCell>& treeCells(int size = 1) {
+        // trunk height, canopy half-width, and how many rows the full square
+        // layer occupies above the ring.
+        const auto build = [](int trunk, int reach, int layers) {
             std::vector<TreeCell> c;
-            for (int y = 0; y <= 2; ++y) c.push_back({{0, y, 0}, BlockId::Log});
-            for (int dz = -1; dz <= 1; ++dz) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    if (dx != 0 || dz != 0) c.push_back({{dx, 2, dz}, BlockId::Leaves});
-                    c.push_back({{dx, 3, dz}, BlockId::Leaves});
+            for (int y = 0; y < trunk; ++y) c.push_back({{0, y, 0}, BlockId::Log});
+            const int top = trunk - 1;
+            for (int dz = -reach; dz <= reach; ++dz) {
+                for (int dx = -reach; dx <= reach; ++dx) {
+                    // The ring skips the trunk cell it wraps; the layers above
+                    // are solid because there is no trunk left to skip.
+                    if (dx != 0 || dz != 0) c.push_back({{dx, top, dz}, BlockId::Leaves});
+                    for (int l = 1; l <= layers; ++l) {
+                        c.push_back({{dx, top + l, dz}, BlockId::Leaves});
+                    }
                 }
             }
-            const glm::ivec3 cap[5] = {{0, 4, 0}, {1, 4, 0}, {-1, 4, 0}, {0, 4, 1}, {0, 4, -1}};
+            const int capY = top + layers + 1;
+            const glm::ivec3 cap[5] = {{0, capY, 0}, {1, capY, 0}, {-1, capY, 0},
+                                       {0, capY, 1}, {0, capY, -1}};
             for (const glm::ivec3& o : cap) c.push_back({o, BlockId::Leaves});
             return c;
-        }();
-        return cells;
+        };
+        static const std::vector<TreeCell> small = build(3, 1, 1); // 3 logs, 22 leaves
+        static const std::vector<TreeCell> large = build(5, 2, 2); // 5 logs, 74 leaves
+        // A content pack can write any integer into treeSize, so clamp rather
+        // than index: an out-of-range size grows the ordinary tree.
+        return size >= 2 ? large : small;
     }
 
     // Stamp a grown tree whose trunk base is at `base` (the sapling cell).
-    inline void placeTree(World& world, const glm::ivec3& base) {
-        for (const TreeCell& c : treeCells()) {
+    inline void placeTree(World& world, const glm::ivec3& base, int size = 1) {
+        for (const TreeCell& c : treeCells(size)) {
             world.setBlock(base.x + c.offset.x, base.y + c.offset.y,
                            base.z + c.offset.z, c.block);
         }

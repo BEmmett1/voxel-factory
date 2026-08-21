@@ -67,15 +67,36 @@ void tick(World& world, CropMap& crops, bool rainy,
         // stops a mature field from burning tick time forever.
         if (isRipe(here)) continue;
 
+        // Read every tick now rather than only on the tick a stage advances,
+        // because what the crop is standing in changes its RATE. That is one
+        // chunk lookup per planted cell per tick -- a 121-cell field is ~2.4k/s
+        // against the leaf-decay pass's ~300k -- and the advance check below
+        // reuses it, so an advancing tick actually costs one lookup less.
+        const BlockId below = world.getBlock(pos.x, pos.y - 1, pos.z);
+
         // Rain and irrigation share ONE multiplier on purpose: a machine that
         // buys weather independence must not also stack into a third rate.
-        const bool wet = rainy || irrigated(pos);
-        timer += kTickSeconds * (wet ? kRainGrowthMult : 1.0f);
+        //
+        // Nutrition is a DIFFERENT axis, and it deliberately DOES stack with
+        // water. Rain and irrigation are one thing arriving two ways; compost
+        // is not water. It is a standing build investment -- a Composter fed
+        // the tree's surplus, spent into the cell rather than onto the
+        // weather -- so a field that is both watered and fed runs at
+        // kRainGrowthMult * kRichSoilMult. This is the only place two growth
+        // multipliers meet, and it is the point: it is what makes forestry
+        // worth pointing at a farm.
+        //
+        // Tested through `provides` rather than against BlockId::RichSoil so a
+        // content pack's own richer soil earns the bonus by saying so.
+        const bool wet  = rainy || irrigated(pos);
+        const bool rich = blockInfo(below).provides >= SoilKind::Rich;
+        timer += kTickSeconds * (wet ? kRainGrowthMult : 1.0f) *
+                 (rich ? kRichSoilMult : 1.0f);
         if (timer < kCropStageSeconds) continue;
 
         // Soil can be dug out from under a planted crop, and a crop with
         // nothing to stand in dies rather than quietly ripening in mid-air.
-        if (!soilAccepts(world.getBlock(pos.x, pos.y - 1, pos.z), here)) {
+        if (!soilAccepts(below, here)) {
             world.setBlock(pos.x, pos.y, pos.z, BlockId::Air);
             done.push_back(pos);
             continue;
