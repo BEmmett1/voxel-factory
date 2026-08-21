@@ -304,43 +304,18 @@ namespace {
         }
     }
 
-    // ---- Tech-tree reachability (the deadlock check) ----------------------
-    // This is what replaces "the recipe tables are append-only". They can now
-    // be edited freely, so the guardrail has to be about MEANING rather than
-    // ordering: starting from nothing but what the world hands you, the closure
-    // over all three recipe surfaces must reach every machine and every recipe
-    // input. Edit a recipe into a deadlock and this says so.
-    void checkReachability(std::vector<std::string>& out) {
-        std::vector<bool> have(itemCount(), false);
+    // ---- The shared closure ----------------------------------------------
+    // Walk every recipe surface, gaining outputs once their inputs are known,
+    // until nothing more can be made. Both economy checks below run THIS, and
+    // differ only in what they seed it with -- which is the whole distinction
+    // between "can the tech tree open" and "does it stay open".
+    void closeOverRecipes(std::vector<bool>& have) {
         auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
         auto gain = [&](ItemId id) {
             if (id == ItemId::None || known(id)) return false;
             have[static_cast<std::size_t>(id)] = true;
             return true;
         };
-
-        // Seed: everything the world yields to a bare hand or a tool -- block
-        // drops (ore, wood, sand, stone, leaves' sticks), plus the two rain
-        // items. Machines you PLACE drop themselves, so seeding block drops
-        // would beg the question; only naturally-occurring blocks count.
-        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
-            const BlockId id = static_cast<BlockId>(b);
-            if (isMachine(id) || isSource(id)) continue;
-            gain(blockDrop(id).id);
-        }
-        gain(ItemId::Stick);
-        gain(ItemId::Pebble);
-        gain(ItemId::SpringWater); // the Bucket in the rain, and the barrel
-        // Boss drops enter the economy through COMBAT rather than a recipe, so
-        // the closure has to be told about them (kSpecies is private to
-        // CreatureSystem.cpp). Anything gated on these is gated on a fight,
-        // which is the design, not a deadlock.
-        gain(ItemId::VoidCatalyst);
-        gain(ItemId::StormCore);
-
-        // Fixpoint over the three surfaces. A machine recipe is only usable
-        // once the machine ITSELF is reachable, which is the part that makes
-        // this a real bootstrap test rather than a shopping list.
         for (bool changed = true; changed;) {
             changed = false;
             for (const Recipe& r : handcraftRecipes()) {
@@ -351,7 +326,9 @@ namespace {
             for (const CircleRecipe& r : circleRecipes()) {
                 bool ok = known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem) &&
                           (r.center.id == ItemId::None || known(r.center.id));
-                for (const ItemStack& in : r.ring) ok = ok && (in.id == ItemId::None || known(in.id));
+                for (const ItemStack& in : r.ring) {
+                    ok = ok && (in.id == ItemId::None || known(in.id));
+                }
                 if (ok) changed |= gain(r.output.id);
             }
             for (const MachineRecipe& r : machineRecipes()) {
@@ -369,6 +346,80 @@ namespace {
                 for (const RecipeOutput& o : r.outputs) changed |= gain(o.stack.id);
             }
         }
+    }
+
+    // ---- Tech-tree reachability (the deadlock check) ----------------------
+    // This is what replaces "the recipe tables are append-only". They can now
+    // be edited freely, so the guardrail has to be about MEANING rather than
+    // ordering: starting from nothing but what the world hands you, the closure
+    // over all three recipe surfaces must reach every machine and every recipe
+    // input. Edit a recipe into a deadlock and this says so.
+    void checkReachability(std::vector<std::string>& out) {
+        std::vector<bool> have(itemCount(), false);
+        auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
+        auto gain = [&](ItemId id) {
+            if (id == ItemId::None || known(id)) return false;
+            have[static_cast<std::size_t>(id)] = true;
+            return true;
+        };
+
+        // Seed: what the ISLAND is made of. A block whose drop counts here has
+        // to be one the world puts there, so two families are excluded, both
+        // for the same reason -- seeding them would let a thing pay for itself:
+        //
+        //   - machines and sources, which you PLACE (this was the original
+        //     rule, and the two below are the same rule stated more generally);
+        //   - anything an ITEM places, which is that item spelled differently.
+        //     A Conduit dropping a Conduit is not the world handing you one.
+        //   - anything PLANTED (needsSoil), because a crop stage dropping its
+        //     seed is not a seed faucet either.
+        //
+        // The two exclusions past the original matter: without them the closure
+        // believed Wire, Conduit, Scaffold and Herb Seed were free -- which
+        // short-circuited the whole Copper Plate line and all of farming -- and
+        // that is what a deadlock check is supposed to catch, not create.
+        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
+            const BlockId id = static_cast<BlockId>(b);
+            if (isMachine(id) || isSource(id)) continue;
+            if (blockInfo(id).needsSoil != SoilKind::None) continue;
+            bool placed = false;
+            for (const ItemInfo& it : itemRows()) {
+                if (it.placesBlock == id) { placed = true; break; }
+            }
+            if (placed) continue;
+            gain(blockDrop(id).id);
+        }
+        // What the rules above correctly drop but the world genuinely gives:
+        // terrain you dig, and the three things bare hands strip off it. None
+        // of these can be inferred from a `drop` row -- Grass and Dirt already
+        // spend theirs on GrassItem/DirtItem and BlockDrop is a single stack,
+        // so fiber, pebbles and sticks are spawned BESIDE the drop in
+        // VoxelGamePlayer's break path. Code, not data, so the closure is told.
+        gain(ItemId::GrassItem);  // dug and replaced; terrain is conserved
+        gain(ItemId::DirtItem);
+        gain(ItemId::Stick);      // chopped leaves
+        gain(ItemId::SaplingItem); // ditto, and the pity counter guarantees them
+        gain(ItemId::Pebble);     // topsoil
+        gain(ItemId::PlantFiber); // turf, and the whole tool ladder hangs off it
+        gain(ItemId::SpringWater); // the Bucket in the rain, and the barrel
+        // Resonance is seeded EXPLICITLY even though the loop above happens to
+        // reach it (a Resonant Node is neither placed nor planted): a Resonant
+        // Source is made by WorldEdit::fuseSources, a VERB no recipe table
+        // mentions, so its reachability must not rest on an exclusion rule
+        // accidentally not matching. Same shape as the boss drops below --
+        // gated on an action, which is the design rather than a deadlock.
+        gain(ItemId::Resonance);
+        // Boss drops enter the economy through COMBAT rather than a recipe, so
+        // the closure has to be told about them (kSpecies is private to
+        // CreatureSystem.cpp). Anything gated on these is gated on a fight,
+        // which is the design, not a deadlock.
+        gain(ItemId::VoidCatalyst);
+        gain(ItemId::StormCore);
+
+        // Fixpoint over the three surfaces. A machine recipe is only usable
+        // once the machine ITSELF is reachable, which is the part that makes
+        // this a real bootstrap test rather than a shopping list.
+        closeOverRecipes(have);
 
         // Every machine must be buildable, and every recipe input obtainable.
         for (const MachineTraits& traits : machineTraitRows()) {

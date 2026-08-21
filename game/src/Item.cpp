@@ -333,6 +333,30 @@ namespace {
          .name = "Harvester", .placeable = true, .placesBlock = B::Harvester},
         {.id = I::IrrigatorItem, .key = "core:irrigator_item",
          .name = "Irrigator", .placeable = true, .placesBlock = B::Irrigator},
+        // ---- The primitive tier ---------------------------------------
+        // Fiber and Pebble are the two things bare hands get out of the
+        // ground, and unlike every other raw they are not a block's `drop`
+        // row: Grass and Dirt already drop themselves, so these are spawned
+        // BESIDE that drop in VoxelGamePlayer's break path. That is why the
+        // reachability and renewability closures have to name Fiber by hand.
+        {.id = I::PlantFiber, .key = "core:plant_fiber",
+         .name = "Plant Fiber", .atlasTile = 117},
+        // The binding. Nothing in the wood or stone tool tier holds together
+        // without it, which is what makes turf worth digging before you own
+        // a single tool.
+        {.id = I::Twine, .key = "core:twine", .name = "Twine", .atlasTile = 118},
+        // Where the tree's surplus goes. A grown tree is ~8 saplings and ~11
+        // sticks for the one sapling that made it, and only one of those
+        // saplings replaces it -- the rest compost.
+        {.id = I::Compost, .key = "core:compost",
+         .name = "Compost", .atlasTile = 119},
+        {.id = I::BioBriquette, .key = "core:bio_briquette",
+         .name = "Bio Briquette", .atlasTile = 120},
+        // Placeable, so iconTile() borrows the block's side tile -- the
+        // HerbSeed precedent.
+        {.id = I::GraftedSaplingItem, .key = "core:grafted_sapling_item",
+         .name = "Grafted Sapling", .placeable = true,
+         .placesBlock = B::SaplingGrafted},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),

@@ -19,18 +19,46 @@ namespace {
     // would deadlock behind a circle you cannot build.
     std::vector<Recipe> kRecipes = {
         // ---- Early-game ladder (the hard start) ----
-        // The two lowest tool tiers. Wood tools come from hand-gathered sticks
-        // (leaves) + pebbles (sifting dirt/grass) and gate Stone + Logs; Stone
-        // tools come from mined stone + sticks and gate the ore tier (copper,
-        // crystal, essence).
-        {"hand/wood-pickaxe",  {{I::Stick, 2}, {I::Pebble, 3}},     {I::WoodPickaxe, 1}},
-        {"hand/wood-axe",      {{I::Stick, 2}, {I::Pebble, 3}},     {I::WoodAxe, 1}},
-        {"hand/stone-pickaxe", {{I::Stone, 3}, {I::Stick, 2}},      {I::StonePickaxe, 1}},
-        {"hand/stone-axe",     {{I::Stone, 3}, {I::Stick, 2}},      {I::StoneAxe, 1}},
-        {"hand/stone-shovel",  {{I::Stone, 2}, {I::Stick, 2}},      {I::StoneShovel, 1}},
+        // Twine is step one, before any tool: three fibers stripped from turf
+        // twist into the binding that holds a stone head to a stick. It is
+        // listed first because this table reads top-to-bottom as the ladder.
+        {"hand/twine",         {{I::PlantFiber, 3}},                {I::Twine, 1}},
+        // The two lowest tool tiers, each a head + a handle + a binding. Wood
+        // tools come from hand-gathered sticks (leaves), pebbles (topsoil) and
+        // fiber (turf) and gate Stone + Logs; Stone tools come from mined stone
+        // and gate the ore tier (copper, crystal, essence).
+        {"hand/wood-pickaxe",  {{I::Stick, 2}, {I::Pebble, 3}, {I::Twine, 1}},
+                                                                    {I::WoodPickaxe, 1}},
+        {"hand/wood-axe",      {{I::Stick, 2}, {I::Pebble, 3}, {I::Twine, 1}},
+                                                                    {I::WoodAxe, 1}},
+        {"hand/stone-pickaxe", {{I::Stone, 3}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StonePickaxe, 1}},
+        {"hand/stone-axe",     {{I::Stone, 3}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StoneAxe, 1}},
+        {"hand/stone-shovel",  {{I::Stone, 2}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StoneShovel, 1}},
         // Structural staples you can always fall back on.
         {"hand/scaffold",      {{I::Stone, 1}},                     {I::ScaffoldItem, 4}},
         {"hand/bucket",        {{I::Wood, 3}},                      {I::Bucket, 1}},
+        // Pebbles into stone. LOAD-BEARING for content::validate()'s
+        // renewability closure: every other stone producer costs stone
+        // (compactor/stone needs a Compactor or Tamper, circle/tamper costs
+        // Stone x6, hand/bloomery costs Stone x8), so without a route off dug
+        // topsoil the whole tech tree rests on the stone the island happened
+        // to generate with. Do not delete it without reading that check.
+        //
+        // The PRICE is load-bearing too, in the opposite direction, and the
+        // two pull against each other. Stone is gated at kTierWood, so a hand
+        // recipe for it is a way past that gate with no pickaxe -- harmless
+        // only while it stays the slower road. At 4 it is: four bare-handed
+        // digs is 3 s of Dirt at hardness 0.75, against 1 s for a Wood Pickaxe
+        // (miningSpeed 4) on Stone at hardness 4, and that pickaxe costs three
+        // pebbles, fewer than one Stone does here. Cheapen this row and the
+        // wood tier can be skipped outright -- which neither the reachability
+        // nor the renewability closure would complain about, since both only
+        // get greener as it gets cheaper. --selftest pins the ordering
+        // instead; see "the pebble route must stay a fallback" in main.cpp.
+        {"hand/pebble-stone",  {{I::Pebble, 4}},                    {I::Stone, 1}},
         // Storage stays HAND-craftable on purpose. A crate is the answer to a
         // machine whose output has filled, and outputs start filling long
         // before you own a Circle -- gating it behind one would mean meeting
@@ -48,7 +76,8 @@ namespace {
         {"hand/bloomery", {{I::Stone, 8}},                          {I::BloomeryItem, 1}},
         // The Sieve is the only way into iron, and iron is every machine
         // frame -- so it must be reachable with nothing but wood and sticks.
-        {"hand/sieve",    {{I::Wood, 4}, {I::Stick, 4}},            {I::SieveItem, 1}},
+        // A sieve is a MESH, so it costs twine rather than loose sticks.
+        {"hand/sieve",    {{I::Wood, 4}, {I::Twine, 2}},            {I::SieveItem, 1}},
         // The Alchemy Circle itself -- the one piece of the factory you may
         // still build by hand, because it is the gateway to all the rest.
         {"hand/pedestal",  {{I::Stone, 4}, {I::CopperIngot, 1}},    {I::PedestalItem, 1}},

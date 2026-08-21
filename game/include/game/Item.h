@@ -186,6 +186,17 @@ enum class ItemId : std::uint16_t {
     HerbSeed,
     HarvesterItem,
     IrrigatorItem,
+    // ---- The primitive tier -------------------------------------------
+    // What the island gives up to bare hands, and the first thing made out
+    // of it. Turf pulls apart into Fiber, three of which twist into Twine --
+    // the binding every wood and stone tool needs. Compost is the other
+    // half: the tree's surplus (saplings and sticks) has to go somewhere,
+    // and a Composter turning it into soil and briquettes is where.
+    PlantFiber,
+    Twine,
+    Compost,
+    BioBriquette,
+    GraftedSaplingItem,
     Count
 };
 

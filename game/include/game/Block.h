@@ -134,6 +134,16 @@ enum class BlockId : std::uint16_t {
     Harvester,
     // Spends Rain Water to keep the crops around it growing at the rain rate.
     Irrigator,
+    // Tilled soil fed compost. One rung above TilledSoil on the SoilKind
+    // ladder, so it grows everything tilled ground grows -- and, because the
+    // check is `provides >= needsSoil`, a sapling too -- only faster. This is
+    // where the tree's surplus ends up: saplings and sticks compost into the
+    // ground that makes the field quicker.
+    RichSoil,
+    // A sapling grafted from two, which grows the larger tree. A separate BLOCK
+    // rather than a flag because a chunk is a flat BlockId array with no
+    // per-cell metadata -- the same reason the crop stages each cost a row.
+    SaplingGrafted,
     Count
 };
 
@@ -156,11 +166,14 @@ enum class SoilKind : std::uint8_t {
     None = 0, // not plantable at all
     Soil,     // Grass or Dirt: a sapling takes root here
     Tilled,   // worked ground: what crops need, and laying it out is a build step
+    Rich,     // tilled ground fed compost: everything Tilled does, but faster
 };
 
 // Spellings for the content pack format -- see kToolNames in Item.h. Index
 // matches the enum.
-inline constexpr const char* kSoilNames[] = {"none", "soil", "tilled"};
+inline constexpr const char* kSoilNames[] = {"none", "soil", "tilled", "rich"};
+static_assert(std::size(kSoilNames) == 4,
+              "kSoilNames needs one name per SoilKind");
 
 // What mining a block yields ({None, 0} = nothing).
 struct BlockDrop {
@@ -218,6 +231,14 @@ struct BlockInfo {
     // neither grows things nor cares what it sits on.
     SoilKind    provides = SoilKind::None;
     SoilKind    needsSoil = SoilKind::None;
+    // Which tree this block grows into when its timer ripens; 0 = not a
+    // sapling. Data rather than `id == BlockId::Sapling` for the same reason
+    // SoilKind exists: that hardcode was in WorldEdit once, a second sapling
+    // would have had to grow a branch of it, and a content pack could never
+    // have reached it. The BLOCK carrying the kind is also what lets the
+    // sapling registry stay a plain pos -> float, so the save format is
+    // untouched by a second tree.
+    int         treeSize = 0;
     // Which sub-cube geometry the block occupies (BlockShape.h). Default is
     // ShapeId::FullCube — the implicit unit cube every block was before shapes
     // existed. Presentation only: never saved, so ShapeId may be reordered.

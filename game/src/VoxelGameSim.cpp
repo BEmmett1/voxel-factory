@@ -287,16 +287,41 @@ void VoxelGame::updateSaplings() {
 }
 
 // Every leaf that dies -- chopped by hand or decayed off a felled trunk --
-// rolls the same sapling drop into the player's pack. The shared pity counter
-// guarantees the supply across dry streaks either way.
-void VoxelGame::rollLeafSapling(const glm::ivec3& p) {
-    const std::uint32_t h = hash2(p.x * 31 + p.y, p.z * 17,
-                                  m_worldSeed + m_sourceRng++);
-    const bool lucky = (h % 100u) <
+// rolls the SAME two drops. Sticks used to hang off the chop path alone, which
+// quietly made trunk-first felling the optimal play: three axe swings orphaned
+// the whole canopy, and walking away collected the saplings for free while
+// punching the 22 leaves yourself was the only way to be taxed for them.
+//
+// The two rolls differ in where they land, and `chopped` is the whole of it:
+//   - Sticks follow the ordinary rule for breaking a block, a ground drop at
+//     the cell -- but only when a PLAYER broke it. A leaf decaying off a
+//     felled trunk can be forty blocks away, so a drop there is one nobody
+//     ever sees; those go to the pack.
+//   - Saplings ALWAYS go to the pack, chopped or not. The pity counter is a
+//     promise about your inventory ("guaranteed after N dry leaves"), and a
+//     drop resting on top of a canopy you have not felled yet would not keep
+//     it. This is the behaviour saplings already had; sticks are what changed.
+//
+// Both roll off the SAVED counter (m_sourceRng) rather than the transient
+// m_lootRng, with different salts so they stay independent: decay runs in the
+// sim, and a sim roll that a save cannot replay is a desync.
+void VoxelGame::rollLeafDrops(const glm::ivec3& p, bool chopped) {
+    const std::uint32_t hs = hash2(p.x * 31 + p.y, p.z * 17,
+                                   m_worldSeed + m_sourceRng++);
+    const bool lucky = (hs % 100u) <
         static_cast<std::uint32_t>(kSaplingDropChance * 100.0f + 0.5f);
     if (lucky || ++m_leafPity >= kSaplingPityLeaves) {
         m_leafPity = 0;
         m_inventory.add(ItemId::SaplingItem, 1);
+    }
+
+    const std::uint32_t hk = hash2(p.x * 17 + p.z, p.y * 31 + 7,
+                                   m_worldSeed + m_sourceRng++);
+    if (hk % 100u >= static_cast<std::uint32_t>(kStickChance * 100.0f + 0.5f)) return;
+    if (chopped) {
+        spawnDrop(glm::vec3(p) + glm::vec3(0.5f), ItemId::Stick, 1);
+    } else {
+        m_inventory.add(ItemId::Stick, 1);
     }
 }
 
@@ -342,7 +367,7 @@ void VoxelGame::updateLeafDecay() {
 
     for (const glm::ivec3& p : dying) {
         overworld().setBlock(p.x, p.y, p.z, BlockId::Air);
-        rollLeafSapling(p); // a felled canopy still seeds the next forest
+        rollLeafDrops(p, /*chopped=*/false); // a felled canopy still seeds the next forest
     }
 }
 

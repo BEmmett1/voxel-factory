@@ -697,20 +697,27 @@ void VoxelGame::onUpdate(float dt) {
                 const int c = r.returned.count(id);
                 if (c > 0) spawnDrop(dropPos, id, c);
             }
-            // Sifting topsoil turns up pebbles (the wooden-tool ingredient), and
-            // chopped leaves shed sticks — the two hand-gathered bootstrap items.
-            auto roll = [&](float p) {
-                m_lootRng = m_lootRng * 1664525u + 1013904223u;
-                return (m_lootRng >> 8) % 10000u < static_cast<std::uint32_t>(p * 10000.0f);
-            };
-            if (keepDrop && (bid == BlockId::Grass || bid == BlockId::Dirt) &&
-                roll(kPebbleChance)) {
+            // The three things bare hands get out of the island, BESIDES each
+            // block's own drop: turf pulls apart into fiber, topsoil turns up a
+            // pebble, and a dying leaf sheds a stick and sometimes a sapling.
+            //
+            // Grass and Dirt yield theirs every time. They shared one 25% roll
+            // until Aug 2026, which made them the same resource — no reason to
+            // dig one over the other — and put a coin flip on the first thing a
+            // fresh game asks you to collect. Now turf is where binding comes
+            // from and topsoil is where stone starts, which is two verbs.
+            //
+            // None of this can be a BlockDrop row: Grass and Dirt already have
+            // one (GrassItem / DirtItem) and BlockDrop is a single stack. That
+            // is exactly why content::validate()'s closures have to name these
+            // three items by hand — they are code, not data.
+            if (keepDrop && bid == BlockId::Grass) {
+                spawnDrop(dropPos, ItemId::PlantFiber, 1);
+            }
+            if (keepDrop && bid == BlockId::Dirt) {
                 spawnDrop(dropPos, ItemId::Pebble, 1);
             }
-            if (r.brokeLeaves) {
-                rollLeafSapling(tb);
-                if (roll(kStickChance)) spawnDrop(dropPos, ItemId::Stick, 1);
-            }
+            if (r.brokeLeaves) rollLeafDrops(tb, /*chopped=*/true);
             audio().playAt("mine", dropPos, kMineVolume, pitchJitter(tb));
             // The block is gone and you got nothing for it. This was entirely
             // silent, and it is the rule new players lose the most time to --

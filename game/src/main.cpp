@@ -1408,6 +1408,64 @@ int runSelfTest() {
         SELFTEST_CHECK(field.count(plant) == 0);
     }
 
+    // ---- The pebble route must stay a fallback, never a shortcut ----------
+    // hand/pebble-stone exists for content::validate()'s renewability closure:
+    // EVERY other producer of Stone costs Stone (compactor/stone needs a
+    // Compactor or a Tamper, and the Tamper, the Bloomery and the Circle all
+    // cost Stone), so without a route off dug topsoil the whole tech tree
+    // rests on whatever the island happened to bury. See checkRenewability.
+    //
+    // The price of having it is that Stone is gated at kTierWood while this is
+    // a HAND recipe, so it hands you a gated block with no pickaxe at all.
+    // What stops that being a shortcut around the gate is not a rule anywhere
+    // -- it is arithmetic, spread across four registry rows nobody edits
+    // together. Dirt's hardness, the pickaxe's miningSpeed, this recipe's
+    // price, or the pebble drop rate could each flip it in silence, and no
+    // other check would notice: reachability and renewability both come back
+    // greener the CHEAPER this recipe gets. So the ordering is pinned here.
+    {
+        const auto handRecipe = [](const std::string& key) -> const Recipe* {
+            for (const Recipe& r : handcraftRecipes()) {
+                if (r.key == key) return &r;
+            }
+            return nullptr;
+        };
+        const auto costOf = [](const Recipe& r, ItemId want) {
+            for (const ItemStack& in : r.inputs) {
+                if (in.id == want) return in.count;
+            }
+            return 0;
+        };
+
+        const Recipe* stone = handRecipe("hand/pebble-stone");
+        const Recipe* pick = handRecipe("hand/wood-pickaxe");
+        SELFTEST_CHECK(stone != nullptr);
+        SELFTEST_CHECK(pick != nullptr);
+
+        const int price = costOf(*stone, ItemId::Pebble);
+        SELFTEST_CHECK(price > 0);
+
+        // A pebble comes off dug topsoil, every time, and Dirt is ungated --
+        // so one pebble costs exactly one bare-handed dig. The real loop also
+        // pays to re-place the dirt it dug, which this deliberately ignores:
+        // the conservative form is the one worth pinning.
+        const float loopPerStone = static_cast<float>(price) * blockHardness(BlockId::Dirt);
+        // The road the gate intends, mirroring breakSeconds(): the right tool
+        // CLASS at the block's TIER divides the by-hand time by its speed.
+        SELFTEST_CHECK(itemTool(ItemId::WoodPickaxe) == blockTool(BlockId::Stone));
+        SELFTEST_CHECK(itemTier(ItemId::WoodPickaxe) >= blockToolTier(BlockId::Stone));
+        const float minedPerStone =
+            blockHardness(BlockId::Stone) / itemMiningSpeed(ItemId::WoodPickaxe);
+
+        // Grinding pebbles must be the SLOWER road, or the tool gate on Stone
+        // is decorative and the wood tier can be skipped outright.
+        SELFTEST_CHECK(loopPerStone > minedPerStone);
+        // ...and the pickaxe that beats it must cost less than a single Stone
+        // does, or there is a window at the very start where grinding wins
+        // anyway, because the tool that would beat it is out of reach.
+        SELFTEST_CHECK(costOf(*pick, ItemId::Pebble) < price);
+    }
+
     // ---- Farming: the Harvester reaps and REPLANTS -------------------------
     {
         World hw;

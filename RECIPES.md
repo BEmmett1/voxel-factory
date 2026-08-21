@@ -12,16 +12,18 @@ Instant and free, so it deliberately cannot build the factory.
 
 | key | inputs | output |
 |---|---|---|
-| `hand/wood-pickaxe` | Stick x2 + Pebble x3 | Wood Pickaxe |
-| `hand/wood-axe` | Stick x2 + Pebble x3 | Wood Axe |
-| `hand/stone-pickaxe` | Stone x3 + Stick x2 | Stone Pickaxe |
-| `hand/stone-axe` | Stone x3 + Stick x2 | Stone Axe |
-| `hand/stone-shovel` | Stone x2 + Stick x2 | Stone Shovel |
+| `hand/twine` | Plant Fiber x3 | Twine |
+| `hand/wood-pickaxe` | Stick x2 + Pebble x3 + Twine | Wood Pickaxe |
+| `hand/wood-axe` | Stick x2 + Pebble x3 + Twine | Wood Axe |
+| `hand/stone-pickaxe` | Stone x3 + Stick x2 + Twine | Stone Pickaxe |
+| `hand/stone-axe` | Stone x3 + Stick x2 + Twine | Stone Axe |
+| `hand/stone-shovel` | Stone x2 + Stick x2 + Twine | Stone Shovel |
 | `hand/scaffold` | Stone | Scaffold x4 |
 | `hand/bucket` | Wood x3 | Bucket |
+| `hand/pebble-stone` | Pebble x4 | Stone |
 | `hand/storage-crate` | Wood x8 | Storage Crate |
 | `hand/bloomery` | Stone x8 | Bloomery |
-| `hand/sieve` | Wood x4 + Stick x4 | Sieve |
+| `hand/sieve` | Wood x4 + Twine x2 | Sieve |
 | `hand/pedestal` | Stone x4 + Copper Ingot | Pedestal |
 | `hand/rune-core` | Stone x6 + Copper Ingot x2 + Crystal | Rune Core |
 

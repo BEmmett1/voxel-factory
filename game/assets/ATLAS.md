@@ -95,7 +95,7 @@ you want to *discard* hand edits and start over.
 | 92 | storm key | 93 | storm core |
 | 94 | resonance | 95 | fusion catalyst |
 
-## Rows 6-7 — tools + spare (tiles 96-127)
+## Rows 6-7 — tools, parts, the primitive tier (tiles 96-120)
 
 | tile | content | tile | content |
 |-----:|---------|-----:|---------|
@@ -109,7 +109,9 @@ you want to *discard* hand edits and start over.
 | 110 | aegis chestplate | 111 | aegis boots |
 | 112 | copper rod | 113 | gear |
 | 114 | machine casing | 115 | etched plate |
-| 116 | copper hoe | 117-127 | spare |
+| 116 | copper hoe | 117 | plant fiber |
+| 118 | twine | 119 | compost |
+| 120 | bio briquette | 121-127 | spare |
 
 ## Row 8 — the smelting & sifting tier (tiles 128-135)
 
@@ -149,18 +151,20 @@ surface in the powered twin's accent color, every side tile carries the same
 | 186 | iron helm | 187 | iron chestplate |
 | 188 | iron boots | 189-191 | spare |
 
-## Row 12 — bulk storage (tiles 192-193)
+## Row 12 — bulk storage + rich soil (tiles 192-195)
 
 | tile | content | tile | content |
 |-----:|---------|-----:|---------|
 | 192 | storage crate (top/lid) | 193 | storage crate (side) |
+| 194 | rich soil (top/furrows) | 195 | rich soil (side) |
+| 196 | grafted sapling (all faces) | | |
 
-## Rows 12-15 — spare (tiles 194-255)
+## Rows 12-15 — spare (tiles 197-255)
 
 Empty. This is the headroom the 8→16 row growth bought.
 
 All tiles above are painted by `make_atlas.py`. The rest (46-47, 63,
-117-127, 162-175, 189-191, 194-255) are free for new blocks/items. Claim a tile here,
+121-127, 162-175, 189-191, 197-255) are free for new blocks/items. Claim a tile here,
 add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
 on the kBlocks row for blocks, `atlasTile` on the kItems row for material
 items).

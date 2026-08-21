@@ -140,7 +140,10 @@ private:
     void updateSaplings();                          // grow planted saplings into trees
     void updateGrassSpread();                       // grass creeps onto adjacent dirt (renewable)
     void updateLeafDecay();                         // wither leaves cut off from logs
-    void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
+    // Sapling + stick rolls for a leaf that died. `chopped` = a player broke
+    // it (sticks drop at the cell); false = it decayed (sticks go to the pack,
+    // since nobody is standing there). See the definition for why.
+    void rollLeafDrops(const glm::ivec3& p, bool chopped);
     void buildRainMesh();                           // per-frame falling streaks
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
@@ -217,9 +220,8 @@ private:
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
     CropSystem::CropMap                                m_crops;    // pos -> seconds into this stage
     int m_beltTimer = 0;           // ticks since the last belt step
-    int m_leafPity = 0;            // chopped leaves since the last sapling drop
+    int m_leafPity = 0;            // leaves lost since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
-    std::uint32_t m_lootRng = 0x9E3779B9u; // rolls sift-pebble / leaf-stick drops
     std::uint32_t m_growthRng = 0xC2B2AE35u; // grass-spread cell sampling
 
     // The entity layer (test creature). Owns its model/GPU assets and

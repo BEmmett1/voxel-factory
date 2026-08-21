@@ -310,6 +310,22 @@ namespace {
          .name = "Irrigator", .color = {0.42f, 0.58f, 0.72f},
          .machine = true, .drop = {I::IrrigatorItem, 1}, .tiles = {15, 45, 45},
          .hardness = 0.5f},
+        // Tilled soil fed compost. Drops Dirt like the tilled ground it came
+        // from, for the same reason: enriching must not be a way to duplicate
+        // soil either. It has no item of its own -- you make it in place with
+        // compost, the way you make Tilled Soil in place with the hoe.
+        {.id = B::RichSoil, .key = "core:rich_soil",
+         .name = "Rich Soil", .color = {0.30f, 0.21f, 0.13f},
+         .drop = {I::DirtItem, 1}, .tiles = {194, 195, 2}, .hardness = 0.5f,
+         .tool = T::Shovel, .provides = SoilKind::Rich},
+        // Two saplings bound together with compost. Grows the size-2 tree
+        // (5 logs, 74 leaves) in the same 45 seconds, which is what turns the
+        // sapling SURPLUS -- a tree returns ~8 for the one that made it -- into
+        // more wood per plot rather than more saplings you cannot place.
+        {.id = B::SaplingGrafted, .key = "core:sapling_grafted",
+         .name = "Grafted Sapling", .color = {0.38f, 0.66f, 0.24f},
+         .drop = {I::GraftedSaplingItem, 1}, .tiles = {196, 196, 196},
+         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

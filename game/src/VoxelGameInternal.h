@@ -57,9 +57,13 @@ namespace vg {
     // blockHardness(id) is the by-hand break time; the matching tool at the
     // block's tier divides it by the tool's miningSpeed (see breakSeconds).
     // Gated blocks (toolTier > 0) yield nothing without that tool (yieldsDrop).
-    // Early-grind gathering chances (hand tier):
-    inline constexpr float kPebbleChance = 0.25f; // pebble per grass/dirt sifted
-    inline constexpr float kStickChance  = 0.5f;  // stick per leaf broken
+    // Hand-tier gathering. Turf and topsoil give up their material ON SIGHT --
+    // Grass a Plant Fiber, Dirt a Pebble, both every time. They used to share
+    // one 25% pebble roll, which made the two blocks the same resource and put
+    // a coin flip on the FIRST thing a new game asks you to collect: two wood
+    // tools cost six pebbles, so ~24 blocks of dirt-punching before the game
+    // started. Leaves keep a roll because a leaf yields two different things.
+    inline constexpr float kStickChance  = 0.5f;  // stick per leaf that dies
 
     // ---- Drops (physical ground items) ----
     // Pickup is a cylinder: within kPickupRadius horizontally AND within
