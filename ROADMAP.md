@@ -52,6 +52,46 @@ Bundled deliberately: `Belt` gains slots + a sub-cell progress fraction, and
 that is the *same* layout change the tube visual wants. One save bump
 (**v26**), one visual payoff.
 
+**This is NOT what week 2 did.** The tube work below is untouched and carries
+to week 4. What landed instead, in seven commits on Aug 21, is five features
+that had been sitting finished and uncommitted in the working tree since Aug 9
+— which is the same docs-go-stale failure as week 1's, one level up: the code
+was written, built, selftested, and then left where nothing but the working
+tree knew about it. Worth naming as a process gap, not just a schedule slip.
+
+- [x] **The primitive tier.** Turf yields Plant Fiber and topsoil a Pebble,
+      both every time, replacing one shared 25% roll that made Grass and Dirt
+      the same resource and put a coin flip on the first thing a new game asks
+      you to collect. Three fiber make **Twine**, which every wood/stone tool
+      and the Sieve now costs. `hand/pebble-stone` closes the renewable loop
+- [x] **The ruin.** The demo line left the spawn plateau and became a derelict
+      factory sited out past `kSourceMinRadius`, stocked to LIMP (2 wood, 4
+      herb) so it is running when you find it and dies while you watch. It had
+      been quietly refuting the "empty starting kit": every block was hardness
+      0.5 and ungated, and `breakBlock` hands buffers back, so a bare-handed
+      player five blocks from spawn collected 16 Wood, 20 Herb, seven machines
+      and a Herb Source. Siting measured at 12/12 on fresh worlds
+- [x] **Compost, Rich Soil and the Bio Briquette.** The Composter now makes
+      Compost, which branches three ways — soil, fuel, or fertilizer. Rich Soil
+      is a `SoilKind` rung above Tilled, and nutrition deliberately STACKS with
+      water (they are different axes), which is what makes forestry worth
+      pointing at a farm
+- [x] **Grafted saplings.** `BlockInfo::treeSize` replaces a hardcoded
+      `id == BlockId::Sapling`, so a second tree size cost a registry field and
+      no save change. This is where the sapling surplus goes
+- [x] **Two more economy closures** in `content::validate()`: **renewability**
+      (does the tree stay open at hour 1000?) and **orphans** (does everything
+      you get have a sink?), both scoped to `core:` keys so packs stay loadable
+- [x] Rewrote the F1 quickstart, which still opened by sending you to the
+      source patches. Same twelve lines — the panel cannot grow (see the
+      `UiRenderer` scissor gap below)
+- Verified: warning-clean on MSVC, `--selftest` and `--validate` green at
+      **every one of the seven commits**, `RECIPES.md` reproduced by
+      `--dump-recipes`, `make_atlas.py` reproduces `atlas.png` byte-for-byte,
+      and a real 399 KB v25 save loads → re-saves → reloads identically across
+      three generations. **Not** verified: nothing has been pushed, so CI has
+      never compiled any of it on Linux or macOS
+
 - [ ] **Bake the thin set together, in ONE run** (the bake packs one
       sheet): Conduit→**Tube** (hub box + an arm per connected neighbour),
       **Wire**, **Pedestal**, **Rune Core**. Wire rides along free — same
@@ -172,13 +212,21 @@ the pillar slips to post-launch.
   concrete driver: boss dungeon islands need coordinates outside the home
   island (`World` is already sparse and world-coordinate; the `kWorldChunks`
   cap either lifts or arenas take a reserved coordinate band)
-- [x] **Harder start / gated generator** (July 2026): the early-game ramp
-  landed. Hand-gathered Sticks (leaves) + Pebbles (sifting dirt/grass) build an
-  ungated Wood tool tier; Stone tools come next; both gate their block tiers
-  (wood tools → Stone/Logs, stone tools → the ore tier), so the Generator now
-  sits behind the climb (raw → wood tool → stone → copper → ingots → generator).
-  A **Composter** (plant matter → Dirt) and renewable Stone/Sand keep the finite
-  island from bottlenecking. The starting kit is now empty. Tune costs in play.
+- [x] **Harder start / gated generator** (July 2026, extended Aug 2026): the
+  early-game ramp landed. Hand-gathered Sticks (leaves), Pebbles (topsoil) and
+  Plant Fiber (turf) build an ungated Wood tool tier; Stone tools come next;
+  both gate their block tiers (wood tools → Stone/Logs, stone tools → the ore
+  tier), so the Generator sits behind the climb (raw → wood tool → stone →
+  copper → ingots → generator). A **Composter** and renewable Stone/Sand keep
+  the finite island from bottlenecking. The starting kit is empty.
+  **Aug 2026 revised three parts of this.** Fiber and pebbles are DETERMINISTIC
+  now, one material per terrain block, with **Twine** (3 fiber) as the binding
+  every tool needs — the shared 25% roll made the two blocks the same resource
+  and gated the opening minute on luck. The Composter makes **Compost** rather
+  than Dirt directly, which branches to soil, fuel (**Bio Briquette**) or
+  fertilizer. And renewable Stone turned out to rest entirely on
+  `hand/pebble-stone`, since every other producer of stone costs stone — see
+  the renewability closure, which now proves it. Still tune costs in play.
 - [x] **The recipe overhaul** (July 2026): recipes carry stable keys and the
   save stores the key rather than the row's position, so all three tables are
   now freely editable — the append-only rule they inherited from the save
@@ -209,8 +257,9 @@ the pillar slips to post-launch.
   needs many more stages between "first machine" and "endgame". Staged
   milestones: **generator tiers** — the **Storm Core** has a sink in the Aegis
   set but its original better-fuels role is still unbuilt, and now that
-  `kFuels` exists a new fuel really is one row (Charcoal already is); essence
-  fuels; and the logistics tier broken out below. Each tier should add a gating
+  `kFuels` exists a new fuel really is one row (Charcoal was the first, and the
+  Aug 2026 **Bio Briquette** the second — added as exactly one row, which is the
+  claim discharged); essence fuels; and the logistics tier broken out below. Each tier should add a gating
   dependency so the tech tree deepens rather than widens.
 - **Storage & logistics** — the logistics half of factory depth, staged in
   dependency order because the costs are wildly uneven and the data model

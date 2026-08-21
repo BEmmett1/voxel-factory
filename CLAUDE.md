@@ -1437,7 +1437,12 @@ Persistence:
   irrelevant at the current 6×6-chunk cap, and the fix if the world ever grows
   is a per-chunk palette, which would land it below the original. Pre-v22 saves
   migrate on read (identity map + 1-byte ids); v14/v18/v21 real saves were
-  verified to load and re-save losslessly.
+  verified to load and re-save losslessly. The Aug 2026 content batch (the
+  primitive tier, compost, grafted saplings) changed the format NOT AT ALL --
+  new blocks and items ride v22's key tables, the sapling registry is still a
+  plain `pos -> float`, and the retired `m_lootRng` was transient -- and a real
+  399 KB **v25** save was checked the same way: load -> re-save -> reload, three
+  generations, identical size and an identical world each time.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /
