@@ -100,7 +100,7 @@ interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 
 `VoxelGame` is one class split across per-concern implementation files in
 `game/src/`: `VoxelGame.cpp` (lifecycle: start/save/load/Esc/title),
-`VoxelGameWorldGen.cpp` (island + demo lines), `VoxelGameSim.cpp` (the 20 Hz
+`VoxelGameWorldGen.cpp` (island + the ruin), `VoxelGameSim.cpp` (the 20 Hz
 tick: machines/belts/power/growth/weather + registries),
 `VoxelGamePlayer.cpp` (per-frame input, walking physics, mine/place),
 `VoxelGameRender.cpp` (atlas, meshes, onRender), and `VoxelGameUi.cpp` (HUD +
@@ -213,11 +213,39 @@ stay in their file's anonymous namespace.
   `MachineKind`s/`CreatureKind`s (hand-written dispatch), item effects,
   worldgen presence.
 - **`content::validate()`** (`ContentValidate.h`) is the coherence check —
-  recipe key uniqueness + round-trip, circle-pattern shadowing, and the
-  tech-tree reachability closure — returning DIAGNOSTICS, not an exit code.
+  recipe key uniqueness + round-trip, circle-pattern shadowing, and three
+  economy closures — returning DIAGNOSTICS, not an exit code.
   Three callers: `--selftest` (prints and fails), `--validate` (the same
   without the save round-trip), and the pack loader. It answers in English
   because its caller is often not a person.
+- **Three closures, one walk** (Aug 2026). `closeOverRecipes` is the shared
+  fixpoint over all three recipe surfaces; the checks differ ONLY in what they
+  seed it with, which is the whole distinction between them.
+  **Reachability** asks whether the tech tree OPENS: seeded from what the island
+  is made of, every machine must be buildable and every recipe input obtainable.
+  **Renewability** asks whether it STAYS open: seeded from nothing but the
+  faucets the SIMULATION refills (source patches, self-seeding forestry, grass
+  spread, weather, repeatable boss drops), every item must still be producible —
+  an item only reachability can find is one the island generated a finite pile
+  of. **Orphans** is reachability's mirror: everything you can get must be FOR
+  something, with four allowances *derived* rather than flagged (it places a
+  block, it is a tool/weapon/armor, it burns, or a VERB spends it), so a new item
+  earns its exemption by being what it claims to be.
+- **The two balance closures are scoped to `core:` keys**, and that is not
+  decoration: the PACK LOADER calls `validate()`, so without the scoping any pack
+  adding an ornament or a trophy would be refused, and `--selftest`'s own "a pack
+  may add content" case would fail. They are BALANCE claims about the shipped
+  game, not coherence claims about a content set — a mod may ship a trophy with
+  no sink; this repo may not. Both are RATCHETS: they come back clean today and
+  should only ever speak up when an edit takes a faucet or a sink away.
+- **Reachability's seed rule got stricter at the same time.** A block whose drop
+  counts as "the world gave it to you" must be one the world PUT there, so
+  besides machines and sources it now excludes anything an ITEM places (a Conduit
+  dropping a Conduit is not the world handing you one) and anything PLANTED
+  (a crop stage dropping its seed is not a seed faucet). Without those the
+  closure believed Wire, Conduit, Scaffold and Herb Seed were free, which
+  short-circuited the whole Copper Plate line and all of farming — a deadlock
+  check creating the blind spot it exists to catch.
 - Block place/break side effects funnel through **`WorldEdit`**
   (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
   machine/belt/source/sapling registry sync and return facts (drop, handed-back
@@ -287,7 +315,8 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
 World & closed-loop economy:
 - **Island** — the world is a floating sky island (6×6 chunks): noise-wobbled circular
   coastline, gentle hills, tapered stone underside, per-launch seed (`m_worldSeed`), and a
-  flattened center plateau holding the demo line + spawn (`buildWorld`).
+  flattened center plateau holding spawn (`buildWorld`). Since Aug 2026 the plateau
+  holds **nothing else but one tree** — the demo line became the ruin (below).
 - **Living sources** — glowing `Source*` blocks (BlockInfo has an `emissive` field) grow
   patches of their resource's nodes nearby over time (`updateSources`, cap 5 within r=4,
   ~7 s cadence, registry `m_sources`). Mining a source drops its placeable item
@@ -370,12 +399,36 @@ Settings (`Settings.h`/`Settings.cpp` own the model; UI in VoxelGameUi.cpp):
   radius 4, one per 4 s (`kMineSeconds`/`kMineRadius`, special-cased in `onTick` before
   recipe lookup), dropping the yield into its output buffer for belts to pull; throughput
   is bounded by patch regrowth. Recipe-less machines show an info row in their panel. The
-  plateau's south side hosts a demo trio (source + miner + generator + belts).
+  ruin's mining bay is one of these, standing (source + miner + generator + belts) — it
+  used to sit on the plateau's south side, until the whole ruin moved out (see **The
+  hard start**).
 
 Forestry (saplings → trees → wood):
-- **Trees** — a 3-log trunk + 14-leaf canopy, defined once in `treeCells()`/`placeTree()`
-  (VoxelGameInternal.h) and shared by world-gen, growth, and the grow-space check. Exactly one
-  grown tree spawns near the plateau each game — the starting sapling supply.
+- **Trees** — a trunk of logs, a leaf ring around the top one, a full square layer and
+  a plus-shaped cap, built once by `treeCells(size)`/`placeTree()` (VoxelGameInternal.h)
+  and shared by world-gen, growth, and the grow-space check. Exactly one grown tree
+  spawns near the plateau each game — the starting sapling supply, and now the only
+  thing on the plateau besides you.
+- **Two sizes, one builder** (Aug 2026). Size 1 is the wild tree (3 logs, 22 leaves);
+  size 2 is what a **Grafted Sapling** grows (5 logs, 74 leaves) in the same
+  `kTreeGrowSeconds`. Which tree a sapling becomes is `BlockInfo::treeSize`, a REGISTRY
+  field — the same move `SoilKind` was, replacing a hardcoded `id == BlockId::Sapling`
+  in `WorldEdit` that a second sapling would have grown a branch of and a content pack
+  could never have reached. Because the BLOCK carries the kind, the sapling registry
+  stays a plain `pos -> float` and **the save format did not move at all**.
+  `treeCells` CLAMPS an unknown size rather than indexing past its shapes (a pack may
+  write any integer), so a bad value grows the ordinary tree; `content::validate()`
+  says so rather than letting it pass silently, and also refuses a sapling with no
+  `needsSoil`, which could never be planted and so would never grow.
+- **The graft is where the sapling surplus goes.** A grown tree returns ~8 saplings for
+  the ONE that made it and only one replaces it, so the rest either compost or become a
+  bigger tree on the same plot: `circle/grafted-sapling` is Sapling ×2 + Compost. It is
+  on the Circle rather than in the hand menu deliberately — it costs a machine product,
+  and the hand tier has to stay buildable from nothing.
+- **A blocked sapling backs off.** `updateSaplings` used to re-run the clear-space scan
+  every tick forever for a fenced-in sapling — a permanent 25-cell scan at 20 Hz, and 80
+  for a grafted one. It now rewinds the timer by `kTreeRetrySeconds` instead. The timer
+  IS the backoff, so there is no second field and no save change.
 - **Renewable loop** — chopping a Log yields Wood; chopping Leaves has a
   `kSaplingDropChance` sapling drop with a pity guarantee (`m_leafPity`, every
   `kSaplingPityLeaves`th dry leaf), so felling a whole tree can't strand the player.
@@ -383,9 +436,20 @@ Forestry (saplings → trees → wood):
   timers (`updateSaplings`; a blocked or player-overlapped spot retries each tick).
   Leaves with no Log within `kLeafReach` decay staggered (`updateLeafDecay`,
   `kLeafDecaySeconds`/`kLeafDecayChance`); every lost leaf — chopped OR decayed —
-  rolls the same sapling drop into the player's pack (`rollLeafSapling`, shared
-  pity counter), so trunk-first felling doesn't starve the forest. All knobs sit
-  with the other cadence constants in VoxelGameInternal.h.
+  rolls the same TWO drops through `rollLeafDrops`, so trunk-first felling doesn't
+  starve the forest. All knobs sit with the other cadence constants in
+  VoxelGameInternal.h.
+- **Sticks ride that shared path too** (Aug 2026). They used to hang off the chop path
+  alone, which quietly made trunk-first felling the optimal play: three axe swings
+  orphaned the whole canopy and walking away collected the saplings for free, while
+  punching the 22 leaves yourself was the only way to be taxed for them. The two rolls
+  differ only in WHERE they land, and `chopped` is the whole of it — sticks are a ground
+  drop at the cell when a player broke it, but go to the pack when a leaf decayed off a
+  felled trunk forty blocks away, where a drop is one nobody would ever see. Saplings
+  always go to the pack, chopped or not, because the pity counter is a promise about
+  your INVENTORY and a drop resting on an unfelled canopy would not keep it. Both roll
+  off the SAVED `m_sourceRng` with different salts: decay runs in the sim, and a sim
+  roll a save cannot replay is a desync. The transient `m_lootRng` is gone.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
 
 Performance (measured with the **F3 overlay**: frame avg/worst ms, remesh/solve
@@ -729,6 +793,40 @@ economic job rather than flavour):
   aimed cell). Tilled Soil drops Dirt, so tilling can never duplicate soil, and
   has no item of its own. It **must survive a harvest** or every automated field
   would need re-tilling by hand forever. Emphatically not a durability system.
+- **Rich Soil is the next rung, and compost is how you climb it** (Aug 2026).
+  `SoilKind::Rich` extends the ordered ladder, so `provides >= needsSoil` gave it
+  everything Tilled does for free — including a sapling — with nothing told about
+  the new rung. `WorldEdit::enrichSoil` is `tillSoil` one step later and the same
+  shape, with one deliberate difference: compost is a plain MATERIAL, not a tool,
+  so the CALLER spends it, and only on a true return, or a misclick at a wall
+  would eat it. It tests for Tilled Soil by BLOCK rather than `provides < Rich`,
+  which is what makes re-enriching a silent no-op instead of an accident (the
+  player-facing site then distinguishes "already rich" from "wrong block" from
+  "something is sitting on it", because those are three different mistakes).
+  Rich Soil drops Dirt like the tilled ground it came from — enriching must not
+  be a way to duplicate soil either.
+- **Nutrition is a second axis, and it deliberately DOES stack with water.**
+  Rain and irrigation share one multiplier because they are the same thing
+  arriving two ways; compost is not water. It is a standing build investment
+  spent into the cell rather than onto the weather, so a fed and watered field
+  runs at `kRainGrowthMult * kRichSoilMult` — the only place two growth
+  multipliers meet in the game, and the point of it: it is what makes forestry
+  worth pointing at a farm. `kRichSoilMult` is deliberately the smaller of the
+  two, since laying rich soil is permanent and free to run while water costs a
+  barrel, a belt and an Irrigator forever. `CropSystem` tests `provides >=
+  SoilKind::Rich` rather than `BlockId::RichSoil`, so a content pack's own richer
+  soil earns the bonus by saying so. `--selftest` pins the departure AND the rule
+  it sits beside — irrigating a field it is already raining on must change
+  nothing — so a later edit cannot read one as a licence for the other.
+- **The Composter is where the tree's surplus goes**, and the reason it exists.
+  A grown tree returns ~8 saplings and ~11 sticks for the ONE sapling that made
+  it, and only one of those replaces it, so without a sink the most net-positive
+  loop in the game dead-ends. Green + brown makes **Compost**, and compost is the
+  branch point: `composter/dirt` (soil), `composter/briquette` (fuel), or
+  enriching a field. There is deliberately no PlantFiber variant — a second
+  compost row would make a mixed-input Composter non-deterministic under AUTO for
+  no gain, and AUTO takes the first row whose inputs are present, so row ORDER is
+  gameplay here as everywhere.
 - **Four stages, four `kBlocks` rows** (`HerbCrop0..3`). The mesher picks a
   shape from the BlockId alone and `Chunk` is a flat BlockId array with no
   per-cell metadata: the timer can live in a side registry, the LOOK cannot.
@@ -1161,9 +1259,14 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
   run one**: those are genuinely un-automatable, and what the powered tier sells
   is not speed but not having to be there. Covered by `--selftest` (400 ticks of
   a loaded Mortar must produce nothing).
-- **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, Charcoal
-  60s) replaced the Generator's single `.fuel`/`.burnSeconds` pair, so a better
-  fuel is one row. A Processor with `burnsFuel` runs on heat instead of
+- **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, **Bio
+  Briquette 35s**, Charcoal 60s) replaced the Generator's single
+  `.fuel`/`.burnSeconds` pair, so a better fuel is one row — which is exactly
+  what the briquette turned out to be. It is the rung between wood and charcoal
+  and the reason a Composter is worth building before you own a fire: it turns
+  the tree's leftovers into fuel without spending the wood you want for
+  building. (`kFuels` is listed in burn order for readability only — `pickFuel`
+  scans by `seconds`, not by position.) A Processor with `burnsFuel` runs on heat instead of
   electricity (the Furnace and Bloomery; `Machine::burnLeft`, appended in v20).
   It lights fuel only when a craft is ready — the generator's "hungry" rule
   applied to a recipe — and burns the SHORTEST fuel first.
@@ -1208,12 +1311,94 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **The bootstrap.** Smelting, glass, vials and dirt+sand→stone left the hand
   menu, so two machines had to stay hand-craftable or the tree deadlocks (the
   Rune Core costs ingots, and an ingot now costs a fire): **Bloomery**
-  (Stone ×8) and **Sieve** (Wood ×4 + Stick ×4). Ladder: sticks + pebbles →
+  (Stone ×8) and **Sieve** (Wood ×4 + Twine ×2 — a sieve is a MESH, so it costs
+  twine rather than loose sticks). Ladder: fiber + sticks + pebbles → twine →
   wood/stone tools → Bloomery + Sieve → ingots and iron → hand-craft the Circle
   → the manual tier → the powered tier. The reachability check pins all of it.
+- **Charcoal is 1 wood, not 2, and the arithmetic is the reason** (Aug 2026). At
+  2:1 a BLOOMERY charring wood was a net energy LOSS: `kManualSlowdown` stretches
+  the craft to 18 s and `fuelMult` 0.6 shortens a wood to 12 s, so it spent 1.5
+  wood burning plus 2 wood charring — 70 burn-seconds in for 60 out. At 1:1 both
+  tiers are positive (Furnace 2.3×, Bloomery 1.2×) and the tier gap survives
+  where it belongs, in `speedMult`. Retune this ratio and check the BLOOMERY, not
+  the Furnace.
+- **Wire is drawn from a rod**, which retired the Copper Rod's long spell as a
+  part with no consumer. `press/copper-wire` turns an ingot into two rods into
+  four wire, against `circle/wire`'s ingot → two by hand: automating wire is
+  worth twice doing it yourself, which is the bargain every machine tier here is
+  supposed to offer. Listed after the frame so a Press holding ingots still makes
+  plates first, and before `press/copper-rod` so a Press holding rods drains them
+  into wire rather than sitting on them.
 - **Weapons are data.** `ItemInfo::weaponDamage` (0 = not a weapon) replaced
   the two hardcoded `held == ItemId::CopperSword` tests, so the Iron Sword is a
   registry row and the old `kSwordDamage` knob is gone.
+
+The hard start (Aug 2026 — the primitive tier, and the ruin that stopped
+undercutting it):
+- **The problem was that the empty starting kit was a fiction.** A working demo
+  line stood on the spawn plateau: every block of it is hardness 0.5 and ungated
+  (so your own machines stay retrievable by hand) and `breakBlock` hands back
+  every buffered item — so a bare-handed player five blocks from spawn collected
+  16 Wood, 20 Herb, seven machines and a Herb Source. Sixteen wood alone is a
+  Bucket, a Sieve and a Crate without ever owning an axe: the tree, the tool
+  ladder and the Bloomery all skipped, in the first minute.
+- **The ruin is the same object, sited instead of placed.** As a TEACHING object
+  the line works, so the layout is unchanged — generator → wire → grinder →
+  conduits → cauldron, a rain barrel plumbed in, a mining bay south of it.
+  What changed is where it stands and how much it gives away. `plantRuin` was
+  split out of `buildWorld` precisely so the thing could be sited, and it is
+  stocked to **limp**: `kRuinFuelWood` (2) and `kRuinHerb` (4), enough to still
+  be running when you find it and to die while you watch. That teaches what it
+  needs far better than either a dead ruin or a full one. Its Herb Source came
+  out with it — one five blocks from spawn contradicted the whole rule that
+  sources sit past `kSourceMinRadius` so that reaching them is the problem.
+- **Siting is a search, and it may come up empty.** 400 seeded attempts in the
+  `kRuinMinRadius`..`kRuinMaxRadius` band (22–30, the same band as the sources,
+  because that is where the resources are and so where a factory would have been
+  built). The outer bound only saves wasted attempts; what actually keeps the pad
+  on land is a **per-column test** over the whole footprint plus a one-cell
+  margin, since the coastline wobbles by ±7 and a radius alone cannot tell a
+  headland from a bay. A ruin is a BUILT thing, so its builders are assumed to
+  have levelled the site: every column must find land within `kRuinLevelSlack`
+  of the anchor, and the pad is then cut down and filled up to it. Both bounds
+  are driven by that same slack, which is what makes the levelling safe in either
+  direction — hence the `static_assert` that `kRuinHeadroom > kRuinLevelSlack`.
+  Failure is **never fatal and never a retry loop**: worldgen has to finish, and
+  a ruinless island is playable (it was never a kit), just quieter.
+  Measured at **12/12 across fresh worlds**, with the sites clustering hard at
+  the inner bound (six of ten at radius 22–23) — the outer band rarely satisfies
+  the land+level test, so `kRuinMaxRadius` is close to decorative in practice.
+- Stamped BEFORE the source scatter, so the scatter's existing "grass with air
+  above" test declines to land inside it without having to be told it exists.
+- **The primitive tier is what the plateau leaves you with.** Turf pulls apart
+  into **Plant Fiber** and topsoil turns up a **Pebble**, both EVERY time, and
+  three fiber twist into **Twine** — the binding every wood and stone tool needs,
+  and so the true step one, before any tool at all. A sieve is a MESH, so it
+  costs twine too.
+- **They used to share one 25% roll, and that was two mistakes at once.** It made
+  Grass and Dirt the same resource — no reason to dig one over the other — and it
+  put a coin flip on the FIRST thing a new game asks you to collect: two wood
+  tools cost six pebbles, so ~24 blocks of dirt-punching before the game started.
+  Now turf is where binding comes from and topsoil is where stone starts, which
+  is two verbs. Leaves keep a roll because a leaf yields two different things.
+- **None of it can be a `BlockDrop` row.** Grass and Dirt already spend theirs on
+  GrassItem/DirtItem and `BlockDrop` is a single stack, so fiber, pebbles and
+  sticks are spawned BESIDE the drop in VoxelGamePlayer's break path. They are
+  CODE, not data — which is exactly why `content::validate()`'s closures have to
+  name those items by hand, and why that hand-naming is not an oversight.
+- **`hand/pebble-stone` (Pebble ×4 → Stone) is load-bearing in two opposite
+  directions**, which is the interesting part. It is the only producer of Stone
+  that does not COST Stone (compactor/stone needs a Compactor or Tamper; the
+  Tamper, the Bloomery and the Circle all cost Stone), so without it the whole
+  tech tree rests on whatever the island happened to bury — that is what the
+  renewability closure is asking about. But Stone is gated at `kTierWood` and
+  this is a HAND recipe, so it is also a way past that gate with no pickaxe,
+  harmless only while it stays the SLOWER road. At 4 it is: four bare-handed digs
+  is 3 s of Dirt at hardness 0.75, against 1 s for a Wood Pickaxe (miningSpeed 4)
+  on Stone at hardness 4 — and that pickaxe costs three pebbles, fewer than one
+  Stone does here. Neither closure would notice it being cheapened, since both
+  only get GREENER as it gets cheaper, so `--selftest` pins the ordering directly
+  ("the pebble route must stay a fallback").
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
