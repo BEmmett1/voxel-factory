@@ -13,3 +13,9 @@ Thumbs.db
 
 # Generated for eyeballing by tools/make_atlas.py; only atlas.png ships
 game/assets/atlas_preview.png
+
+# Claude Code personal state. Skills under .claude/skills are shared and tracked;
+# everything here is per-machine and is not.
+.claude/settings.local.json
+.claude/prompt-log.txt
+.claude/plans/
