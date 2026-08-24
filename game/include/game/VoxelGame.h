@@ -177,6 +177,10 @@ private:
     // scratch — which keeps the generated shape tables out of this header.
     float              m_animClock = 0.0f;
     std::vector<float> m_shapeAnimV;
+    // Moving block parts, one transform per slot, uploaded beside m_shapeAnimV
+    // and on the same terms: a part turning is a uniform, never a remesh.
+    // Sized to vg::kMaxShapeParts on first use, like m_shapeAnimV.
+    std::vector<glm::mat3> m_partRot;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
     engine::Mesh       m_highlightMesh;

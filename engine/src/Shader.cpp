@@ -103,6 +103,17 @@ namespace engine {
                            glm::value_ptr(m[0]));
     }
 
+    // glm::mat3 is three tightly packed vec3s (36 bytes, no column padding), so
+    // an array of them is exactly what glUniformMatrix3fv wants. Worth stating
+    // because the std140 rule for a mat3 INSIDE a uniform block is the opposite
+    // -- but this is a default-block uniform, which is not std140.
+    void Shader::setMat3Array(const char* name, const glm::mat3* m, int count) const {
+        static_assert(sizeof(glm::mat3) == 9 * sizeof(float),
+                      "glm::mat3 must be tightly packed for a uniform array upload");
+        glUniformMatrix3fv(glGetUniformLocation(m_program, name), count, GL_FALSE,
+                           glm::value_ptr(m[0]));
+    }
+
     void Shader::setVec3(const char* name, const glm::vec3& v) const {
         glUniform3fv(glGetUniformLocation(m_program, name), 1, glm::value_ptr(v));
     }

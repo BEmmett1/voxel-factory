@@ -85,6 +85,13 @@ CELL_OVERHANG_TOLERANCE = 1.0
 # the drawn geometry stays exactly where it was authored.
 MIN_COLLISION_UNITS = 1.0
 
+# What one shaped vertex costs, for the size report only: position(3),
+# normal(3), uv(2), emissive(1), animBank(1), partOff(3), partSlot(1). This had
+# said 9 since before shaped vertices carried an animation bank, so every KB
+# figure it has ever printed -- including the ones quoted in ROADMAP.md -- was
+# an underestimate. Keep it in step with ChunkMesher.h.
+SHAPED_VERTEX_FLOATS = 14
+
 # Face order matches ChunkMesher's kFaces: +X, -X, +Y, -Y, +Z, -Z.
 FACE_ORDER = ["east", "west", "up", "down", "south", "north"]
 
@@ -785,7 +792,8 @@ def main():
         print(f"  {len(m.boxes)} boxes, {raw} faces -> {kept} quads "
               f"({raw - kept} sealed inside, {100.0 * (raw - kept) / raw:.0f}%)")
         print(f"  vertices/block: {raw * 6} raw -> {kept * 6} baked "
-              f"({kept * 6 * 9 * 4 / 1024.0:.1f} KB of chunk mesh at 9 floats)")
+              f"({kept * 6 * SHAPED_VERTEX_FLOATS * 4 / 1024.0:.1f} KB of chunk "
+              f"mesh at {SHAPED_VERTEX_FLOATS} floats)")
         print(f"  texture: {cw}x{chf // m.frames} used"
               f"{f' x {m.frames} frames' if m.frames > 1 else ''}"
               f"{f' (frame_time {m.frame_time})' if m.frames > 1 else ''}")

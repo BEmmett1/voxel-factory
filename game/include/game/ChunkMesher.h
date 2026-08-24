@@ -27,14 +27,20 @@ class World;
 // selector across the whole world, and the shaped pass is the one transparency
 // will eventually need for itself.
 //
-// The shaped buffer carries ONE extra float per vertex:
-//   position(3), normal(3), uv(2), emissive(1), animBank(1)
-// naming the vertex's ShapeId so the shader can offset its UV to the current
-// animation frame -- or 0 when the block is unpowered, which parks it on frame
-// 0 (bank 0 is ShapeId::FullCube, whose offset is always zero). Power is
-// already a mesh input for the glow, so that gate is free. Only shapes can
-// animate, so the whole ordinary world is spared the 4 bytes; the plain mesh's
-// VAO simply leaves that attribute disabled, which also reads back as bank 0.
+// The shaped buffer carries FIVE extra floats per vertex:
+//   position(3), normal(3), uv(2), emissive(1), animBank(1), partOff(3), slot(1)
+// `animBank` names the vertex's ShapeId so the shader can offset its UV to the
+// current animation frame -- or 0 when the block is unpowered, which parks it
+// on frame 0 (bank 0 is ShapeId::FullCube, whose offset is always zero). Power
+// is already a mesh input for the glow, so that gate is free.
+//
+// `partOff`/`slot` move a block PART: the offset from its pivot is baked (a
+// world-space chunk vertex cannot recover its own cell, so a pivot would be
+// useless here) and the slot names the part's transform in uPartRot[].
+//
+// Only shapes can do either, so the whole ordinary world is spared the 20
+// bytes; the plain mesh's VAO simply leaves those attributes disabled, which
+// reads back as bank 0, offset (0,0,0) and slot 0 -- every one of them inert.
 namespace ChunkMesher {
     using BeltMap = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
 

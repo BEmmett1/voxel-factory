@@ -43,10 +43,16 @@ namespace {
     // the block across face fi, consulted only for quads flush with a cell
     // wall -- the only ones a full-cube neighbor can legally hide.
     //
-    // Shaped vertices carry one extra float the cube path doesn't: `bank`,
-    // which is how the vertex shader finds this block's animation frame offset
-    // in uAnimV[]. It rides the vertex because a chunk's shaped mesh mixes
-    // shapes, and they animate at different rates -- or, unpowered, not at all.
+    // Shaped vertices carry extras the cube path doesn't. `bank` is how the
+    // vertex shader finds this block's animation frame offset in uAnimV[]; it
+    // rides the vertex because a chunk's shaped mesh mixes shapes, and they
+    // animate at different rates -- or, unpowered, not at all.
+    //
+    // `partOff` and the part slot are the same idea for MOVING parts: the
+    // offset from the part's pivot is baked (a world-space chunk vertex cannot
+    // find its own cell, so the pivot itself would be useless here), and the
+    // slot names the part's transform in uPartRot[]. Nothing animates yet, so
+    // every quad ships slot 0 -- permanently identity.
     template <typename NeighborFn>
     void appendShaped(std::vector<float>& out, const BlockShape& shape,
                       const glm::vec3& base, float emissive, float bank,
@@ -54,10 +60,17 @@ namespace {
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
 
+            // The slot table lands with the animation registry; until then a
+            // shaped vertex takes the same identity slot every other mesh does.
+            const float slot = 0.0f;
+
             // Corners arrive baked and correctly wound; nothing to reconstruct.
             const auto push = [&](int k) {
                 pushVertex(out, base + q.pos[k], q.normal, q.uv[k], emissive);
                 out.push_back(bank);
+                out.insert(out.end(), {q.partOff[k].x, q.partOff[k].y,
+                                       q.partOff[k].z});
+                out.push_back(slot);
             };
             push(0); push(1); push(2);
             push(0); push(2); push(3);

@@ -218,9 +218,11 @@ void VoxelGame::remeshDirtyChunks() {
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
-        // One float wider than the plain mesh: shaped vertices name their
-        // ShapeId so the shader can find their animation frame.
-        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1, 1},
+        // Five floats wider than the plain mesh: shaped vertices name their
+        // ShapeId so the shader can find their animation frame, and carry the
+        // offset from their part's pivot plus that part's slot so the part can
+        // turn. See ChunkMesher.h for why the offset is baked, not the pivot.
+        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1, 1, 3, 1},
                                          GL_DYNAMIC_DRAW);
         chunk->clearDirty();
         ++chunks;
@@ -308,6 +310,10 @@ void VoxelGame::onRender() {
     // Everything the ticks and the update dirtied this frame, in one sweep.
     remeshDirtyChunks();
     updateShapeAnim();
+    // No part animates yet, so every slot is identity -- which is exactly what
+    // the slot 0 every vertex currently ships means. The registry that fills
+    // this with real motion is the next commit.
+    m_partRot.assign(kMaxShapeParts, glm::mat3(1.0f));
     buildRainMesh();
 
     // Sky: fair-weather blue easing toward storm grey — or the arena's flat
@@ -345,6 +351,7 @@ void VoxelGame::onRender() {
         // mesh leaves that attribute disabled and so reads bank 0, whose
         // offset this array always holds at zero.
         m_shader.setFloatArray("uAnimV", m_shapeAnimV.data(), kMaxShapeBanks);
+        m_shader.setMat3Array("uPartRot", m_partRot.data(), kMaxShapeParts);
         for (auto& [coord, mesh] : m_chunkShapeMeshes) {
             mesh.draw();
         }

@@ -250,6 +250,12 @@ namespace vg {
     // every machine and then some, and the array is a few dozen bytes uploaded
     // once a frame, so the headroom is cheaper than ever revisiting this.
     inline constexpr int   kMaxShapeBanks  = 32;     // must match uAnimV[] in voxel.vert
+    // Moving block PARTS get their own uniform array, one 3x3 per part that is
+    // actually animated -- not one per group in every model, which would run to
+    // hundreds. A 3x3 rather than a 4x4 is what keeps this affordable: 32 of
+    // them is 288 of the 1024 vertex uniform components GL 3.3 guarantees,
+    // leaving room for uAnimV[] and the matrices beside it.
+    inline constexpr int   kMaxShapeParts  = 32;     // must match uPartRot[] in voxel.vert
     // The animation clock wraps here rather than growing forever, so a long
     // session can't erode float precision out from under the frame math. Any
     // multiple of every shape's cycle length would do; an hour is plenty.
