@@ -63,6 +63,7 @@ private:
     void returnHome();               // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void updateShapeAnim();      // pick each shape's animation frame (a uniform, not a remesh)
+    void updatePartAnim();       // pose each moving block part (a uniform, not a remesh)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center

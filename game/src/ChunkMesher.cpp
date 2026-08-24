@@ -51,18 +51,21 @@ namespace {
     // `partOff` and the part slot are the same idea for MOVING parts: the
     // offset from the part's pivot is baked (a world-space chunk vertex cannot
     // find its own cell, so the pivot itself would be useless here), and the
-    // slot names the part's transform in uPartRot[]. Nothing animates yet, so
-    // every quad ships slot 0 -- permanently identity.
+    // slot names the part's transform in uPartRot[].
+    //
+    // `animShape` carries the POWER GATE for both at once: the caller passes
+    // ShapeId::FullCube for an unpowered block, whose bank offset is zero and
+    // whose every part slot is 0, so a dead machine parks on frame 0 AND stands
+    // still. One value, one gate, no way for the two to disagree.
     template <typename NeighborFn>
     void appendShaped(std::vector<float>& out, const BlockShape& shape,
-                      const glm::vec3& base, float emissive, float bank,
+                      const glm::vec3& base, float emissive, ShapeId animShape,
                       NeighborFn neighbor) {
+        const float bank = static_cast<float>(animShape);
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
 
-            // The slot table lands with the animation registry; until then a
-            // shaped vertex takes the same identity slot every other mesh does.
-            const float slot = 0.0f;
+            const float slot = static_cast<float>(partSlot(animShape, q.part));
 
             // Corners arrive baked and correctly wound; nothing to reconstruct.
             const auto push = [&](int k) {
@@ -132,17 +135,17 @@ namespace ChunkMesher {
                     // buffer (different sheet) and skip the unit-cube path.
                     const BlockShape& shape = blockShape(id);
                     if (!shape.quads.empty()) {
-                        // A dead machine sits still. Gating the animation on
-                        // power costs nothing extra because power is ALREADY a
-                        // mesh input: solvePowerAndMarkDirty dirties exactly
-                        // the chunks whose glow flipped, so a machine losing
-                        // power re-meshes for the glow regardless. Bank 0 is
-                        // ShapeId::FullCube, whose offset is permanently zero,
-                        // so an unpowered machine parks on frame 0.
-                        const float bank = energized
-                            ? static_cast<float>(blockInfo(id).shape)
-                            : 0.0f;
-                        appendShaped(shapedOut, shape, base, emissive, bank,
+                        // A dead machine sits still -- its texture parked on
+                        // frame 0 and its parts stopped. Gating on power costs
+                        // nothing extra because power is ALREADY a mesh input:
+                        // solvePowerAndMarkDirty dirties exactly the chunks
+                        // whose glow flipped, so a machine losing power
+                        // re-meshes for the glow regardless. FullCube is the
+                        // inert shape: bank offset zero, every part slot 0.
+                        const ShapeId animShape = energized
+                            ? blockInfo(id).shape
+                            : ShapeId::FullCube;
+                        appendShaped(shapedOut, shape, base, emissive, animShape,
                                      [&](int fi) { return neighborAt(lx, ly, lz, fi); });
                         continue;
                     }

@@ -4,6 +4,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -187,6 +188,99 @@ inline constexpr const BlockShape& blockShape(ShapeId id) {
 }
 inline const BlockShape& blockShape(BlockId id) {
     return blockShape(blockInfo(id).shape);
+}
+
+// ---- Moving parts ---------------------------------------------------------
+// The bake emits every named group as a part; WHICH of them move is gameplay
+// policy, so it is stated here rather than in the model. A part is named, not
+// numbered, so re-authoring a model cannot silently animate the wrong lump of
+// it -- and a name its shape does not have is a compile error, not a part that
+// quietly never moves.
+//
+// Only an animated part costs a uPartRot[] slot, which is what keeps the array
+// small: the four models below carry ~37 groups between them and spend four
+// slots. Slot 0 is identity and belongs to everything else.
+
+enum class PartMotion : std::uint8_t {
+    Spin,   // continuous rotation about `axis`; `rate` is turns per second
+    Rock,   // sine sway about `axis`; `amount` is degrees either side
+    Pulse,  // sine breathing; `amount` is the scale delta, `axis` unused
+};
+
+struct PartAnim {
+    ShapeId     shape;
+    const char* part;    // a ShapePart name from the bake
+    PartMotion  motion;
+    glm::vec3   axis;
+    float       rate;    // Spin: turns/s. Rock, Pulse: cycles/s.
+    float       amount;  // Rock: degrees. Pulse: scale delta. Spin: unused.
+};
+
+// Rates are chosen so rate * kAnimClockWrap is a whole number of cycles: the
+// clock wraps at an hour, and a spin that is mid-turn when it wraps would jump.
+inline constexpr PartAnim kPartAnims[] = {
+    // The auger's bit turns while it is cutting. Down the Y axis, about a pivot
+    // the bake read as (0.5, 0.125, 0.5) -- the bottom of the drill.
+    {ShapeId::AugerMiningRig, "drill", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 0.75f, 0.0f},
+    // A liquid surface, not a machine part: a slow shallow sway reads as a
+    // simmer, where a full rotation would read as a bug.
+    {ShapeId::BrewingCauldron, "contents", PartMotion::Rock, {1.0f, 0.0f, 0.0f}, 0.5f, 3.0f},
+    // The infuser's core turns and its emitter throbs, which is the whole
+    // reason PartMotion::Pulse exists -- and why the uniform is a 3x3 that can
+    // carry scale rather than a rotation-only encoding.
+    {ShapeId::ArcaneInfuser, "core", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 0.35f, 0.0f},
+    {ShapeId::ArcaneInfuser, "emitter", PartMotion::Pulse, {0.0f, 1.0f, 0.0f}, 0.8f, 0.06f},
+};
+
+// A shape's part index by name, or -1. Constexpr so the table below and the
+// static_asserts under it are all resolved at compile time.
+inline constexpr int partIndex(ShapeId shape, std::string_view name) {
+    const std::span<const ShapePart> parts = blockShape(shape).parts;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (name == std::string_view(parts[i].name)) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+// Generous: the biggest shipped model carries 9 parts.
+inline constexpr std::size_t kMaxPartsPerShape = 16;
+
+// Every kPartAnims row must name a part its shape actually has. Without this a
+// typo would compile into a part that simply never moves -- the exact failure
+// this table is meant to make impossible.
+static_assert([] {
+    for (const PartAnim& a : kPartAnims) {
+        if (partIndex(a.shape, a.part) < 0) return false;
+    }
+    return true;
+}(), "a kPartAnims row names a part that its shape does not have");
+
+static_assert([] {
+    for (const BlockShape& s : kBlockShapes) {
+        if (s.parts.size() > kMaxPartsPerShape) return false;
+    }
+    return true;
+}(), "a baked shape has more parts than kMaxPartsPerShape");
+
+// (ShapeId, part) -> uPartRot slot, resolved once at compile time so the mesher
+// never does a string compare. Row i of kPartAnims owns slot i + 1.
+inline constexpr auto kPartSlots = [] {
+    std::array<std::array<std::uint8_t, kMaxPartsPerShape>,
+               static_cast<std::size_t>(ShapeId::Count)> table {};
+    for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        const std::size_t shape = static_cast<std::size_t>(kPartAnims[i].shape);
+        const std::size_t part =
+            static_cast<std::size_t>(partIndex(kPartAnims[i].shape, kPartAnims[i].part));
+        table[shape][part] = static_cast<std::uint8_t>(i + 1);
+    }
+    return table;
+}();
+
+// Slot 0 -- identity, nothing moves -- for any part with no animation, and for
+// ShapeId::FullCube, which is what the mesher passes for an UNPOWERED block.
+inline constexpr int partSlot(ShapeId shape, std::size_t part) {
+    if (part >= kMaxPartsPerShape) return 0;
+    return kPartSlots[static_cast<std::size_t>(shape)][part];
 }
 
 // ---- Shape names, for the content pack format -----------------------------
