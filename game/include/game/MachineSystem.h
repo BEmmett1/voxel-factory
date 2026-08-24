@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/Belt.h"
+#include "game/CropSystem.h"
 #include "game/HashIVec3.h"
 #include "game/Machine.h"
 #include "game/PowerSystem.h"
@@ -9,6 +10,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 class World;
 
@@ -22,10 +24,21 @@ namespace MachineSystem {
     using MachineMap = std::unordered_map<glm::ivec3, Machine, IVec3Hash>;
     using BeltMap    = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
 
-    // Does this machine use `item` as an input? A machine locked to a
-    // specific recipe only accepts that recipe's inputs (so belts can't
-    // overfill it with ingredients it will never consume).
+    // Does this machine use `item` as an input, AND is there room for another?
+    // A machine locked to a specific recipe only accepts that recipe's inputs
+    // (so belts can't overfill it with ingredients it will never consume).
+    //
+    // The room half is what makes a belt line congest: beltStep already leaves
+    // an item sitting on a belt whose target refuses it, so capacity needs no
+    // belt code of its own.
     bool machineAccepts(const Machine& mac, ItemId item);
+
+    // Per-item-type capacity of this machine's buffers. Most machines take the
+    // vg:: defaults; a Storage crate and a Pedestal have their own. Exposed
+    // because the panel marks a full line, and "full" has to mean the same
+    // thing there as it does to a belt.
+    int inputCap(const Machine& mac);
+    int outputCap(const Machine& mac);
 
     // Where this machine's fuel lives: its own `fuel` buffer when it has one,
     // otherwise `input` (a Generator has no recipes to confuse fuel with).
@@ -38,7 +51,8 @@ namespace MachineSystem {
     // a Furnace is feedstock or firewood (ingredient wins -- the machine is
     // there to make the thing). A player dragging onto a cell has already said
     // which, and never consults this.
-    Inventory& bufferFor(Machine& mac, ItemId item);
+    const Inventory& bufferFor(const Machine& mac, ItemId item);
+    Inventory&       bufferFor(Machine& mac, ItemId item);
 
     // The first raw item in a miner's input buffer; None = unfiltered (mine
     // anything nearby). The filter item is a reference sample, never consumed.
@@ -58,8 +72,19 @@ namespace MachineSystem {
     // demands no power — the manual and fuel-fired tiers — run regardless).
     // `seed` + `rngCounter` drive weighted recipe outputs, sharing the world's
     // saved roll sequence so a sifting line is deterministic across saves.
+    //
+    // `crops` is here for the Harvester alone, which replants the cell it
+    // reaped and so has to hand the new seedling its growth timer -- the same
+    // registry-sync duty WorldEdit does for a hand-placed one. Passed rather
+    // than reached for, because MachineSystem takes its state as parameters.
     void tickPowered(World& world, MachineMap& machines, const PowerState& power,
-                     std::uint32_t seed, std::uint32_t& rngCounter);
+                     std::uint32_t seed, std::uint32_t& rngCounter,
+                     CropSystem::CropMap& crops);
+
+    // Where the water is right now: the positions of irrigators that are
+    // switched on and still have wetness banked. Handed to CropSystem::tick,
+    // which must not know what a machine is (and is included BY this header).
+    std::vector<glm::ivec3> activeIrrigators(const MachineMap& machines);
 
     // Advance conduits one step: deliver into accepting machines ahead, hop
     // items belt -> belt (snapshot + claims prevent chaining/merging), pull

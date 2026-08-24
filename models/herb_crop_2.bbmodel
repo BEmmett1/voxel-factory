@@ -1,0 +1,183 @@
+{
+ "meta": {
+  "format_version": "4.5",
+  "model_format": "java_block",
+  "box_uv": false
+ },
+ "name": "herb_crop_2",
+ "resolution": {
+  "width": 16,
+  "height": 16
+ },
+ "elements": [
+  {
+   "name": "blade_x",
+   "type": "cube",
+   "uuid": "9642f8e3-6631-544b-88ae-0b88bb3cba25",
+   "color": 0,
+   "from": [
+    8.0,
+    0.0,
+    0.0
+   ],
+   "to": [
+    8.0,
+    12.0,
+    16.0
+   ],
+   "origin": [
+    8,
+    0,
+    8
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    }
+   }
+  },
+  {
+   "name": "blade_z",
+   "type": "cube",
+   "uuid": "a8149325-cf1d-5286-a78b-ff1291ede7ac",
+   "color": 0,
+   "from": [
+    0.0,
+    0.0,
+    8.0
+   ],
+   "to": [
+    16.0,
+    12.0,
+    8.0
+   ],
+   "origin": [
+    8,
+    0,
+    8
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      4,
+      16,
+      16
+     ],
+     "texture": 0
+    }
+   }
+  }
+ ],
+ "outliner": [
+  "9642f8e3-6631-544b-88ae-0b88bb3cba25",
+  "a8149325-cf1d-5286-a78b-ff1291ede7ac"
+ ],
+ "textures": [
+  {
+   "name": "herb_crop_2.png",
+   "uuid": "cd071e4c-c1be-532f-86ef-13f5cb99458a",
+   "id": "0",
+   "mode": "bitmap",
+   "saved": false,
+   "particle": false,
+   "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAUklEQVR42mNgGAU4waQTKf+RMVmGeNWY/Adhkm3GZQBRLslZ5vEfhmEGIIvR1gvoTsRmAF5vIDsVlxdwegObybi8gNUV6LbgcwHRgUlWOqC7AQB8WH8hE/XIOQAAAABJRU5ErkJggg=="
+  }
+ ]
+}

@@ -14,11 +14,13 @@ namespace engine {
     // Loaded into plain data here; the JSON parser lives only in BbModel.cpp.
     //
     // Conventions after load: distances are in world blocks (Blockbench's
-    // 16 units = 1 block), rotations in degrees. Only per-face UVs are
-    // supported (Blockbench's default for the Free format) — box-UV models
-    // log and skip faces. Textures must be embedded PNG data URIs (the
-    // .bbmodel default); a failed texture leaves `texture` empty and the
-    // caller substitutes a fallback.
+    // 16 units = 1 block), rotations in degrees. Faces are read from their
+    // own `uv` rect, which the editor writes for box-UV models too — a face
+    // without one logs and is skipped. Textures must be embedded PNG data
+    // URIs (the .bbmodel default); a failed texture leaves `texture` empty
+    // and the caller substitutes a fallback. Both outliner layouts load:
+    // 4.x wrote a group's name/origin/rotation inline, 5.0 keeps them in a
+    // flat `groups` table the outliner references by uuid.
 
     struct BbBone {
         std::string name;
@@ -29,7 +31,9 @@ namespace engine {
     };
 
     struct BbKeyframe {
-        enum class Interp { Linear, Step };
+        // CatmullRom is Blockbench's "smooth" keyframe: a spline through the
+        // neighbouring values rather than a straight line between two.
+        enum class Interp { Linear, Step, CatmullRom };
         float     time = 0.0f;        // seconds
         glm::vec3 value{0.0f};        // rotation: degrees; position: blocks
         Interp    interp = Interp::Linear;

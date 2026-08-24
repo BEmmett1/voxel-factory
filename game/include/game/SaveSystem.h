@@ -24,7 +24,7 @@ class World;
 struct SaveData {
     World& world;
     Inventory& inventory;
-    WorldEdit::Registries registries; // machines / belts / sources / saplings
+    WorldEdit::Registries registries; // machines / belts / sources / saplings / crops
     Weather& weather;                 // raining + timer (intensity rebuilds)
     PlayerController& player;         // health (appended in v10; older saves
                                       // keep the caller's full-health default)

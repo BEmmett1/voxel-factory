@@ -34,12 +34,13 @@ namespace {
          .kind = CreatureKind::Wanderer, .name = "",
          .scale = kCreatureScale, .halfW = kCreatureHalfW, .height = kCreatureHeight,
          .hp = kCreatureHealth, .walkSpeed = kCreatureWalkSpeed},
-        {.id = SpeciesId::VoidWarden, .model = kBossModel,
+        {.id = SpeciesId::VoidWarden, .model = kWardenModel,
          .kind = CreatureKind::Boss, .name = "VOID WARDEN",
          .scale = kBossScale, .halfW = kBossHalfW, .height = kBossHeight,
          .hp = kBossHealth, .walkSpeed = kBossWalkSpeed,
          .aggroRadius = kBossAggroRadius, .strikeRange = kBossStrikeRange,
          .damage = kBossDamage, .strikeCooldown = kBossStrikeCooldown,
+         .swingImpact = kBossSwingImpact,
          .drop = ItemId::VoidCatalyst,
          .lungeCooldown = kBossLungeCooldown, .lungeWindup = kBossLungeWindup,
          .lungeSpeed = kBossLungeSpeed, .lungeDuration = kBossLungeDuration,
@@ -123,6 +124,45 @@ void CreatureSystem::loadAssets(const std::string& dir) {
     m_shaderReady = true;
 }
 
+std::vector<std::string> CreatureSystem::checkModels(const std::string& dir) {
+    std::vector<std::string> problems;
+    for (const CreatureSpecies& sp : kSpecies) {
+        // The registry row's name is empty for the ambient wanderer, so the
+        // model path is the identity that always reads.
+        const std::string who =
+            std::string(sp.model) + (*sp.name ? std::string(" (") + sp.name + ")" : "");
+        engine::BbModel model;
+        if (!engine::loadBbModel(dir + sp.model, model, kMaxEntityBones)) {
+            problems.push_back(who + ": model missing or unparsable -- this "
+                                     "species would silently never spawn");
+            continue; // everything below would only restate this
+        }
+        if (model.vertexData.empty()) {
+            problems.push_back(who + ": model has no geometry (nothing to draw)");
+        }
+        if (model.texture.rgba.empty()) {
+            problems.push_back(who + ": texture failed to decode -- would render "
+                                     "as the magenta checker");
+        }
+        // The two clips update() asks every species for by name. Missing ones
+        // are survivable (the creature holds its rest pose) and never what a
+        // shipped species wants.
+        for (const char* clip : {"idle", "walk"}) {
+            if (model.findAnimation(clip) < 0) {
+                problems.push_back(who + ": no '" + clip + "' clip");
+            }
+        }
+        // A telegraph nobody can see is worse than no telegraph: the row
+        // promises a wind-up the player is meant to read and dodge.
+        if (sp.swingImpact > 0.0f && model.findAnimation("attack") < 0) {
+            problems.push_back(who + ": swingImpact is set but the model has no "
+                                     "'attack' clip, so the wind-up the player "
+                                     "is supposed to read is invisible");
+        }
+    }
+    return problems;
+}
+
 void CreatureSystem::spawn(SpeciesId species, DimensionId dim, const World& world,
                            const glm::vec3& feetHint) {
     const std::size_t si = static_cast<std::size_t>(species);
@@ -148,6 +188,15 @@ void CreatureSystem::spawn(SpeciesId species, DimensionId dim, const World& worl
         }
     }
     SDL_Log("Entities: no ground at a spawn hint -- skipped");
+}
+
+void CreatureSystem::playOnce(Creature& c, const char* clip) {
+    const engine::BbModel& model = m_assets[static_cast<std::size_t>(c.species)].model;
+    const int index = model.findAnimation(clip);
+    if (index < 0) return; // no such clip: this species just keeps walking
+    c.anim = index;
+    c.animTime = 0.0f;     // from the top, so back-to-back strikes each swing
+    c.attackLeft = model.animations[static_cast<std::size_t>(index)].length;
 }
 
 void CreatureSystem::clearDimension(DimensionId dim) {
@@ -283,6 +332,9 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
         if (sp.kind == CreatureKind::Boss) {
             c.strikeTimer = std::max(0.0f, c.strikeTimer - dt);
             c.lungeTimer = std::max(0.0f, c.lungeTimer - dt);
+            // Runs down in the SIM, not the render loop: when the axe lands is
+            // gameplay, so it must not drift with the frame rate.
+            c.swingLeft = std::max(0.0f, c.swingLeft - dt);
             glm::vec3 toPlayer = playerFeet - c.pos;
             const float distXZ = glm::length(glm::vec2(toPlayer.x, toPlayer.z));
             const float dist = glm::length(toPlayer);
@@ -301,23 +353,43 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
             flat = (glm::dot(flat, flat) > 1e-6f) ? glm::normalize(flat)
                                                   : glm::vec3(0.0f, 0.0f, 1.0f);
 
-            if (dist <= sp.strikeRange && c.strikeTimer <= 0.0f) {
-                // Contact strike: damage plus a shove away from the warden,
-                // so the fight has a hit-and-close rhythm instead of a hug.
-                // A strike that lands mid-dash is the lunge connecting.
+            // Contact strike, in two halves: the warden COMMITS to a swing
+            // here, and the blow lands `swingImpact` seconds later, when the
+            // axe reaches the ground in the clip. Committing spends the
+            // cooldown either way, so a swing you walk out from under costs
+            // the warden its rhythm rather than nothing, and the animation is
+            // the tell (the lunge windup's fairness rule, told with art this
+            // time).
+            if (dist <= sp.strikeRange && c.strikeTimer <= 0.0f && !c.swingPending) {
                 c.strikeTimer = sp.strikeCooldown * rateMult;
-                ev.damageToPlayer +=
-                    sp.damage * (c.lungeLeft > 0.0f ? sp.lungeDamageMult : 1.0f);
-                // The vertical pop is rolled per strike (same hash-counter
-                // scheme the wander decisions use, so it stays deterministic
-                // and needs no RNG state of its own). Rolled as a HEIGHT and
-                // converted here, so the knobs stay in blocks.
-                const float popH = kBossKnockUpMinH +
-                                   roll01(c.wanderRolls, 53u) *
-                                       (kBossKnockUpMaxH - kBossKnockUpMinH);
-                const float up = std::sqrt(2.0f * kGravity * popH);
-                ev.playerKnock += flat * kBossKnockback + glm::vec3(0.0f, up, 0.0f);
-                c.lungeLeft = 0.0f; // the dash spends itself on the hit
+                c.swingPending = true;
+                c.swingLeft = sp.swingImpact;
+                c.swingLunged = c.lungeLeft > 0.0f; // a dash that connected
+                c.lungeLeft = 0.0f;                 // spends itself on the swing
+                playOnce(c, "attack");
+            }
+            // Ordered after the commit so the swing just started is still in
+            // the air, and so a species with no wind-up (swingImpact 0, which
+            // is every species without a swing clip) hits on contact exactly
+            // as before.
+            if (c.swingPending && c.swingLeft <= 0.0f) {
+                c.swingPending = false;
+                if (dist <= sp.strikeRange) {
+                    // Damage plus a shove away from the warden, so the fight
+                    // has a hit-and-close rhythm instead of a hug.
+                    ev.damageToPlayer +=
+                        sp.damage * (c.swingLunged ? sp.lungeDamageMult : 1.0f);
+                    // The vertical pop is rolled per strike (same hash-counter
+                    // scheme the wander decisions use, so it stays
+                    // deterministic and needs no RNG state of its own). Rolled
+                    // as a HEIGHT and converted here, so the knobs stay in
+                    // blocks.
+                    const float popH = kBossKnockUpMinH +
+                                       roll01(c.wanderRolls, 53u) *
+                                           (kBossKnockUpMaxH - kBossKnockUpMinH);
+                    const float up = std::sqrt(2.0f * kGravity * popH);
+                    ev.playerKnock += flat * kBossKnockback + glm::vec3(0.0f, up, 0.0f);
+                }
             }
 
             if (c.lungeLeft > 0.0f) {
@@ -441,13 +513,17 @@ CreatureSystem::Events CreatureSystem::update(const World& world, DimensionId ac
             c.walking = false;
         }
 
-        // --- Animation state. ---
-        const bool moving = c.walking && (!blockedX || !blockedZ);
-        const int want = m_assets[static_cast<std::size_t>(c.species)]
-                             .model.findAnimation(moving ? "walk" : "idle");
-        if (want != c.anim) {
-            c.anim = want;
-            c.animTime = 0.0f;
+        // --- Animation state. A swing owns the model until it plays out, so
+        // a strike reads as one motion instead of being cut off by the next
+        // step the boss takes (frameAdvance runs the clock down).
+        if (c.attackLeft <= 0.0f) {
+            const bool moving = c.walking && (!blockedX || !blockedZ);
+            const int want = m_assets[static_cast<std::size_t>(c.species)]
+                                 .model.findAnimation(moving ? "walk" : "idle");
+            if (want != c.anim) {
+                c.anim = want;
+                c.animTime = 0.0f;
+            }
         }
     }
 
@@ -461,6 +537,7 @@ void CreatureSystem::frameAdvance(float dt) {
     m_sinceTick += dt;
     for (Creature& c : m_creatures) {
         c.animTime += dt;
+        c.attackLeft = std::max(0.0f, c.attackLeft - dt);
         c.hurtFlash = std::max(0.0f, c.hurtFlash - dt * kFlashDecay);
     }
 }

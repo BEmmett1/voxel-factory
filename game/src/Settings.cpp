@@ -14,12 +14,12 @@ namespace {
     constexpr const char* kActionNames[kActionCount] = {
         "MOVE FORWARD", "MOVE BACK", "MOVE LEFT", "MOVE RIGHT",
         "JUMP", "SPRINT", "CRAFT MENU", "INVENTORY",
-        "WRENCH ROTATE", "QUICK SAVE", "HELP"};
+        "WRENCH ROTATE", "BELT FILTER", "QUICK SAVE", "HELP"};
 
     constexpr const char* kActionCfgKeys[kActionCount] = {
         "BIND_FORWARD", "BIND_BACK", "BIND_LEFT", "BIND_RIGHT",
         "BIND_JUMP", "BIND_SPRINT", "BIND_CRAFT", "BIND_INVENTORY",
-        "BIND_WRENCH", "BIND_QUICKSAVE", "BIND_HELP"};
+        "BIND_WRENCH", "BIND_BELTFILTER", "BIND_QUICKSAVE", "BIND_HELP"};
 
     std::string trim(const std::string& s) {
         std::size_t b = 0, e = s.size();

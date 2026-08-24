@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <vector>
 
 // Runtime state for a placed machine block. Ingredients wait in `input`,
 // finished goods collect in `output`, and `progress` counts seconds into the
@@ -32,11 +33,26 @@ struct Machine {
                                  // -1 = auto. Saved as the recipe's KEY, not as
                                  // this index -- see Recipes.h.
 
+    // The master switch (save v24). OFF means FROZEN: the machine does no work,
+    // draws no power, produces none, and goes dark -- but it keeps its buffers,
+    // keeps conducting (so switching one off can never split a network), and
+    // still accepts deliveries and gives up its output. That last part is what
+    // makes it a logistics tool rather than a wall: an idled machine fills to
+    // its input cap and the feed line backs up from there on its own, with no
+    // special case anywhere.
+    bool      enabled = true;
+
     // Miner only, transient (not saved; re-acquired after load): the node
     // being drilled, so the reach isn't re-scanned every tick.
     glm::ivec3 target{0};
     bool       hasTarget = false;
     int        rescanCooldown = 0; // ticks until the next idle scan
+
+    // Transient (not saved -- recomputed by the first tick after a load): the
+    // craft is ready but its product has nowhere to go, so progress is HELD and
+    // the inputs are untouched. Purely a signal for the UI; the sim re-derives
+    // it every tick.
+    bool       jammed = false;
 
     // Hand-cranked tier only, transient (not saved -- a half-turned handle is
     // not worth persisting, and a fresh load simply starts the turn again):
@@ -56,7 +72,24 @@ enum class MachineKind : std::uint8_t {
     Miner,     // harvests nearby resource nodes, gated on network power
     RuneCore,  // reads the ring of Pedestals around it and runs CircleRecipes
     Pedestal,  // passive one-item-type holder; a ring slot for the Rune Core
+    Storage,   // bulk stockpile; belts both fill and drain it
+    // Reaps ripe crops in reach and REPLANTS the cell at stage 0. Its own kind
+    // rather than a Miner variant for exactly that reason: a Miner leaves Air,
+    // and a field that harvested itself into bare soil would need re-sowing by
+    // hand forever, which is the opposite of automation.
+    Harvester,
+    // Spends Rain Water to keep a radius growing at the rain rate. The answer
+    // to a dry spell, which without one is frustration rather than tension.
+    Irrigator,
 };
+
+// Enum spellings for the content pack format -- see kToolNames in Item.h.
+inline constexpr const char* kKindNames[] = {
+    "processor", "generator", "collector", "miner", "rune_core", "pedestal",
+    "storage", "harvester", "irrigator",
+};
+static_assert(std::size(kKindNames) == 9,
+              "kKindNames needs one name per MachineKind");
 
 // What burns, and for how long. A shared registry rather than a per-machine
 // field, so "add a better fuel" is one row here instead of a change at every
@@ -67,20 +100,28 @@ struct FuelInfo {
     float  seconds; // base burn time for one item
 };
 
-inline constexpr FuelInfo kFuels[] = {
+inline constexpr FuelInfo kFuelSeed[] = {
     {ItemId::Stick, 5.0f},
     {ItemId::SaplingItem, 5.0f},
     {ItemId::Wood, 20.0f},
+    // The rung between wood and charcoal, and the reason a Composter is worth
+    // building before you own a fire: it turns the tree's leftovers into fuel
+    // without spending the wood you want for building. Listed in burn order
+    // for readability only -- pickFuel scans by `seconds`, not by position.
+    {ItemId::BioBriquette, 35.0f},
     {ItemId::Charcoal, 60.0f},
 };
 
-// Base burn seconds for one of `item`; 0 = not a fuel.
-inline constexpr float fuelSeconds(ItemId item) {
-    for (const FuelInfo& f : kFuels) {
-        if (f.item == item) return f.seconds;
-    }
-    return 0.0f;
-}
+// Base burn seconds for one of `item`; 0 = not a fuel. Reads the RUNTIME fuel
+// table (kFuelSeed above is its seed), so a pack can add a fuel.
+float fuelSeconds(ItemId item);
+
+// Every fuel, compiled and loaded.
+const std::vector<FuelInfo>& fuelRows();
+
+// Startup only, like the other registries -- see blockCount() in Block.h.
+void addFuel(const FuelInfo& row);
+void restoreFuels(std::vector<FuelInfo> rows); // rollback
 
 // Static per-machine-type properties: one registry row per machine block,
 // like kBlocks/kItems. Block.cpp cross-static_asserts this table against the
@@ -93,7 +134,7 @@ struct MachineTraits {
     MachineKind kind = MachineKind::Processor;
     int         demand = 5;              // power drawn from its network (0 = runs unpowered)
     int         powerOutput = 0;         // power produced while burning (Generator)
-    bool        burnsFuel = false;       // consumes kFuels items to run
+    bool        burnsFuel = false;       // consumes kFuelSeed items to run
     float       fuelMult = 1.0f;         // burn-time multiplier (efficiency)
     ItemId      collects = ItemId::None; // what a Collector gathers
     int         collectCap = 0;          // Collector stops when output holds this many
@@ -121,7 +162,7 @@ struct MachineTraits {
 // like the rest of this table.
 inline constexpr float kManualSlowdown = 3.0f;
 
-inline constexpr MachineTraits kMachineTraits[] = {
+inline constexpr MachineTraits kMachineTraitSeed[] = {
     {.block = BlockId::Generator, .kind = MachineKind::Generator, .demand = 0,
      .powerOutput = 10, .burnsFuel = true},
     {.block = BlockId::Grinder},
@@ -158,10 +199,16 @@ inline constexpr MachineTraits kMachineTraits[] = {
     // The MANUAL tier. Each row is the whole machine: no power (demand 0), its
     // powered twin's recipes (recipeGroup), kManualSlowdown times the work --
     // and handCranked, which is what makes it manual rather than merely slow.
-    // The Bloomery still needs fuel -- you cannot hand crank a fire -- and
-    // burns it less efficiently than a real Furnace.
+    // The Bloomery is the one manual-tier machine that is NOT cranked, because
+    // you cannot hand crank a fire: what does the work in a bloomery is the
+    // burn, and a burn keeps going whether or not anyone is standing there.
+    // So it runs on the clock like every other machine -- light it and walk
+    // away -- and pays for the privilege in the other two currencies instead:
+    // kManualSlowdown times as long as a Furnace, on fuel it wastes (fuelMult).
+    // That leaves the crank tier meaning one coherent thing (a machine your
+    // ARM drives) rather than two, and leaves the fuel tier meaning another.
     {.block = BlockId::Bloomery, .demand = 0, .burnsFuel = true, .fuelMult = 0.6f,
-     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown, .handCranked = true},
+     .recipeGroup = BlockId::Furnace, .speedMult = kManualSlowdown},
     {.block = BlockId::Sieve, .demand = 0,
      .recipeGroup = BlockId::Sifter, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::Blowpipe, .demand = 0,
@@ -186,59 +233,92 @@ inline constexpr MachineTraits kMachineTraits[] = {
      .recipeGroup = BlockId::Distiller, .speedMult = kManualSlowdown, .handCranked = true},
     {.block = BlockId::HandTransmuter, .demand = 0,
      .recipeGroup = BlockId::Transmuter, .speedMult = kManualSlowdown, .handCranked = true},
+
+    // Bulk storage. demand 0 keeps it off the power graph (the Rain Barrel and
+    // Pedestal precedent), so a crate never conducts and a row of them can't
+    // silently bridge two networks. Its tick migrates input -> output, which is
+    // the whole trick: beltStep fills a machine's `input` and drains its
+    // `output`, so one buffer swap makes a crate both feedable and drainable
+    // with no belt code at all.
+    {.block = BlockId::StorageCrate, .kind = MachineKind::Storage, .demand = 0},
+
+    // Farming's automation payoff: the Miner one field over. Powered, because
+    // the whole point of a farm is that it runs while you are somewhere else,
+    // and the manual tier already has an answer for reaping by hand -- your
+    // hands.
+    {.block = BlockId::Harvester, .kind = MachineKind::Harvester},
+    // demand 0, the Rain Barrel precedent: what it spends is WATER, not
+    // electricity, so it stays off the power graph entirely. That also makes
+    // Barrel -> belt -> Irrigator a complete, electricity-free answer to the
+    // weather, which is the right tier for it -- a dry spell should be
+    // solvable by the player who has a farm, not only by the one who has a
+    // grid.
+    {.block = BlockId::Irrigator, .kind = MachineKind::Irrigator, .demand = 0,
+     .collects = ItemId::SpringWater},
 };
 
-// Only the manual tier is cranked, and every cranked machine is a manual twin.
-// The two travel together by design -- if they ever come apart, the panel and
-// the tick would disagree about what "manual" means.
+// Every cranked machine is a manual twin -- but NOT every twin is cranked.
+// This used to be an equivalence, which quietly forced the Bloomery to be
+// hand-turned for no reason except that it shared a recipe list with the
+// Furnace. The two questions are genuinely separate: `recipeGroup` asks WHOSE
+// RECIPES do I run, `handCranked` asks WHO SUPPLIES THE WORK, and a bloomery
+// answers "the Furnace's" and "the fire". Only the implication still has to
+// hold, because a cranked machine with no recipes would be a handle attached
+// to nothing.
 static_assert([] {
-    for (const MachineTraits& t : kMachineTraits) {
-        if (t.handCranked != (t.recipeGroup != BlockId::Air)) return false;
+    for (const MachineTraits& t : kMachineTraitSeed) {
+        if (t.handCranked && t.recipeGroup == BlockId::Air) return false;
     }
     return true;
-}(), "handCranked and the manual tier (recipeGroup) must agree");
+}(), "a handCranked machine must name a recipeGroup (a handle needs a job)");
 
 static_assert([] {
-    for (std::size_t i = 0; i < std::size(kMachineTraits); ++i) {
-        for (std::size_t j = i + 1; j < std::size(kMachineTraits); ++j) {
-            if (kMachineTraits[i].block == kMachineTraits[j].block) return false;
+    for (std::size_t i = 0; i < std::size(kMachineTraitSeed); ++i) {
+        for (std::size_t j = i + 1; j < std::size(kMachineTraitSeed); ++j) {
+            if (kMachineTraitSeed[i].block == kMachineTraitSeed[j].block) return false;
         }
     }
     return true;
-}(), "kMachineTraits has a duplicate row");
-
-namespace detail {
-    inline constexpr auto kMachineTraitIndex = [] {
-        std::array<std::int8_t, static_cast<std::size_t>(BlockId::Count)> idx{};
-        for (auto& v : idx) v = -1;
-        for (std::size_t i = 0; i < std::size(kMachineTraits); ++i) {
-            idx[static_cast<std::size_t>(kMachineTraits[i].block)] =
-                static_cast<std::int8_t>(i);
-        }
-        return idx;
-    }();
-}
+}(), "kMachineTraitSeed has a duplicate row");
 
 // A recipeGroup must name a real machine that is itself ungrouped, so
 // recipeGroupFor() stays a single hop and two manual twins can never chain
-// into a cycle.
+// into a cycle. (Over the compiled seed; content::validate() re-asks it of the
+// whole runtime table, which is where a pack's row would show up.)
 static_assert([] {
-    for (const MachineTraits& t : kMachineTraits) {
+    for (const MachineTraits& t : kMachineTraitSeed) {
         if (t.recipeGroup == BlockId::Air) continue;
-        const std::int8_t at =
-            detail::kMachineTraitIndex[static_cast<std::size_t>(t.recipeGroup)];
-        if (at < 0) return false;
-        if (kMachineTraits[at].recipeGroup != BlockId::Air) return false;
+        const MachineTraits* group = nullptr;
+        for (const MachineTraits& g : kMachineTraitSeed) {
+            if (g.block == t.recipeGroup) group = &g;
+        }
+        if (!group || group->recipeGroup != BlockId::Air) return false;
     }
     return true;
-}(), "a kMachineTraits recipeGroup must point at an ungrouped machine block");
+}(), "a kMachineTraitSeed recipeGroup must point at an ungrouped machine block");
 
 // The traits row for a machine block. Only valid when isMachine(id) — every
 // call site is naturally guarded (machines are looked up via the machine map
 // or behind an isMachine() check).
-inline const MachineTraits& machineTraits(BlockId id) {
-    return kMachineTraits[detail::kMachineTraitIndex[static_cast<std::size_t>(id)]];
-}
+//
+// Backed by a runtime table seeded from kMachineTraitSeed, with a block-id -> row
+// index built beside it. That index used to be a `constexpr` array of
+// `std::int8_t` sized by `BlockId::Count`, which silently capped the game at
+// 127 machines; it is now a vector of int sized by blockCount(), so the cap is
+// gone along with the fixed size.
+const MachineTraits& machineTraits(BlockId id);
+
+// Does this block have a traits row at all? The static_assert above pins
+// `machine` and "has a row" together for compiled content, but a pack is
+// checked at runtime, and a caller that is ASKING cannot assume the answer.
+bool hasMachineTraits(BlockId id);
+
+// Every machine's traits, compiled and loaded.
+const std::vector<MachineTraits>& machineTraitRows();
+
+// Startup only, like the other registries -- see blockCount() in Block.h.
+void addMachineTraits(const MachineTraits& row);
+void restoreMachineTraits(std::vector<MachineTraits> rows); // rollback
 
 // Whose recipe rows this machine runs: itself, unless its row delegates to a
 // powered counterpart. One hop only -- a manual twin never points at another
@@ -262,4 +342,13 @@ inline BlockId recipeGroupFor(BlockId id) {
 // and there is no fourteenth column to keep in sync with reality.
 inline bool usesFuelSlot(BlockId id) {
     return machineTraits(id).burnsFuel && !recipesForMachine(id).empty();
+}
+
+// Is a master switch worth offering here? Everything that DOES something does:
+// processors, generators, collectors, miners, circles, crates. A Pedestal is a
+// passive shelf whose tick is already a `continue`, so a switch on it would be
+// a control that changes nothing -- and a dead control teaches players that the
+// other switches might be dead too.
+inline bool hasPowerSwitch(BlockId id) {
+    return machineTraits(id).kind != MachineKind::Pedestal;
 }

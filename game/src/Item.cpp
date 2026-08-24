@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -227,7 +229,7 @@ namespace {
          .name = "Pedestal", .placeable = true,
          .placesBlock = B::Pedestal},
         // ---- The recipe overhaul ----------------------------------------
-        // Charcoal: the Furnace's own product and the best fuel in kFuels, so
+        // Charcoal: the Furnace's own product and the best fuel in kFuelSeed, so
         // the first thing a new Bloomery does is make its own better fuel.
         {.id = I::Charcoal, .key = "core:charcoal",
          .name = "Charcoal", .atlasTile = 181},
@@ -313,6 +315,48 @@ namespace {
         {.id = I::HandTransmuterItem, .key = "core:hand_transmuter_item",
          .name = "Hand Transmuter", .placeable = true,
          .placesBlock = B::HandTransmuter},
+        {.id = I::StorageCrateItem, .key = "core:storage_crate_item",
+         .name = "Storage Crate", .placeable = true,
+         .placesBlock = B::StorageCrate},
+        // ---- Farming ------------------------------------------------------
+        // No ToolType and no miningSpeed: the hoe is a hotbar tool like the
+        // Bucket or the Teleport Key, and tools are not placeable, so the place
+        // path already refuses to try to set a block with it.
+        {.id = I::CopperHoe, .key = "core:copper_hoe",
+         .name = "Copper Hoe", .atlasTile = 116},
+        // Placeable, so iconTile() borrows the seedling BLOCK's side tile
+        // rather than an atlasTile of its own -- which is why tile 11 is
+        // painted as loose seeds and not as a tiny plant.
+        {.id = I::HerbSeed, .key = "core:herb_seed",
+         .name = "Herb Seed", .placeable = true, .placesBlock = B::HerbCrop0},
+        {.id = I::HarvesterItem, .key = "core:harvester_item",
+         .name = "Harvester", .placeable = true, .placesBlock = B::Harvester},
+        {.id = I::IrrigatorItem, .key = "core:irrigator_item",
+         .name = "Irrigator", .placeable = true, .placesBlock = B::Irrigator},
+        // ---- The primitive tier ---------------------------------------
+        // Fiber and Pebble are the two things bare hands get out of the
+        // ground, and unlike every other raw they are not a block's `drop`
+        // row: Grass and Dirt already drop themselves, so these are spawned
+        // BESIDE that drop in VoxelGamePlayer's break path. That is why the
+        // reachability and renewability closures have to name Fiber by hand.
+        {.id = I::PlantFiber, .key = "core:plant_fiber",
+         .name = "Plant Fiber", .atlasTile = 117},
+        // The binding. Nothing in the wood or stone tool tier holds together
+        // without it, which is what makes turf worth digging before you own
+        // a single tool.
+        {.id = I::Twine, .key = "core:twine", .name = "Twine", .atlasTile = 118},
+        // Where the tree's surplus goes. A grown tree is ~8 saplings and ~11
+        // sticks for the one sapling that made it, and only one of those
+        // saplings replaces it -- the rest compost.
+        {.id = I::Compost, .key = "core:compost",
+         .name = "Compost", .atlasTile = 119},
+        {.id = I::BioBriquette, .key = "core:bio_briquette",
+         .name = "Bio Briquette", .atlasTile = 120},
+        // Placeable, so iconTile() borrows the block's side tile -- the
+        // HerbSeed precedent.
+        {.id = I::GraftedSaplingItem, .key = "core:grafted_sapling_item",
+         .name = "Grafted Sapling", .placeable = true,
+         .placesBlock = B::SaplingGrafted},
     };
 
     static_assert(std::size(kItems) == static_cast<std::size_t>(ItemId::Count),
@@ -339,10 +383,36 @@ namespace {
         return true;
     }(), "kItems keys must be unique and non-empty");
 
+    // Seeded from kItems, grown by content packs -- the blockTable() note in
+    // Block.cpp applies here word for word.
+    std::vector<ItemInfo>& itemTable() {
+        static std::vector<ItemInfo> table(std::begin(kItems), std::end(kItems));
+        return table;
+    }
+
 } // namespace
 
 const ItemInfo& itemInfo(ItemId id) {
-    return kItems[static_cast<std::size_t>(id)];
+    return itemTable()[static_cast<std::size_t>(id)];
+}
+
+std::size_t itemCount() {
+    return itemTable().size();
+}
+
+const std::vector<ItemInfo>& itemRows() {
+    return itemTable();
+}
+
+void restoreItems(std::vector<ItemInfo> rows) {
+    itemTable() = std::move(rows);
+}
+
+ItemId addItem(const ItemInfo& row) {
+    const auto id = static_cast<ItemId>(itemTable().size());
+    itemTable().push_back(row);
+    itemTable().back().id = id;
+    return id;
 }
 
 int iconTile(ItemId id) {

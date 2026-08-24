@@ -12,15 +12,18 @@ Instant and free, so it deliberately cannot build the factory.
 
 | key | inputs | output |
 |---|---|---|
-| `hand/wood-pickaxe` | Stick x2 + Pebble x3 | Wood Pickaxe |
-| `hand/wood-axe` | Stick x2 + Pebble x3 | Wood Axe |
-| `hand/stone-pickaxe` | Stone x3 + Stick x2 | Stone Pickaxe |
-| `hand/stone-axe` | Stone x3 + Stick x2 | Stone Axe |
-| `hand/stone-shovel` | Stone x2 + Stick x2 | Stone Shovel |
+| `hand/twine` | Plant Fiber x3 | Twine |
+| `hand/wood-pickaxe` | Stick x2 + Pebble x3 + Twine | Wood Pickaxe |
+| `hand/wood-axe` | Stick x2 + Pebble x3 + Twine | Wood Axe |
+| `hand/stone-pickaxe` | Stone x3 + Stick x2 + Twine | Stone Pickaxe |
+| `hand/stone-axe` | Stone x3 + Stick x2 + Twine | Stone Axe |
+| `hand/stone-shovel` | Stone x2 + Stick x2 + Twine | Stone Shovel |
 | `hand/scaffold` | Stone | Scaffold x4 |
 | `hand/bucket` | Wood x3 | Bucket |
+| `hand/pebble-stone` | Pebble x4 | Stone |
+| `hand/storage-crate` | Wood x8 | Storage Crate |
 | `hand/bloomery` | Stone x8 | Bloomery |
-| `hand/sieve` | Wood x4 + Stick x4 | Sieve |
+| `hand/sieve` | Wood x4 + Twine x2 | Sieve |
 | `hand/pedestal` | Stone x4 + Copper Ingot | Pedestal |
 | `hand/rune-core` | Stone x6 + Copper Ingot x2 + Crystal | Rune Core |
 
@@ -104,8 +107,9 @@ Draws 5 power. Hand tier: **Compost Heap** (3x slower).
 
 | key | inputs | output | seconds |
 |---|---|---|---|
-| `composter/dirt-from-sticks` | Stick x3 | Dirt x2 | 2.5 |
-| `composter/dirt-from-sapling` | Sapling | Dirt x3 | 3.0 |
+| `composter/compost` | Sapling x2 + Stick x2 | Compost | 3.0 |
+| `composter/dirt` | Compost | Dirt x4 | 2.5 |
+| `composter/briquette` | Compost x2 | Bio Briquette | 4.0 |
 
 ### Forge
 
@@ -136,6 +140,7 @@ Draws 5 power. Hand tier: **Hand Press** (3x slower).
 | `press/machine-casing` | Iron Plate x4 | Machine Casing | 5.0 |
 | `press/etched-plate` | Copper Plate + Crystal Dust x2 | Etched Plate | 4.0 |
 | `press/machine-frame` | Machine Casing + Gear x2 + Etched Plate | Machine Frame | 8.0 |
+| `press/copper-wire` | Copper Rod | Wire x2 | 2.0 |
 | `press/copper-rod` | Copper Ingot | Copper Rod x2 | 2.0 |
 
 ### Rune Core
@@ -160,7 +165,7 @@ Burns fuel. Hand tier: **Bloomery** (3x slower).
 | `furnace/iron-ingot` | Iron Nugget x4 | Iron Ingot | 4.0 |
 | `furnace/copper-from-nuggets` | Copper Nugget x4 | Copper Ingot | 4.0 |
 | `furnace/glass` | Sand | Glass | 3.0 |
-| `furnace/charcoal` | Wood x2 | Charcoal | 6.0 |
+| `furnace/charcoal` | Wood | Charcoal | 6.0 |
 
 ### Sifter
 
@@ -170,6 +175,7 @@ Draws 5 power. Hand tier: **Sieve** (3x slower).
 |---|---|---|---|
 | `sifter/sand` | Sand x4 | Iron Nugget (30%), Copper Nugget (20%), Pebble (20%), Crystal (5%), nothing (25%) | 4.0 |
 | `sifter/soil` | Dirt x4 | Pebble x2 (45%), Sand (30%), Stick (15%), nothing (10%) | 3.0 |
+| `sifter/herb-seed` | Herb | Herb Seed | 2.0 |
 
 ### Glassblower
 
@@ -187,6 +193,24 @@ Draws 5 power. Hand tier: **Tamper** (3x slower).
 |---|---|---|---|
 | `compactor/stone` | Dirt x4 + Sand x4 | Stone x2 | 5.0 |
 
+### Storage Crate
+
+Runs unpowered. 
+
+_No recipes -- its behavior is code, not a table._
+
+### Harvester
+
+Draws 5 power. 
+
+_No recipes -- its behavior is code, not a table._
+
+### Irrigator
+
+Runs unpowered. 
+
+_No recipes -- its behavior is code, not a table._
+
 ## Alchemy Circle
 
 A `ring` of 4 entries is the CARDINAL pedestals clockwise from north
@@ -201,6 +225,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/grinder` | - | Copper Ingot x3, -, Stone x4, - | Grinder | 6.0 |
 | `circle/generator` | - | Copper Ingot x2, Stone x2, Wood x2, - | Generator | 6.0 |
 | `circle/composter` | - | Wood x6, -, Stick x4, - | Composter | 5.0 |
+| `circle/grafted-sapling` | - | Sapling x2, -, Compost, - | Grafted Sapling | 5.0 |
 | `circle/rain-barrel` | - | Wood x6, -, Bucket, - | Rain Barrel | 5.0 |
 | `circle/wire` | - | Copper Ingot, -, -, - | Wire x2 | 2.0 |
 | `circle/press` | - | Copper Ingot x2, Stone x2, Copper Ingot x2, Stone x2 | Press | 8.0 |
@@ -219,6 +244,7 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/copper-axe` | - | Copper Plate x3, Wood x2, -, - | Copper Axe | 4.0 |
 | `circle/copper-pickaxe` | - | Copper Plate x3, -, Wood x2, - | Copper Pickaxe | 4.0 |
 | `circle/copper-shovel` | - | Copper Plate x2, -, Wood x2, - | Copper Shovel | 4.0 |
+| `circle/copper-hoe` | - | Copper Plate x2, Wood x2, -, - | Copper Hoe | 4.0 |
 | `circle/copper-sword` | - | Copper Plate x2, -, Wood, - | Copper Sword | 4.0 |
 | `circle/conduit` | - | Copper Plate x2, -, -, - | Conduit x2 | 3.0 |
 | `circle/wrench` | - | Copper Plate, -, Copper Plate, - | Wrench | 3.0 |
@@ -227,6 +253,8 @@ so one pattern can shadow another -- order is what disambiguates, and
 | `circle/iron-shovel` | - | Iron Plate x2, -, Wood x2, - | Iron Shovel | 5.0 |
 | `circle/iron-sword` | - | Iron Plate x2, -, Wood, - | Iron Sword | 5.0 |
 | `circle/miner` | - | Machine Frame, Copper Plate x3, Stone x4, - | Miner | 8.0 |
+| `circle/harvester` | - | Machine Frame, Iron Plate x3, Copper Hoe, - | Harvester | 8.0 |
+| `circle/irrigator` | - | Machine Frame, Bucket, Copper Plate x2, - | Irrigator | 6.0 |
 | `circle/distiller` | - | Machine Frame, Glass x2, Crystal, - | Distiller | 8.0 |
 | `circle/transmuter` | - | Machine Frame, Crystal x2, Essence, - | Transmuter | 8.0 |
 | `circle/infuser` | - | Machine Frame, Glass, Vial, - | Infuser | 6.0 |
@@ -254,7 +282,10 @@ so one pattern can shadow another -- order is what disambiguates, and
 | Stick | 5 |
 | Sapling | 5 |
 | Wood | 20 |
+| Bio Briquette | 35 |
 | Charcoal | 60 |
 
-A machine never burns an item its own recipes consume, which is why
-a Furnace fed wood chars it instead of eating it.
+A machine that both burns fuel and runs recipes has a FUEL buffer of its
+own, so a Furnace can char wood while burning wood -- which pile an
+arriving belt item joins is inferred (ingredient wins), and a hand-drag
+lands in the cell you dropped it on.

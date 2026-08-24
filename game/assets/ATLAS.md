@@ -4,7 +4,10 @@ The atlas is **256x256**: a **16x16 grid of 16px tiles**. Tile index =
 `row * 16 + col`. Repaint any tile in any pixel editor and rebuild
 (`cmake --build out/build/x64-Debug` copies it next to the exe) — no code
 changes needed unless you *move* a tile. World tiles must stay fully opaque;
-item icons (rows 4-7, 11) may use transparency.
+item icons (rows 4-7, 11) may use transparency. Tiles 11-12 are the one
+exception in a world row: they are icons for SHAPED crop blocks, which draw
+from `shapes.png` and never sample these, so their transparency is only ever
+seen by `UiRenderer`.
 
 The sheet was 8 rows until the recipe overhaul. Because the index is
 `row * 16 + col` and the **column count never changed**, growing downward left
@@ -31,7 +34,11 @@ you want to *discard* hand edits and start over.
 | 6 | 6 | log ends (rings; top + bottom) |
 | 7 | 7 | log bark (sides) |
 | 8 | 8 | leaves |
-| 9-15 | | spare |
+| 9 | 10 | tilled soil (furrowed top; bottom borrows dirt) |
+| 11 | 11 | herb seed / unripe crop — the ITEM icon for the seed, since a placeable borrows its block's side tile |
+| 12 | 12 | ripe herb — the same for the ripe stage |
+| 13 | 14 | harvester (reel top, cutter-bar side) |
+| 15 | 45 | irrigator (sprinkler top; the side tile lives in the machines row) |
 
 ## Rows 1-2 — machines (tiles 16-47)
 
@@ -51,7 +58,8 @@ you want to *discard* hand edits and start over.
 | 38 | forge side | 39 | press top (ram + die) |
 | 40 | press side (screw + platen) | 41 | rune core top (sigil) |
 | 42 | rune core side | 43 | pedestal top (socket) |
-| 44 | pedestal side | 45-47 | spare |
+| 44 | pedestal side | 45 | irrigator side (pipe + jets) |
+| 46-47 | spare | | |
 
 ## Row 3 — nodes & sources (tiles 48-63)
 
@@ -87,7 +95,7 @@ you want to *discard* hand edits and start over.
 | 92 | storm key | 93 | storm core |
 | 94 | resonance | 95 | fusion catalyst |
 
-## Rows 6-7 — tools + spare (tiles 96-127)
+## Rows 6-7 — tools, parts, the primitive tier (tiles 96-120)
 
 | tile | content | tile | content |
 |-----:|---------|-----:|---------|
@@ -101,7 +109,9 @@ you want to *discard* hand edits and start over.
 | 110 | aegis chestplate | 111 | aegis boots |
 | 112 | copper rod | 113 | gear |
 | 114 | machine casing | 115 | etched plate |
-| 116-127 | spare | | |
+| 116 | copper hoe | 117 | plant fiber |
+| 118 | twine | 119 | compost |
+| 120 | bio briquette | 121-127 | spare |
 
 ## Row 8 — the smelting & sifting tier (tiles 128-135)
 
@@ -141,12 +151,20 @@ surface in the powered twin's accent color, every side tile carries the same
 | 186 | iron helm | 187 | iron chestplate |
 | 188 | iron boots | 189-191 | spare |
 
-## Rows 12-15 — spare (tiles 192-255)
+## Row 12 — bulk storage + rich soil (tiles 192-195)
+
+| tile | content | tile | content |
+|-----:|---------|-----:|---------|
+| 192 | storage crate (top/lid) | 193 | storage crate (side) |
+| 194 | rich soil (top/furrows) | 195 | rich soil (side) |
+| 196 | grafted sapling (all faces) | | |
+
+## Rows 12-15 — spare (tiles 197-255)
 
 Empty. This is the headroom the 8→16 row growth bought.
 
-All tiles above are painted by `make_atlas.py`. The rest (9-15, 45-47, 63,
-116-127, 162-175, 189-255) are free for new blocks/items. Claim a tile here,
+All tiles above are painted by `make_atlas.py`. The rest (46-47, 63,
+121-127, 162-175, 189-191, 197-255) are free for new blocks/items. Claim a tile here,
 add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
 on the kBlocks row for blocks, `atlasTile` on the kItems row for material
 items).

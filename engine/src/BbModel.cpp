@@ -151,6 +151,17 @@ namespace engine {
         for (std::size_t i = 0; i < animations.size(); ++i) {
             if (animations[i].name == name) return static_cast<int>(i);
         }
+        // Bedrock-style names ("animation.model.walk") answer to their last
+        // segment, so a model authored either way binds to the same "walk".
+        // Second pass, so an exact name always wins.
+        for (std::size_t i = 0; i < animations.size(); ++i) {
+            const std::string& n = animations[i].name;
+            const std::size_t dot = n.rfind('.');
+            if (dot != std::string::npos &&
+                n.compare(dot + 1, std::string::npos, name) == 0) {
+                return static_cast<int>(i);
+            }
+        }
         return -1;
     }
 
@@ -184,6 +195,30 @@ namespace engine {
         std::unordered_map<std::string, int> boneByElement; // element uuid -> bone
         int syntheticRoot = -1; // lazily created for stray root-level elements
 
+        // Blockbench 5.0 stripped the outliner to {uuid, children} and moved a
+        // group's name/origin/rotation into a flat `groups` table; 4.x wrote
+        // them inline. Read inline first, then the table, so one walk loads
+        // either layout (and a 5.0 model's bones get their real pivots --
+        // without them every limb would rotate about the model's origin).
+        std::unordered_map<std::string, const json*> groupProps;
+        if (doc.contains("groups") && doc["groups"].is_array()) {
+            for (const json& g : doc["groups"]) {
+                if (g.is_object() && g.contains("uuid") && g["uuid"].is_string()) {
+                    groupProps.emplace(g["uuid"].get<std::string>(), &g);
+                }
+            }
+        }
+        auto groupField = [&](const json& node, const char* key) -> json {
+            if (node.contains(key)) return node[key];
+            if (node.contains("uuid") && node["uuid"].is_string()) {
+                const auto it = groupProps.find(node["uuid"].get<std::string>());
+                if (it != groupProps.end() && it->second->contains(key)) {
+                    return (*it->second)[key];
+                }
+            }
+            return json();
+        };
+
         auto ensureSyntheticRoot = [&]() {
             if (syntheticRoot < 0) {
                 BbBone root;
@@ -202,13 +237,14 @@ namespace engine {
                 return;
             }
             if (!node.is_object()) return;
+            const json name = groupField(node, "name");
             BbBone bone;
-            bone.name = node.value("name", std::string("bone"));
+            bone.name = name.is_string() ? name.get<std::string>() : std::string("bone");
             bone.parent = parent;
-            bone.pivot = geoToWorld(vec3Or(node.value("origin", json::array()),
-                                           glm::vec3(0.0f), lenient));
+            bone.pivot = geoToWorld(
+                vec3Or(groupField(node, "origin"), glm::vec3(0.0f), lenient));
             bone.restRotationDeg = animRotToWorld(
-                vec3Or(node.value("rotation", json::array()), glm::vec3(0.0f), lenient));
+                vec3Or(groupField(node, "rotation"), glm::vec3(0.0f), lenient));
             out.bones.push_back(bone);
             const int index = static_cast<int>(out.bones.size()) - 1;
             if (node.contains("uuid") && node["uuid"].is_string()) {
@@ -360,9 +396,12 @@ namespace engine {
                         key.value = isRotation ? animRotToWorld(raw) : animPosToWorld(raw);
                         const std::string interp =
                             kf.value("interpolation", std::string("linear"));
-                        key.interp = (interp == "step") ? BbKeyframe::Interp::Step
-                                                        : BbKeyframe::Interp::Linear;
-                        if (interp != "linear" && interp != "step") oddAnim = true;
+                        if (interp == "step") key.interp = BbKeyframe::Interp::Step;
+                        else if (interp == "catmullrom") key.interp = BbKeyframe::Interp::CatmullRom;
+                        else {
+                            key.interp = BbKeyframe::Interp::Linear;
+                            if (interp != "linear") oddAnim = true;
+                        }
                         dest->push_back(key);
                     }
                     auto byTime = [](const BbKeyframe& a, const BbKeyframe& b) {
@@ -401,8 +440,20 @@ namespace engine {
 
     namespace {
 
-        // Sample a keyframe track at time t: clamp outside the range, step or
-        // per-component linear interpolation between brackets.
+        // Uniform Catmull-Rom through p1..p2, shaped by the neighbours p0/p3
+        // (Blockbench's own `Math.catmullrom`).
+        glm::vec3 catmullRom(const glm::vec3& p0, const glm::vec3& p1,
+                             const glm::vec3& p2, const glm::vec3& p3, float t) {
+            const float t2 = t * t, t3 = t2 * t;
+            return 0.5f * (2.0f * p1 + (p2 - p0) * t +
+                           (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                           (3.0f * p1 - p0 - 3.0f * p2 + p3) * t3);
+        }
+
+        // Sample a keyframe track at time t: clamp outside the range, then
+        // step / linear / Catmull-Rom between brackets. A smooth segment
+        // borrows the keys on either side, duplicating the end ones at the
+        // edges the way the editor's preview does.
         glm::vec3 sampleTrack(const std::vector<BbKeyframe>& keys, float t,
                               const glm::vec3& rest) {
             if (keys.empty()) return rest;
@@ -415,6 +466,15 @@ namespace engine {
             if (a.interp == BbKeyframe::Interp::Step) return a.value;
             const float span = b.time - a.time;
             const float f = (span > 0.0f) ? (t - a.time) / span : 0.0f;
+            // Either end of the segment asking for smooth makes it smooth,
+            // which is how Blockbench reads a mixed pair.
+            if (a.interp == BbKeyframe::Interp::CatmullRom ||
+                b.interp == BbKeyframe::Interp::CatmullRom) {
+                const glm::vec3& p0 = keys[hi >= 2 ? hi - 2 : hi - 1].value;
+                const glm::vec3& p3 =
+                    keys[hi + 1 < keys.size() ? hi + 1 : hi].value;
+                return catmullRom(p0, a.value, b.value, p3, f);
+            }
             return glm::mix(a.value, b.value, f);
         }
 

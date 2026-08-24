@@ -19,7 +19,7 @@
 namespace {
 
     constexpr std::uint32_t kMagic = 0x53465856u; // "VXFS"
-    constexpr std::uint32_t kVersion = 22;        // bump when enums/layout change
+    constexpr std::uint32_t kVersion = 25;        // bump when enums/layout change
     // Append-only growth stays loadable: v10 appended the player-health float
     // (older saves keep the caller's default), v11 appended ItemId entries
     // at the enum tail (readInventory accepts older, shorter item sets),
@@ -63,6 +63,21 @@ namespace {
     // will need on join, which is why it lives in ContentRegistry rather than
     // here. Pre-v22 saves get ContentMap::identity(): they were written by this
     // content set's own ancestor, so their ordinals are already ours.
+    //
+    // v23 appends a filter id to each BELT record. A tail append within the
+    // record rather than at the end of the file, so it is read version-gated
+    // exactly as v20's burnLeft and v21's fuel buffer were; kOldestLoadable
+    // does not move and a pre-v23 belt loads unfiltered, which is what it was.
+    //
+    // v24 appends the master on/off switch to each MACHINE record, the same
+    // shape again. A pre-v24 machine loads ENABLED, which is the only honest
+    // default: every machine in every older save was built before a switch
+    // existed, so all of them were running.
+    //
+    // v25 appends the crop growth timers at the END of the file, the v15/v16/
+    // v18 shape. The crop BLOCKS ride the chunk data like any other block and
+    // need nothing (v22's key tables already carry them); this is only how far
+    // into its current stage each plant is. A pre-v25 save has no crops.
     constexpr std::uint32_t kOldestLoadable = 9;
 
     // The metadata sidecar (independent little format; see SlotMeta).
@@ -81,7 +96,7 @@ namespace {
     }
 
     void writeInventory(std::ofstream& out, const Inventory& inv) {
-        const std::uint32_t n = static_cast<std::uint32_t>(ItemId::Count);
+        const std::uint32_t n = static_cast<std::uint32_t>(itemCount());
         writePod(out, n);
         for (std::uint32_t i = 0; i < n; ++i) {
             writePod(out, static_cast<std::int32_t>(inv.count(static_cast<ItemId>(i))));
@@ -96,7 +111,7 @@ namespace {
             // v22+: the writer told us exactly how many items it had, so any
             // other length is a truncated or corrupt record, not an old one.
             if (n != declared) return false;
-        } else if (n > static_cast<std::uint32_t>(ItemId::Count)) {
+        } else if (n > static_cast<std::uint32_t>(itemCount())) {
             // Pre-v22: entry i IS ItemId(i) because the enum only ever grew at
             // its tail, so a shorter run is an older file and the missing tail
             // defaults to zero. More slots than we know = a newer build = reject.
@@ -319,6 +334,7 @@ bool save(const std::string& path, const SaveData& d) {
         writeInventory(out, m.input);
         writeInventory(out, m.output);
         writeInventory(out, m.fuel); // v21; empty for anything without a slot
+        writePod(out, static_cast<std::uint8_t>(m.enabled ? 1 : 0)); // v24
     }
 
     // Belts.
@@ -331,6 +347,7 @@ bool save(const std::string& path, const SaveData& d) {
         writePod(out, static_cast<std::int8_t>(b.facing.y));
         writePod(out, static_cast<std::int8_t>(b.facing.z));
         writeId(out, static_cast<std::uint32_t>(b.item));
+        writeId(out, static_cast<std::uint32_t>(b.filter)); // v23
     }
 
     // Sources.
@@ -395,6 +412,18 @@ bool save(const std::string& path, const SaveData& d) {
     // Equipped armor (appended in v18); 0 = ItemId::None = empty slot.
     for (const ItemId id : d.armor) {
         writeId(out, static_cast<std::uint32_t>(id));
+    }
+
+    // Crop growth timers (appended in v25). A tail append like v15/v16/v18, so
+    // kOldestLoadable does not move and a pre-v25 save loads with an empty
+    // field -- which is what it had. The BLOCKS are already in the chunk data;
+    // this is only how far into its current stage each one is.
+    writePod(out, static_cast<std::uint32_t>(d.registries.crops.size()));
+    for (const auto& [pos, timer] : d.registries.crops) {
+        writePod(out, pos.x);
+        writePod(out, pos.y);
+        writePod(out, pos.z);
+        writePod(out, timer);
     }
 
     out.close();
@@ -472,10 +501,10 @@ bool load(const std::string& path, SaveData& d) {
     // bounds it is that set's size, not ours.
     const std::uint32_t blockLimit =
         map.foreignBlockCount() > 0 ? static_cast<std::uint32_t>(map.foreignBlockCount())
-                                    : static_cast<std::uint32_t>(BlockId::Count);
+                                    : static_cast<std::uint32_t>(blockCount());
     const std::uint32_t itemLimit =
         map.foreignItemCount() > 0 ? static_cast<std::uint32_t>(map.foreignItemCount())
-                                   : static_cast<std::uint32_t>(ItemId::Count);
+                                   : static_cast<std::uint32_t>(itemCount());
     std::uint32_t chunkCount = 0;
     if (!readPod(in, chunkCount) || chunkCount > 4096u) return false;
     for (std::uint32_t c = 0; c < chunkCount; ++c) {
@@ -530,7 +559,7 @@ bool load(const std::string& path, SaveData& d) {
             // the rule the old pickFuel used to apply every tick -- fuel that
             // is ALSO an ingredient here was feedstock and stays put. Applied
             // once, at the boundary, and then the rule is retired for good.
-            for (const FuelInfo& f : kFuels) {
+            for (const FuelInfo& f : fuelRows()) {
                 const int held = m.input.count(f.item);
                 if (held <= 0) continue;
                 bool ingredient = false;
@@ -544,6 +573,14 @@ bool load(const std::string& path, SaveData& d) {
                 m.input.remove(f.item, held);
                 m.fuel.add(f.item, held);
             }
+        }
+        // The master switch, appended in v24. Anything older predates the
+        // switch entirely, so every machine in it was running -- and `enabled`
+        // already defaults true, which is why there is nothing to migrate.
+        if (version >= 24) {
+            std::uint8_t on = 1;
+            if (!readPod(in, on)) return false;
+            m.enabled = on != 0;
         }
         d.registries.machines[{x, y, z}] = std::move(m);
     }
@@ -561,6 +598,13 @@ bool load(const std::string& path, SaveData& d) {
         Belt b;
         b.facing = {fx, fy, fz};
         b.item = map.item(item);
+        // v23 appended the filter. A pre-v23 belt carried anything, which is
+        // exactly what ItemId::None means, so there is nothing to migrate.
+        if (version >= 23) {
+            std::uint32_t filter = 0;
+            if (!readId(in, version, filter) || filter >= itemLimit) return false;
+            b.filter = map.item(filter);
+        }
         d.registries.belts[{x, y, z}] = b;
     }
 
@@ -652,6 +696,22 @@ bool load(const std::string& path, SaveData& d) {
             std::uint32_t v = 0;
             if (!readId(in, version, v) || v >= itemLimit) return false;
             cell = map.item(v);
+        }
+    }
+
+    // Crop timers: appended in v25; older saves have no crops, which is
+    // exactly what they had. The stage itself came back with the chunk data,
+    // so a missing timer only costs a plant its progress toward the next one.
+    d.registries.crops.clear();
+    if (version >= 25) {
+        std::uint32_t cropCount = 0;
+        if (!readPod(in, cropCount) || cropCount > 1000000u) return false;
+        for (std::uint32_t i = 0; i < cropCount; ++i) {
+            std::int32_t x = 0, y = 0, z = 0;
+            float timer = 0.0f;
+            if (!readPod(in, x) || !readPod(in, y) || !readPod(in, z)) return false;
+            if (!readPod(in, timer)) return false;
+            d.registries.crops[{x, y, z}] = timer;
         }
     }
 

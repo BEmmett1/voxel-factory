@@ -52,6 +52,10 @@ struct CreatureSpecies {
     float  strikeRange = 0.0f;   // center-to-center hit distance
     float  damage = 0.0f;        // hearts per strike
     float  strikeCooldown = 0.0f;
+    // Seconds from committing to a swing until the blow lands, so a species
+    // with a wind-up animation hits when its weapon does. 0 = on contact,
+    // which is what a species with no swing clip wants.
+    float  swingImpact = 0.0f;
     ItemId drop = ItemId::None;  // awarded on the killing blow
     // Lunge: a telegraphed charge that closes distance a walk can't. Zero
     // cooldown disables it, so a species opts in by filling these five.
@@ -86,6 +90,20 @@ public:
                const glm::vec3& feetHint);
 
     void clearDimension(DimensionId dim); // despawn (arena reset / regen)
+
+    // Does every species' model file load, and does it carry the clips its
+    // registry row implies? Checked WITHOUT a window or GL (loadBbModel is
+    // pure parsing, and no Mesh/Texture is created), so `--selftest` can ask.
+    // Answers with English diagnostics rather than a bool -- the
+    // `content::validate()` shape -- and is empty when all is well.
+    //
+    // This exists because `loadAssets` is deliberately LENIENT: a missing model
+    // disables that species with one log line, which is right for a player
+    // (never crash over content) and wrong for CI, where boss #1 vanishing
+    // from a fresh clone should fail the build rather than be discovered by
+    // travelling to the arena and finding it empty. A whole launch pillar was
+    // in exactly that state until Aug 2026.
+    static std::vector<std::string> checkModels(const std::string& dir);
 
     // What update() observed this tick, for the caller to react to.
     struct Events {
@@ -139,6 +157,10 @@ private:
         bool  walking = false, grounded = false;
         int   anim = -1;                    // index into the model's animations
         float animTime = 0.0f;              // frozen while the engine is paused
+        float attackLeft = 0.0f;            // >0: a one-shot swing owns the model
+        bool  swingPending = false;         // swing in flight; its axe hasn't landed
+        float swingLeft = 0.0f;             // seconds until it does
+        bool  swingLunged = false;          // that swing started mid-dash (bonus)
         std::uint32_t wanderRolls = 0;      // hash counter for wander decisions
         float     hp = 0.0f;                // set from the species row on spawn
         glm::vec3 knock{0.0f};              // decaying shove from being hit
@@ -159,6 +181,11 @@ private:
     };
 
     const Creature* firstBoss(DimensionId dim) const;
+
+    // Play a species' one-shot clip (the boss's swing) from the top, holding
+    // off walk/idle until it ends. A model without that clip is left alone,
+    // so a species opts in purely by having animated one.
+    void playOnce(Creature& c, const char* clip);
 
     // Nearest creature in `active` struck by the ray within `reach`, blocked by
     // a nearer solid block. Returns its index (-1 = miss). Shared by melee/ranged.

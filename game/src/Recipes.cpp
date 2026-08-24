@@ -17,20 +17,53 @@ namespace {
     // and can be belt-fed. What stays here is what you need to get off the
     // ground with nothing -- plus the Circle's own two parts, or the tech tree
     // would deadlock behind a circle you cannot build.
-    const std::vector<Recipe> kRecipes = {
+    std::vector<Recipe> kRecipes = {
         // ---- Early-game ladder (the hard start) ----
-        // The two lowest tool tiers. Wood tools come from hand-gathered sticks
-        // (leaves) + pebbles (sifting dirt/grass) and gate Stone + Logs; Stone
-        // tools come from mined stone + sticks and gate the ore tier (copper,
-        // crystal, essence).
-        {"hand/wood-pickaxe",  {{I::Stick, 2}, {I::Pebble, 3}},     {I::WoodPickaxe, 1}},
-        {"hand/wood-axe",      {{I::Stick, 2}, {I::Pebble, 3}},     {I::WoodAxe, 1}},
-        {"hand/stone-pickaxe", {{I::Stone, 3}, {I::Stick, 2}},      {I::StonePickaxe, 1}},
-        {"hand/stone-axe",     {{I::Stone, 3}, {I::Stick, 2}},      {I::StoneAxe, 1}},
-        {"hand/stone-shovel",  {{I::Stone, 2}, {I::Stick, 2}},      {I::StoneShovel, 1}},
+        // Twine is step one, before any tool: three fibers stripped from turf
+        // twist into the binding that holds a stone head to a stick. It is
+        // listed first because this table reads top-to-bottom as the ladder.
+        {"hand/twine",         {{I::PlantFiber, 3}},                {I::Twine, 1}},
+        // The two lowest tool tiers, each a head + a handle + a binding. Wood
+        // tools come from hand-gathered sticks (leaves), pebbles (topsoil) and
+        // fiber (turf) and gate Stone + Logs; Stone tools come from mined stone
+        // and gate the ore tier (copper, crystal, essence).
+        {"hand/wood-pickaxe",  {{I::Stick, 2}, {I::Pebble, 3}, {I::Twine, 1}},
+                                                                    {I::WoodPickaxe, 1}},
+        {"hand/wood-axe",      {{I::Stick, 2}, {I::Pebble, 3}, {I::Twine, 1}},
+                                                                    {I::WoodAxe, 1}},
+        {"hand/stone-pickaxe", {{I::Stone, 3}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StonePickaxe, 1}},
+        {"hand/stone-axe",     {{I::Stone, 3}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StoneAxe, 1}},
+        {"hand/stone-shovel",  {{I::Stone, 2}, {I::Stick, 2}, {I::Twine, 1}},
+                                                                    {I::StoneShovel, 1}},
         // Structural staples you can always fall back on.
         {"hand/scaffold",      {{I::Stone, 1}},                     {I::ScaffoldItem, 4}},
         {"hand/bucket",        {{I::Wood, 3}},                      {I::Bucket, 1}},
+        // Pebbles into stone. LOAD-BEARING for content::validate()'s
+        // renewability closure: every other stone producer costs stone
+        // (compactor/stone needs a Compactor or Tamper, circle/tamper costs
+        // Stone x6, hand/bloomery costs Stone x8), so without a route off dug
+        // topsoil the whole tech tree rests on the stone the island happened
+        // to generate with. Do not delete it without reading that check.
+        //
+        // The PRICE is load-bearing too, in the opposite direction, and the
+        // two pull against each other. Stone is gated at kTierWood, so a hand
+        // recipe for it is a way past that gate with no pickaxe -- harmless
+        // only while it stays the slower road. At 4 it is: four bare-handed
+        // digs is 3 s of Dirt at hardness 0.75, against 1 s for a Wood Pickaxe
+        // (miningSpeed 4) on Stone at hardness 4, and that pickaxe costs three
+        // pebbles, fewer than one Stone does here. Cheapen this row and the
+        // wood tier can be skipped outright -- which neither the reachability
+        // nor the renewability closure would complain about, since both only
+        // get greener as it gets cheaper. --selftest pins the ordering
+        // instead; see "the pebble route must stay a fallback" in main.cpp.
+        {"hand/pebble-stone",  {{I::Pebble, 4}},                    {I::Stone, 1}},
+        // Storage stays HAND-craftable on purpose. A crate is the answer to a
+        // machine whose output has filled, and outputs start filling long
+        // before you own a Circle -- gating it behind one would mean meeting
+        // the problem with no way to solve it.
+        {"hand/storage-crate", {{I::Wood, 8}},                      {I::StorageCrateItem, 1}},
         // ---- The two bootstrap machines ----
         // Smelting, glass, vials and dirt+sand -> stone all moved onto
         // machines, so these two have to stay hand-buildable or the tree
@@ -43,7 +76,8 @@ namespace {
         {"hand/bloomery", {{I::Stone, 8}},                          {I::BloomeryItem, 1}},
         // The Sieve is the only way into iron, and iron is every machine
         // frame -- so it must be reachable with nothing but wood and sticks.
-        {"hand/sieve",    {{I::Wood, 4}, {I::Stick, 4}},            {I::SieveItem, 1}},
+        // A sieve is a MESH, so it costs twine rather than loose sticks.
+        {"hand/sieve",    {{I::Wood, 4}, {I::Twine, 2}},            {I::SieveItem, 1}},
         // The Alchemy Circle itself -- the one piece of the factory you may
         // still build by hand, because it is the gateway to all the rest.
         {"hand/pedestal",  {{I::Stone, 4}, {I::CopperIngot, 1}},    {I::PedestalItem, 1}},
@@ -63,17 +97,30 @@ namespace {
     // the inputs for. Rows may be reordered or removed freely (saves store the
     // key), but ORDER IS STILL GAMEPLAY: AUTO runs the first row whose inputs
     // are present, so a row that is a prefix of another must come after it.
-    const std::vector<MachineRecipe> kMachineRecipes = {
+    std::vector<MachineRecipe> kMachineRecipes = {
         // Grinder: grinds raws to powder. Also crushes Stone back into Sand,
         // so Sand is renewable from Stone (which is renewable from dirt+sand).
         {"grinder/ground-herb",  B::Grinder, {{I::Herb, 1}},    {{{I::GroundHerb, 1}}},  2.0f},
         {"grinder/crystal-dust", B::Grinder, {{I::Crystal, 1}}, {{{I::CrystalDust, 1}}}, 2.0f},
         {"grinder/sand",         B::Grinder, {{I::Stone, 1}},   {{{I::Sand, 2}}},        2.0f},
-        // Composter: renewable Dirt from plant matter (sticks / saplings).
-        {"composter/dirt-from-sticks",  B::Composter, {{I::Stick, 3}},
-                                                              {{{I::DirtItem, 2}}}, 2.5f},
-        {"composter/dirt-from-sapling", B::Composter, {{I::SaplingItem, 1}},
-                                                              {{{I::DirtItem, 3}}}, 3.0f},
+        // Composter: where the tree's surplus goes. A grown tree returns ~8
+        // saplings and ~11 sticks for the ONE sapling that made it, and only
+        // one of those saplings replaces it -- so without a sink here the
+        // forestry loop, the most net-positive loop in the game, dead-ends.
+        //
+        // Green (saplings) plus brown (sticks) makes compost, and compost is
+        // the branch point: soil, fuel, or the fertilizer that speeds a field.
+        // ORDER IS GAMEPLAY here as everywhere -- AUTO takes the first row
+        // whose inputs are present, so a Composter fed leaf litter must make
+        // compost rather than idle. There is deliberately no PlantFiber
+        // variant: a second compost row would make a mixed-input Composter
+        // non-deterministic under AUTO for no gain.
+        {"composter/compost",   B::Composter, {{I::SaplingItem, 2}, {I::Stick, 2}},
+                                                              {{{I::Compost, 1}}},      3.0f},
+        {"composter/dirt",      B::Composter, {{I::Compost, 1}},
+                                                              {{{I::DirtItem, 4}}},     2.5f},
+        {"composter/briquette", B::Composter, {{I::Compost, 2}},
+                                                              {{{I::BioBriquette, 1}}}, 4.0f},
         // Cauldron: powder + water -> solution/tincture
         {"cauldron/herbal-tincture",  B::Cauldron, {{I::GroundHerb, 1}, {I::SpringWater, 1}},
                                                               {{{I::HerbalTincture, 1}}},  3.0f},
@@ -139,9 +186,20 @@ namespace {
         {"press/machine-frame", B::Press,
                     {{I::MachineCasing, 1}, {I::Gear, 2}, {I::EtchedPlate, 1}},
                                                                  {{{I::MachineFrame, 1}}},  8.0f},
-        // The Copper Rod survives only as a legacy part with no consumer --
-        // rods are iron now. Kept so an old save's stock is not orphaned, and
-        // listed LAST so AUTO never reaches for it.
+        // Wire is DRAWN from a rod, and the Press is where that happens. This
+        // is what retired the Copper Rod's long spell as a part with no
+        // consumer, and it gives the Press a job on the copper line: an ingot
+        // becomes two rods becomes four wire, against circle/wire's ingot ->
+        // two by hand. Automating wire is worth twice doing it yourself, which
+        // is the bargain every machine tier here is supposed to offer.
+        //
+        // Listed after the frame so a Press holding ingots still makes plates
+        // first, and before copper-rod so a Press holding rods drains them
+        // into wire rather than sitting on them.
+        {"press/copper-wire",   B::Press, {{I::CopperRod, 1}},    {{{I::WireItem, 2}}},      2.0f},
+        // Listed LAST so AUTO never reaches for it: rods cost the same single
+        // ingot as plates and plates must win that tie on a fresh Press. Lock
+        // the MAKE COPPER ROD row to run the wire line on a shared Press.
         {"press/copper-rod",    B::Press, {{I::CopperIngot, 1}}, {{{I::CopperRod, 2}}},     2.0f},
 
         // ---- Furnace: the smelter (fuel-fired, no power) -----------------
@@ -155,11 +213,19 @@ namespace {
                                                               {{{I::CopperIngot, 1}}}, 4.0f},
         {"furnace/glass",        B::Furnace, {{I::Sand, 1}},   {{{I::Glass, 1}}},       3.0f},
         // Charring wood is what makes a Furnace pay for itself: Charcoal
-        // burns 3x as long as the wood it came from, so a furnace line feeds
-        // its own fire (and the generators). A Furnace keeps fuel in its own
-        // buffer, so it can char wood and burn wood at the same time -- which
-        // the old shared buffer could not express (see usesFuelSlot).
-        {"furnace/charcoal",     B::Furnace, {{I::Wood, 2}},   {{{I::Charcoal, 1}}},    6.0f},
+        // burns 3x as long as the wood it came from (20s -> 60s), so a furnace
+        // line feeds its own fire (and the generators). A Furnace keeps fuel in
+        // its own buffer, so it can char wood and burn wood at the same time --
+        // which the old shared buffer could not express (see usesFuelSlot).
+        //
+        // ONE wood, not two, and the arithmetic is the reason. At 2:1 a
+        // BLOOMERY charring wood was a net energy LOSS: kManualSlowdown
+        // stretches the craft to 18s and fuelMult 0.6 shortens a wood to 12s,
+        // so it spent 1.5 wood burning plus 2 wood charring -- 70 burn-seconds
+        // in for 60 out. At 1:1 both tiers are positive (Furnace 2.3x,
+        // Bloomery 1.2x) and the tier gap survives where it belongs, in
+        // speedMult. Retune this ratio and check the Bloomery, not the Furnace.
+        {"furnace/charcoal",     B::Furnace, {{I::Wood, 1}},   {{{I::Charcoal, 1}}},    6.0f},
 
         // ---- Sifter: the only source of iron -----------------------------
         // A weighted roll, which is the point: sifting is a rate, not a
@@ -180,6 +246,15 @@ namespace {
              {{I::Sand, 1}, 30.0f},
              {{I::Stick, 1}, 15.0f},
              {{}, 10.0f}},                                                              3.0f},
+        // Farming's way in. Seeds come off the SIEVE tier deliberately: the
+        // Sieve is hand-craftable (Wood + Sticks), so a field is reachable
+        // before the Circle, and the wild Herb Bushes the island already grows
+        // are the bootstrap. Deterministic, not a roll -- the point of farming
+        // is that it scales with area, and a seed you might not get would put
+        // that behind luck. One in, one out; a ripe plant yields two, and THAT
+        // is the doubling.
+        {"sifter/herb-seed", B::Sifter, {{I::Herb, 1}},
+                                                       {{{I::HerbSeed, 1}}},           2.0f},
 
         // ---- Glassblower -------------------------------------------------
         // One recipe today. It exists as its own machine rather than as a
@@ -209,7 +284,7 @@ namespace {
     // listed first and AUTO takes the first match. Locking a MAKE row in the
     // panel is the escape hatch -- the same known-by-design bargain the Press
     // makes with its rows.
-    const std::vector<CircleRecipe> kCircleRecipes = {
+    std::vector<CircleRecipe> kCircleRecipes = {
         // -- Bootstrap tier: no plates, so a Lesser circle can build the
         // machines that make plates. This is the whole reason the Lesser
         // circle runs unpowered.
@@ -219,6 +294,14 @@ namespace {
                                                            {I::GeneratorItem, 1}, 6.0f},
         {"circle/composter", {}, {{I::Wood, 6}, {}, {I::Stick, 4}, {}},
                                                            {I::ComposterItem, 1}, 5.0f},
+        // Two saplings bound with compost. This is where the forestry surplus
+        // stops being a nuisance: a tree returns ~8 saplings for the one that
+        // planted it, and only one of those replaces it -- so the rest either
+        // compost or become a bigger tree on the same plot. Deliberately on the
+        // Circle rather than in the hand menu, since it costs a machine product
+        // and the hand tier is meant to stay buildable from nothing.
+        {"circle/grafted-sapling", {}, {{I::SaplingItem, 2}, {}, {I::Compost, 1}, {}},
+                                                           {I::GraftedSaplingItem, 1}, 5.0f},
         {"circle/rain-barrel", {}, {{I::Wood, 6}, {}, {I::Bucket, 1}, {}},
                                                            {I::RainBarrelItem, 1}, 5.0f},
         {"circle/wire", {}, {{I::CopperIngot, 1}, {}, {}, {}},
@@ -275,6 +358,13 @@ namespace {
                                                            {I::CopperPickaxe, 1}, 4.0f},
         {"circle/copper-shovel", {}, {{I::CopperPlate, 2}, {}, {I::Wood, 2}, {}},
                                                            {I::CopperShovel, 1},  4.0f},
+        // The Hoe is the Shovel's two items laid BESIDE each other instead of
+        // opposite. It must stay listed after the Axe, which is the same
+        // arrangement with a third plate and therefore a superset of it under
+        // "holds at least this many" -- the documented ordering trap, and the
+        // circle-shadowing check in --selftest is what enforces it.
+        {"circle/copper-hoe", {}, {{I::CopperPlate, 2}, {I::Wood, 2}, {}, {}},
+                                                           {I::CopperHoe, 1},     4.0f},
         {"circle/copper-sword", {}, {{I::CopperPlate, 2}, {}, {I::Wood, 1}, {}},
                                                            {I::CopperSword, 1},   4.0f},
         {"circle/conduit", {}, {{I::CopperPlate, 2}, {}, {}, {}},
@@ -297,6 +387,17 @@ namespace {
         // patterns first, so they win over their two-ingredient prefixes.
         {"circle/miner", {}, {{I::MachineFrame, 1}, {I::CopperPlate, 3}, {I::Stone, 4}, {}},
                                                            {I::MinerItem, 1},     8.0f},
+        // The Harvester is the Miner's sibling and costs about the same, but in
+        // IRON rather than stone -- it is a blade, and iron is the structural
+        // metal. Three ingredients, so it sits with the rest of this tier
+        // ahead of any two-ingredient pattern it would otherwise shadow.
+        {"circle/harvester", {}, {{I::MachineFrame, 1}, {I::IronPlate, 3}, {I::CopperHoe, 1}, {}},
+                                                           {I::HarvesterItem, 1}, 8.0f},
+        // Irrigation is the cheaper half of the pair on purpose: it answers a
+        // dry spell, and a player whose farm has stalled should not have to
+        // finish the iron chain before they can do anything about it.
+        {"circle/irrigator", {}, {{I::MachineFrame, 1}, {I::Bucket, 1}, {I::CopperPlate, 2}, {}},
+                                                           {I::IrrigatorItem, 1}, 6.0f},
         {"circle/distiller", {}, {{I::MachineFrame, 1}, {I::Glass, 2}, {I::Crystal, 1}, {}},
                                                            {I::DistillerItem, 1}, 8.0f},
         {"circle/transmuter", {}, {{I::MachineFrame, 1}, {I::Crystal, 2}, {I::Essence, 1}, {}},
@@ -398,7 +499,7 @@ const char* recipeKeyFor(BlockId type, int index) {
     if (index < 0) return "";
     const auto rows = recipesForMachine(type);
     if (static_cast<std::size_t>(index) >= rows.size()) return "";
-    return rows[static_cast<std::size_t>(index)]->key;
+    return rows[static_cast<std::size_t>(index)]->key.c_str();
 }
 
 int circleIndexForKey(std::string_view key) {
@@ -411,5 +512,14 @@ int circleIndexForKey(std::string_view key) {
 
 const char* circleKeyFor(int index) {
     if (index < 0 || static_cast<std::size_t>(index) >= kCircleRecipes.size()) return "";
-    return kCircleRecipes[static_cast<std::size_t>(index)].key;
+    return kCircleRecipes[static_cast<std::size_t>(index)].key.c_str();
+}
+
+// The pack loader's handles on the tables. Seeded above with the compiled rows;
+// a pack may replace, append to, or delete from them at startup. See the note
+// in Recipes.h about why that must happen before a world exists.
+namespace recipes {
+    std::vector<Recipe>&        handTable()    { return kRecipes; }
+    std::vector<MachineRecipe>& machineTable() { return kMachineRecipes; }
+    std::vector<CircleRecipe>&  circleTable()  { return kCircleRecipes; }
 }

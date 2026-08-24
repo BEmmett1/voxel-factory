@@ -6,6 +6,11 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/ContentPack.h"
+#include "game/ContentRegistry.h"
+#include "game/ContentValidate.h"
+#include "game/CreatureSystem.h"
+#include "game/CropSystem.h"
 #include "game/MachineSystem.h"
 #include "game/Recipes.h"
 #include "game/SaveSystem.h"
@@ -128,6 +133,9 @@ bool renameKeyInSave(const std::string& path, const std::string& from,
 // truncated file is rejected. Returns a process exit code.
 int runSelfTest() {
     namespace fs = std::filesystem;
+    // The crop registry every tickPowered takes. Only the Harvester touches it,
+    // so the cases below that are not about farming share one empty map.
+    CropSystem::CropMap noCrops;
     const std::string path =
         (fs::temp_directory_path() / "voxel-factory-selftest.vxf").string();
     std::error_code ec;
@@ -163,15 +171,25 @@ int runSelfTest() {
     furnace.burnLeft = 12.5f;
     furnace.input.add(ItemId::Wood, 5);
     furnace.fuel.add(ItemId::Charcoal, 2);
+    // Switched OFF (v24). The default is true, so only a machine that was
+    // deliberately idled proves the flag is actually written and read -- the
+    // grinder above stays on, so the round-trip has to carry both values.
+    furnace.enabled = false;
     machines[glm::ivec3{9, 3, 3}] = furnace;
 
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts;
-    belts[glm::ivec3{2, 3, 3}] = Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb};
+    // Cargo AND a filter (v23), and deliberately different items -- a filter
+    // that happened to equal the cargo would pass even if the two were written
+    // or read in the wrong order.
+    belts[glm::ivec3{2, 3, 3}] =
+        Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb, ItemId::Crystal};
 
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources;
     sources[glm::ivec3{4, 2, 4}] = 3.5f;
     std::unordered_map<glm::ivec3, float, IVec3Hash> saplings;
     saplings[glm::ivec3{6, 2, 6}] = 9.0f;
+    CropSystem::CropMap crops;
+    crops[glm::ivec3{7, 2, 7}] = 12.5f;
 
     Weather weather;
     weather.raining = true;
@@ -207,7 +225,7 @@ int runSelfTest() {
     std::array<ItemId, kArmorSlots> armor{ItemId::CopperHelm, ItemId::AegisChest,
                                           ItemId::None};
 
-    SaveData src{world, inv, {machines, belts, sources, saplings},
+    SaveData src{world, inv, {machines, belts, sources, saplings, crops},
                  weather, player, bucketFill,
                  camPos, yaw, pitch, seed, rngState, slot, hotbar, bossDefeated,
                  tempestDefeated, playtime, drops, armor};
@@ -218,6 +236,7 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines2;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts2;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources2, saplings2;
+    CropSystem::CropMap crops2;
     Weather weather2; // defaults: clear sky, fresh timer
     PlayerController player2;
     float bucketFill2 = 0.0f;
@@ -235,7 +254,7 @@ int runSelfTest() {
     // Pre-filled with a different pattern to prove the load overwrites it.
     std::array<ItemId, kArmorSlots> armor2;
     armor2.fill(ItemId::Wood);
-    SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2},
+    SaveData dst{world2, inv2, {machines2, belts2, sources2, saplings2, crops2},
                  weather2, player2, bucketFill2,
                  camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
                  tempestDefeated2, playtime2, drops2, armor2};
@@ -257,10 +276,12 @@ int runSelfTest() {
     SELFTEST_CHECK(m2.progress == 0.75f);
     SELFTEST_CHECK(m2.input.count(ItemId::Herb) == 3);
     SELFTEST_CHECK(m2.output.count(ItemId::GroundHerb) == 2);
+    SELFTEST_CHECK(m2.enabled); // v24: this one was left running
 
     const Machine& f2 = machines2.at(glm::ivec3{9, 3, 3});
     SELFTEST_CHECK(f2.type == BlockId::Furnace);
     SELFTEST_CHECK(f2.burnLeft == 12.5f);
+    SELFTEST_CHECK(!f2.enabled); // v24: ...and this one was switched off
     SELFTEST_CHECK(f2.input.count(ItemId::Wood) == 5);   // feedstock, still IN
     SELFTEST_CHECK(f2.fuel.count(ItemId::Charcoal) == 2); // the fire, still FUEL
     SELFTEST_CHECK(f2.input.count(ItemId::Charcoal) == 0);
@@ -286,9 +307,13 @@ int runSelfTest() {
     const Belt& b2 = belts2.at(glm::ivec3{2, 3, 3});
     SELFTEST_CHECK(b2.facing == glm::ivec3(-1, 0, 0));
     SELFTEST_CHECK(b2.item == ItemId::GroundHerb);
+    SELFTEST_CHECK(b2.filter == ItemId::Crystal); // v23
 
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
+    // v25's tail append: how far a plant is into its current stage. The stage
+    // itself rides the chunk data, so this is the only part that needed a bump.
+    SELFTEST_CHECK(crops2.size() == 1 && crops2.at(glm::ivec3{7, 2, 7}) == 12.5f);
 
     SELFTEST_CHECK(weather2.raining == true);
     SELFTEST_CHECK(weather2.timer == 42.0f && bucketFill2 == 0.25f);
@@ -354,9 +379,10 @@ int runSelfTest() {
     std::unordered_map<glm::ivec3, Machine, IVec3Hash> machines3;
     std::unordered_map<glm::ivec3, Belt, IVec3Hash> belts3;
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources3, saplings3;
+    CropSystem::CropMap crops3;
     std::vector<DroppedItem> drops3;
     std::array<ItemId, kArmorSlots> armor3{};
-    SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3},
+    SaveData cutDst{world3, inv2, {machines3, belts3, sources3, saplings3, crops3},
                     weather2, player2, bucketFill2,
                     camPos2, yaw2, pitch2, seed2, rngState2, slot2, hotbar2, bossDefeated2,
                     tempestDefeated2, playtime2, drops3, armor3};
@@ -445,6 +471,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr, sp;
+        CropSystem::CropMap cr;
         Weather wt;
         PlayerController pl;
         float bf = 0.0f;
@@ -459,7 +486,7 @@ int runSelfTest() {
         std::vector<DroppedItem> dr;
         std::array<ItemId, kArmorSlots> ar{};
 
-        SaveData sv{w, iv, {ms, bs, sr, sp}, wt, pl, bf, cp, yw, pt,
+        SaveData sv{w, iv, {ms, bs, sr, sp, cr}, wt, pl, bf, cp, yw, pt,
                     sd, rng, sl, hb, bd, td, play, dr, ar};
         SELFTEST_CHECK(SaveSystem::save(p, sv));
 
@@ -473,6 +500,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms2;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs2;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr2, sp2;
+        CropSystem::CropMap cr2;
         Weather wt2;
         PlayerController pl2;
         float bf2 = 0.0f;
@@ -486,7 +514,7 @@ int runSelfTest() {
         std::vector<DroppedItem> dr2;
         std::array<ItemId, kArmorSlots> ar2{};
 
-        SaveData sv2{w2, iv2, {ms2, bs2, sr2, sp2}, wt2, pl2, bf2, cp2, yw2, pt2,
+        SaveData sv2{w2, iv2, {ms2, bs2, sr2, sp2, cr2}, wt2, pl2, bf2, cp2, yw2, pt2,
                      sd2, rng2, sl2, hb2, bd2, td2, play2, dr2, ar2};
         SELFTEST_CHECK(SaveSystem::load(p, sv2));
 
@@ -509,6 +537,7 @@ int runSelfTest() {
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> ms3;
         std::unordered_map<glm::ivec3, Belt, IVec3Hash> bs3;
         std::unordered_map<glm::ivec3, float, IVec3Hash> sr3, sp3;
+        CropSystem::CropMap cr3;
         Weather wt3;
         PlayerController pl3;
         float bf3 = 0.0f;
@@ -521,7 +550,7 @@ int runSelfTest() {
         double play3 = 0.0;
         std::vector<DroppedItem> dr3;
         std::array<ItemId, kArmorSlots> ar3{};
-        SaveData sv3{w3, iv3, {ms3, bs3, sr3, sp3}, wt3, pl3, bf3, cp3, yw3, pt3,
+        SaveData sv3{w3, iv3, {ms3, bs3, sr3, sp3, cr3}, wt3, pl3, bf3, cp3, yw3, pt3,
                      sd3, rng3, sl3, hb3, bd3, td3, play3, dr3, ar3};
         SELFTEST_CHECK(!SaveSystem::load(p, sv3));
 
@@ -637,60 +666,287 @@ int runSelfTest() {
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
     }
 
-    // ---- Recipe keys ------------------------------------------------------
-    // The keys ARE the save format for a locked machine, so a duplicate makes
-    // two recipes indistinguishable on load and an empty one makes a lock
-    // unsaveable. Nothing else in the build catches either.
+    // ---- The content set is coherent --------------------------------------
+    // Recipe keys, circle-pattern shadowing and the tech-tree reachability
+    // closure all moved into content::validate() (ContentValidate.h), because
+    // the pack loader has to ask the same questions of content that arrives at
+    // runtime -- and a generator repairing its own output needs the answers as
+    // English, not as an exit code. This is that check, reported the way a
+    // build wants it.
     {
-        auto uniqueKeys = [](const std::vector<const char*>& keys) {
-            for (std::size_t i = 0; i < keys.size(); ++i) {
-                if (!keys[i] || !*keys[i]) return false;
-                for (std::size_t j = i + 1; j < keys.size(); ++j) {
-                    if (std::strcmp(keys[i], keys[j]) == 0) return false;
-                }
-            }
-            return true;
-        };
-        std::vector<const char*> hand, mach, circ;
-        for (const Recipe& r : handcraftRecipes()) hand.push_back(r.key);
-        for (const MachineRecipe& r : machineRecipes()) mach.push_back(r.key);
-        for (const CircleRecipe& r : circleRecipes()) circ.push_back(r.key);
-        SELFTEST_CHECK(uniqueKeys(hand));
-        SELFTEST_CHECK(uniqueKeys(mach));
-        SELFTEST_CHECK(uniqueKeys(circ));
+        const std::vector<std::string> problems = content::validate();
+        for (const std::string& msg : problems) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(problems.empty());
+    }
 
-        // Round-trip: a key resolves back to the row it names, for every row
-        // of every machine -- including the manual twins, which reach their
-        // powered counterpart's list through MachineTraits::recipeGroup.
-        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
-            const BlockId type = static_cast<BlockId>(b);
-            if (!isMachine(type)) continue;
-            const auto rows = recipesForMachine(type);
-            for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
-                SELFTEST_CHECK(recipeIndexForKey(type, recipeKeyFor(type, i)) == i);
-            }
-            // A key that no longer names anything lands on AUTO, never on
-            // whatever row happens to sit at some index today. This is the
-            // whole promise that lets the tables be edited freely.
-            SELFTEST_CHECK(recipeIndexForKey(type, "no/such/recipe") == -1);
-            SELFTEST_CHECK(recipeIndexForKey(type, "") == -1);
+    // ---- The pack format reads back what it writes -------------------------
+    // --dump-content is the format's specification, which is only true while
+    // the loader accepts it exactly. Feed the dump back and dump again: any
+    // field the writer emits and the reader drops (or rounds, or reorders)
+    // shows up here as a difference, and nowhere else.
+    {
+        const std::string packPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-pack.json").string();
+        const std::string before = content::dumpContent();
+        // The compiled content set, kept so each case below can put back
+        // exactly what it found and the next one starts from the build again.
+        const std::vector<BlockInfo> blockRows0 = blockRows();
+        const std::vector<ItemInfo> itemRows0 = itemRows();
+        const std::vector<MachineTraits> machineTraitRows0 = machineTraitRows();
+        const std::vector<FuelInfo> fuelRows0 = fuelRows();
+        const std::vector<MachineRecipe> machineRecipes0 = recipes::machineTable();
+        {
+            std::ofstream out(packPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << before;
         }
-        for (int i = 0; i < static_cast<int>(circleRecipes().size()); ++i) {
-            SELFTEST_CHECK(circleIndexForKey(circleKeyFor(i)) == i);
-        }
-        SELFTEST_CHECK(circleIndexForKey("no/such/recipe") == -1);
+        const std::vector<std::string> problems = content::applyPacks({packPath});
+        for (const std::string& msg : problems) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(problems.empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
 
-        // A manual twin must run EXACTLY its powered counterpart's rows, or
-        // the two tiers would drift and a lock would not survive an upgrade.
-        for (const MachineTraits& traits : kMachineTraits) {
-            if (traits.recipeGroup == BlockId::Air) continue;
-            const auto mine = recipesForMachine(traits.block);
-            const auto theirs = recipesForMachine(traits.recipeGroup);
-            SELFTEST_CHECK(mine.size() == theirs.size());
-            for (std::size_t i = 0; i < mine.size() && i < theirs.size(); ++i) {
-                SELFTEST_CHECK(mine[i] == theirs[i]);
-            }
+        // ---- A pack that deadlocks the tech tree is refused, WHOLE ---------
+        // The generate -> validate -> repair loop rests on this: content that
+        // parses perfectly can still describe an unplayable game, and the
+        // reachability closure is what notices. Deleting the only recipe that
+        // presses a Copper Plate strands every machine behind it.
+        //
+        // What is actually under test is the rollback. A pack is applied before
+        // it can be judged -- there is no way to ask "would this close?" of a
+        // table it is not in -- so a refusal has to put back exactly what was
+        // there, or a bad pack would half-convert the game on its way out.
+        const std::string badPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-badpack.json").string();
+        {
+            std::ofstream out(badPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"remove": ["press/copper-plate"]}})";
         }
+        std::error_code rmErr;
+        const std::vector<std::string> refused = content::applyPacks({badPath});
+        SELFTEST_CHECK(!refused.empty());
+        SELFTEST_CHECK(content::validate().empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
+        SELFTEST_CHECK(recipeIndexForKey(BlockId::Press, "press/copper-plate") >= 0);
+
+        // ---- A pack that breaks the RENEWABLE loop is refused --------------
+        // Reachability does not blink at this, and cannot: the island generates
+        // plenty of stone, so every recipe below stays reachable forever. What
+        // it costs is the thousandth hour.
+        //
+        // hand/pebble-stone is the whole hinge, and it is worth knowing why.
+        // compactor/stone would close the loop -- Dirt and Sand both regrow --
+        // but a Compactor costs Stone x8, a Tamper costs Stone x6, and the
+        // Circle you would build either on costs Stone too. EVERY producer of
+        // stone costs stone. Sifted topsoil is the only way in that does not,
+        // so deleting that one row turns the entire tech tree into a finite
+        // pile of whatever worldgen happened to bury.
+        const std::string finitePath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-finitepack.json").string();
+        {
+            std::ofstream out(finitePath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"remove": ["hand/pebble-stone"]}})";
+        }
+        const std::vector<std::string> finite = content::applyPacks({finitePath});
+        SELFTEST_CHECK(!finite.empty());
+        SELFTEST_CHECK(content::validate().empty());   // the rollback put it back
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // ---- An item nothing consumes is refused ---------------------------
+        // The mirror of the check above: reachability proves you can GET
+        // everything, this proves everything you get is FOR something. The key
+        // is deliberately `core:`, which also pins that the balance checks
+        // scope by NAMESPACE rather than being switched off -- the mod:widget
+        // pack further down adds exactly such an item and must still be taken.
+        const std::string orphanPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-orphanpack.json").string();
+        {
+            std::ofstream out(orphanPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "items": [{"key": "core:trophy", "name": "Trophy", "atlasTile": 64}]})";
+        }
+        const std::vector<std::string> orphan = content::applyPacks({orphanPath});
+        SELFTEST_CHECK(!orphan.empty());
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // A pack naming content this build lacks is refused the same way, and
+        // says which key -- the difference between a fixable complaint and a
+        // shrug.
+        const std::string unknownPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-unknownpack.json").string();
+        {
+            std::ofstream out(unknownPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1, "recipes": {"hand": [{"key": "hand/x",
+                 "inputs": [{"item": "mod:unobtainium"}],
+                 "output": {"item": "core:stone"}}]}})";
+        }
+        const std::vector<std::string> unknown = content::applyPacks({unknownPath});
+        SELFTEST_CHECK(unknown.size() == 1);
+        SELFTEST_CHECK(unknown.front().find("mod:unobtainium") != std::string::npos);
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // ---- A row is a PATCH of the row it names, not a replacement -------
+        // The dump states every non-default field, so the round-trip above
+        // reads identically either way and cannot see this. What can is a pack
+        // written the way anyone actually writes one: name a key, state the
+        // one field you came to change. Under replacement semantics that Stone
+        // would come back black, untextured, dropping nothing and needing no
+        // pickaxe -- silently, since every one of those is a legal value.
+        const std::string patchPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-patchpack.json").string();
+        {
+            std::ofstream out(patchPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "blocks": [{"key": "core:stone", "hardness": 9.0}],
+                 "items": [{"key": "core:copper_sword", "weaponDamage": 4.0}],
+                 "machines": [{"block": "core:press", "demand": 11}],
+                 "recipes": {"machine": [{"key": "press/copper-plate", "seconds": 0.5}]}})";
+        }
+        const BlockInfo stone0 = blockInfo(BlockId::Stone);
+        const std::vector<std::string> patched = content::applyPacks({patchPath});
+        for (const std::string& msg : patched) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(patched.empty());
+        {
+            const BlockInfo& stone = blockInfo(BlockId::Stone);
+            SELFTEST_CHECK(stone.hardness == 9.0f);        // what the pack said
+            SELFTEST_CHECK(stone.drop.item == stone0.drop.item &&
+                           stone.drop.count == stone0.drop.count);
+            SELFTEST_CHECK(stone.tiles.side == stone0.tiles.side);
+            SELFTEST_CHECK(stone.color == stone0.color);
+            SELFTEST_CHECK(stone.tool == stone0.tool && stone.toolTier == stone0.toolTier);
+            SELFTEST_CHECK(std::string(stone.name) == stone0.name);
+            SELFTEST_CHECK(itemInfo(ItemId::CopperSword).weaponDamage == 4.0f);
+            SELFTEST_CHECK(itemInfo(ItemId::CopperSword).tool == ToolType::None);
+            SELFTEST_CHECK(machineTraits(BlockId::Press).demand == 11);
+            // The trait a patch did not mention: a Press is still a Processor
+            // that runs at full speed, not a defaulted stub.
+            SELFTEST_CHECK(machineTraits(BlockId::Press).kind == MachineKind::Processor);
+            const int at = recipeIndexForKey(BlockId::Press, "press/copper-plate");
+            SELFTEST_CHECK(at >= 0);
+            const MachineRecipe& r = *recipesForMachine(BlockId::Press)[static_cast<std::size_t>(at)];
+            SELFTEST_CHECK(r.seconds == 0.5f);
+            SELFTEST_CHECK(!r.inputs.empty() && !r.outputs.empty()); // not a free plate
+        }
+        // Restore before the next case, which asserts against the compiled set.
+        restoreBlocks(blockRows0);
+        restoreItems(itemRows0);
+        restoreMachineTraits(machineTraitRows0);
+        restoreFuels(fuelRows0);
+        recipes::machineTable() = machineRecipes0;
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        // ---- A pack that ADDS content, and a save that survives it ---------
+        // The whole point of the runtime registries: a block whose ordinal is
+        // past BlockId::Count has to ride every path a compiled one does. Most
+        // of those would fail loudly. The save would NOT -- its chunk bytes and
+        // its key table are both sized by the content set, and a mismatch there
+        // reads back as the wrong block rather than as an error. So this puts a
+        // modded block in a world, round-trips it, and looks at what comes back.
+        const std::string addPath =
+            (fs::temp_directory_path() / "voxel-factory-selftest-addpack.json").string();
+        {
+            std::ofstream out(addPath, std::ios::binary);
+            SELFTEST_CHECK(static_cast<bool>(out));
+            out << R"({"format": 1,
+                 "items": [{"key": "mod:widget", "name": "Widget", "atlasTile": 64}],
+                 "blocks": [{"key": "mod:widget_ore", "name": "Widget Ore",
+                             "color": "#8020a0", "drop": {"item": "mod:widget", "count": 2},
+                             "tiles": {"top": 3, "side": 3, "bottom": 3}, "hardness": 1.0}]})";
+        }
+        const std::vector<std::string> added = content::applyPacks({addPath});
+        for (const std::string& msg : added) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(added.empty());
+
+        const BlockId modBlock = content::blockFromKey("mod:widget_ore");
+        const ItemId modItem = content::itemFromKey("mod:widget");
+        SELFTEST_CHECK(modBlock != content::kNoBlock && modItem != content::kNoItem);
+        // Past the compiled enum, which is the case that did not exist before.
+        SELFTEST_CHECK(static_cast<int>(modBlock) >= static_cast<int>(BlockId::Count));
+        SELFTEST_CHECK(static_cast<int>(modItem) >= static_cast<int>(ItemId::Count));
+        SELFTEST_CHECK(blockDrop(modBlock).id == modItem && blockDrop(modBlock).count == 2);
+        // An Inventory sized before the item existed must still hold it -- that
+        // is why it grows on demand rather than only at construction.
+        SELFTEST_CHECK(blockName(modBlock) == std::string("Widget Ore"));
+
+        {
+            const std::string modSave =
+                (fs::temp_directory_path() / "voxel-factory-selftest-mod.vxf").string();
+            fs::remove(modSave, rmErr);
+            World mw;
+            mw.setBlock(3, 4, 5, modBlock);
+            mw.setBlock(3, 4, 6, BlockId::Stone); // a compiled block beside it
+            Inventory minv;
+            minv.add(modItem, 9);
+            minv.add(ItemId::Stone, 4);
+            Weather mwx;
+            PlayerController mp;
+            float mfill = 0.0f;
+            glm::vec3 mpos{0.0f};
+            float myaw = 0.0f, mpitch = 0.0f;
+            std::uint32_t mseed = 7u, mrng = 8u;
+            int mslot = 0;
+            std::array<ItemId, kHotbarSlots> mhot{};
+            mhot[0] = modItem;
+            bool mb1 = false, mb2 = false;
+            double mplay = 0.0;
+            std::vector<DroppedItem> mdrops;
+            std::array<ItemId, kArmorSlots> marmor{};
+            std::unordered_map<glm::ivec3, Machine, IVec3Hash> mmach;
+            std::unordered_map<glm::ivec3, Belt, IVec3Hash> mbelt;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> msrc, msap;
+            CropSystem::CropMap mcrop;
+            SaveData ms{mw, minv, {mmach, mbelt, msrc, msap, mcrop}, mwx, mp, mfill, mpos, myaw, mpitch,
+                        mseed, mrng, mslot, mhot, mb1, mb2, mplay, mdrops, marmor};
+            SELFTEST_CHECK(SaveSystem::save(modSave, ms));
+
+            World rw;
+            Inventory rinv;
+            Weather rwx;
+            PlayerController rp;
+            float rfill = 0.0f;
+            glm::vec3 rpos{0.0f};
+            float ryaw = 0.0f, rpitch = 0.0f;
+            std::uint32_t rseed = 0u, rrng = 0u;
+            int rslot = 0;
+            std::array<ItemId, kHotbarSlots> rhot{};
+            bool rb1 = false, rb2 = false;
+            double rplay = 0.0;
+            std::vector<DroppedItem> rdrops;
+            std::array<ItemId, kArmorSlots> rarmor{};
+            std::unordered_map<glm::ivec3, Machine, IVec3Hash> rmach;
+            std::unordered_map<glm::ivec3, Belt, IVec3Hash> rbelt;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> rsrc, rsap;
+            CropSystem::CropMap rcrop;
+            SaveData rs{rw, rinv, {rmach, rbelt, rsrc, rsap, rcrop}, rwx, rp, rfill, rpos, ryaw, rpitch,
+                        rseed, rrng, rslot, rhot, rb1, rb2, rplay, rdrops, rarmor};
+            SELFTEST_CHECK(SaveSystem::load(modSave, rs));
+            SELFTEST_CHECK(rw.getBlock(3, 4, 5) == modBlock);
+            SELFTEST_CHECK(rw.getBlock(3, 4, 6) == BlockId::Stone);
+            SELFTEST_CHECK(rinv.count(modItem) == 9);
+            SELFTEST_CHECK(rinv.count(ItemId::Stone) == 4);
+            SELFTEST_CHECK(rhot[0] == modItem);
+            fs::remove(modSave, rmErr);
+        }
+
+        // Put the compiled content back: everything after this is about the
+        // build, not about a pack.
+        restoreBlocks(blockRows0);
+        restoreItems(itemRows0);
+        restoreMachineTraits(machineTraitRows0);
+        SELFTEST_CHECK(content::dumpContent() == before);
+
+        std::error_code rmErr2;
+        fs::remove(packPath, rmErr2);
+        fs::remove(badPath, rmErr2);
+        fs::remove(unknownPath, rmErr2);
+        fs::remove(addPath, rmErr2);
+        fs::remove(patchPath, rmErr2);
+        fs::remove(finitePath, rmErr2);
+        fs::remove(orphanPath, rmErr2);
     }
 
     // ---- Pre-v20 lock migration ------------------------------------------
@@ -719,152 +975,6 @@ int runSelfTest() {
                        circleIndexForKey("circle/grinder"));
     }
 
-    // ---- Circle patterns are unambiguous ---------------------------------
-    // Ring slots match on "holds AT LEAST this many", so one pattern can be a
-    // superset of another and silently shadow it -- a recipe you can lay
-    // perfectly and never get. Order is the fix, and this is what checks it:
-    // lay each pattern exactly and confirm the matcher returns THAT recipe.
-    {
-        World cw;
-        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
-        const glm::ivec3 core{80, 30, 80};
-        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
-        cm[core].type = BlockId::RuneCore;
-        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
-            const glm::ivec3 p = AlchemyCircle::slotPos(core, sl);
-            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
-            cm[p].type = BlockId::Pedestal;
-        }
-
-        const auto& all = circleRecipes();
-        for (std::size_t k = 0; k < all.size(); ++k) {
-            const CircleRecipe& want = all[k];
-            for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
-                cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
-            }
-            // A 4-slot pattern lists the CARDINALS (the even ring slots).
-            const int stride = want.ring.size() == 4 ? 2 : 1;
-            for (std::size_t ringIdx = 0; ringIdx < want.ring.size(); ++ringIdx) {
-                if (want.ring[ringIdx].id == ItemId::None) continue;
-                cm[AlchemyCircle::slotPos(core, static_cast<int>(ringIdx) * stride)]
-                    .input.add(want.ring[ringIdx].id, want.ring[ringIdx].count);
-            }
-            Inventory centre;
-            if (want.center.id != ItemId::None) centre.add(want.center.id, want.center.count);
-
-            const auto ring2 = AlchemyCircle::ringContents(cw, cm, core);
-            const auto got = AlchemyCircle::findMatch(ring2, centre,
-                                                      AlchemyCircle::Tier::Greater, true);
-            if (!got || got.recipe != &want) {
-                std::printf("selftest: circle pattern '%s' is shadowed by '%s'\n",
-                            want.key, got ? got.recipe->key : "(nothing)");
-                return 1;
-            }
-        }
-    }
-
-    // ---- Tech-tree reachability (the deadlock check) ----------------------
-    // This is what replaces "the recipe tables are append-only". They can now
-    // be edited freely, so the guardrail has to be about MEANING rather than
-    // ordering: starting from nothing but what the world hands you, the
-    // closure over all three recipe surfaces must reach every machine and
-    // every recipe input. Edit a recipe into a deadlock and this fails.
-    {
-        std::array<bool, static_cast<std::size_t>(ItemId::Count)> have{};
-        auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
-        auto gain = [&](ItemId id) {
-            if (id == ItemId::None || known(id)) return false;
-            have[static_cast<std::size_t>(id)] = true;
-            return true;
-        };
-
-        // Seed: everything the world yields to a bare hand or a tool -- block
-        // drops (ore, wood, sand, stone, leaves' sticks), plus the two rain
-        // items. Machines you PLACE drop themselves, so seeding block drops
-        // would beg the question; only naturally-occurring blocks count.
-        for (int b = 1; b < static_cast<int>(BlockId::Count); ++b) {
-            const BlockId id = static_cast<BlockId>(b);
-            if (isMachine(id) || isSource(id)) continue;
-            gain(blockDrop(id).id);
-        }
-        gain(ItemId::Stick);
-        gain(ItemId::Pebble);
-        gain(ItemId::SpringWater); // the Bucket in the rain, and the barrel
-        // Boss drops enter the economy through COMBAT rather than a recipe, so
-        // the closure has to be told about them (kSpecies is private to
-        // CreatureSystem.cpp). Anything gated on these is gated on a fight,
-        // which is the design, not a deadlock.
-        gain(ItemId::VoidCatalyst);
-        gain(ItemId::StormCore);
-
-        // Fixpoint over the three surfaces. A machine recipe is only usable
-        // once the machine ITSELF is reachable, which is the part that makes
-        // this a real bootstrap test rather than a shopping list.
-        for (bool changed = true; changed;) {
-            changed = false;
-            for (const Recipe& r : handcraftRecipes()) {
-                bool ok = true;
-                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
-                if (ok) changed |= gain(r.output.id);
-            }
-            for (const CircleRecipe& r : circleRecipes()) {
-                bool ok = known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem) &&
-                          (r.center.id == ItemId::None || known(r.center.id));
-                for (const ItemStack& in : r.ring) ok = ok && (in.id == ItemId::None || known(in.id));
-                if (ok) changed |= gain(r.output.id);
-            }
-            for (const MachineRecipe& r : machineRecipes()) {
-                // ANY machine that runs this list will do. The manual twins
-                // are the whole point: a Bloomery smelts the Furnace's
-                // recipes, which is what breaks the circularity of "ingots
-                // need a Furnace, a Furnace needs ingots".
-                bool ok = false;
-                for (const MachineTraits& mt : kMachineTraits) {
-                    if (recipeGroupFor(mt.block) != r.machine) continue;
-                    if (known(blockDrop(mt.block).id)) { ok = true; break; }
-                }
-                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
-                if (!ok) continue;
-                for (const RecipeOutput& o : r.outputs) changed |= gain(o.stack.id);
-            }
-        }
-
-        // Every machine must be buildable, and every recipe input obtainable.
-        for (const MachineTraits& traits : kMachineTraits) {
-            if (known(blockDrop(traits.block).id)) continue;
-            std::printf("selftest: %s can never be built\n", blockName(traits.block));
-            return 1;
-        }
-        for (const MachineRecipe& r : machineRecipes()) {
-            for (const ItemStack& in : r.inputs) {
-                if (known(in.id)) continue;
-                std::printf("selftest: recipe '%s' needs unreachable %s\n",
-                            r.key, itemName(in.id));
-                return 1;
-            }
-        }
-        for (const CircleRecipe& r : circleRecipes()) {
-            if (r.center.id != ItemId::None && !known(r.center.id)) {
-                std::printf("selftest: circle '%s' needs unreachable %s\n",
-                            r.key, itemName(r.center.id));
-                return 1;
-            }
-            for (const ItemStack& in : r.ring) {
-                if (in.id == ItemId::None || known(in.id)) continue;
-                std::printf("selftest: circle '%s' needs unreachable %s\n",
-                            r.key, itemName(in.id));
-                return 1;
-            }
-        }
-
-        // The bootstrap itself: the Alchemy Circle is where nearly every
-        // recipe now lives, and its two parts cost Copper Ingots, which cost
-        // a fire. So SOME machine that needs neither power nor a circle must
-        // be hand-craftable, or a fresh world is stuck at sticks and pebbles.
-        SELFTEST_CHECK(known(ItemId::CopperIngot));
-        SELFTEST_CHECK(known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem));
-        SELFTEST_CHECK(known(ItemId::MachineFrame));
-    }
 
     // ---- The hand-cranked tier is inert without a hand ---------------------
     // The whole point of the manual tier: a fully loaded machine left alone
@@ -875,38 +985,38 @@ int runSelfTest() {
     {
         World cw;
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
-        PowerState dead; // nothing energized; a Bloomery asks for no power
+        PowerState dead; // nothing energized; the manual tier asks for no power
         const glm::ivec3 p{40, 20, 40};
-        cw.setBlock(p.x, p.y, p.z, BlockId::Bloomery);
-        cm[p].type = BlockId::Bloomery;
-        cm[p].input.add(ItemId::CopperOre, 8); // a smelt is ready to go
-        cm[p].fuel.add(ItemId::Charcoal, 4);   // and the fire is stocked
+        // A MORTAR, not a Bloomery: the crank tier is now exactly the machines
+        // your arm drives, and the Bloomery left it (a fire is not an arm --
+        // see below). Picking a fuelless one also keeps this test about the one
+        // thing it is for.
+        cw.setBlock(p.x, p.y, p.z, BlockId::Mortar);
+        cm[p].type = BlockId::Mortar;
+        cm[p].input.add(ItemId::Crystal, 8); // a grind is ready to go
 
         std::uint32_t rc = 0;
         for (int i = 0; i < 400; ++i) { // 20 seconds of being ignored
-            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         }
         SELFTEST_CHECK(cm[p].progress == 0.0f);
-        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 4);
-        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 0);
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 0);
+        SELFTEST_CHECK(cm[p].input.count(ItemId::Crystal) == 8);
 
         // One turn of the handle, and it moves by exactly that much.
         cm[p].crankBanked = vg::kCrankProgress;
-        MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+        MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(cm[p].progress == vg::kCrankProgress);
         SELFTEST_CHECK(cm[p].crankBanked == 0.0f);
-        SELFTEST_CHECK(cm[p].fuel.count(ItemId::Charcoal) == 3); // now it burns
 
-        // Enough turns to finish the craft. A Furnace smelt is 4s, and the
+        // Enough turns to finish the craft. A Grinder grind is 2s, and the
         // manual twin owes kManualSlowdown times that.
-        const float need = 4.0f * kManualSlowdown;
-        for (int i = 0; cm[p].output.count(ItemId::CopperIngot) == 0 && i < 64; ++i) {
+        for (int i = 0; cm[p].output.count(ItemId::CrystalDust) == 0 && i < 64; ++i) {
             cm[p].crankBanked = vg::kCrankProgress;
-            MachineSystem::tickPowered(cw, cm, dead, 1u, rc);
+            MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops);
         }
-        SELFTEST_CHECK(cm[p].output.count(ItemId::CopperIngot) == 1);
-        SELFTEST_CHECK(cm[p].input.count(ItemId::CopperOre) == 6); // 2 per smelt
-        SELFTEST_CHECK(need > 0.0f);
+        SELFTEST_CHECK(cm[p].output.count(ItemId::CrystalDust) == 1);
+        SELFTEST_CHECK(cm[p].input.count(ItemId::Crystal) == 7);
 
         // A powered twin, by contrast, runs on nothing but time.
         std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm;
@@ -915,8 +1025,783 @@ int runSelfTest() {
         pm[q].type = BlockId::Furnace;
         pm[q].input.add(ItemId::CopperOre, 8);
         pm[q].fuel.add(ItemId::Charcoal, 4);
-        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(cw, pm, dead, 1u, rc, noCrops);
         SELFTEST_CHECK(pm[q].output.count(ItemId::CopperIngot) > 0);
+    }
+
+    // ---- The Bloomery is FIRE-driven, not arm-driven ------------------------
+    // It sat in the manual tier as a hand-cranked machine, which meant a lit
+    // bloomery full of ore did nothing at all unless somebody stood at it
+    // turning arrows. What does the work in a bloomery is the burn, so it now
+    // runs on the clock like every other machine and pays its manual-tier dues
+    // in time and wasted fuel instead. Pinned here because the traits row that
+    // says so is one word, and losing it would look like a balance tweak.
+    {
+        World bw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> bm;
+        PowerState dead;
+        const glm::ivec3 p{48, 20, 48};
+        bw.setBlock(p.x, p.y, p.z, BlockId::Bloomery);
+        bm[p].type = BlockId::Bloomery;
+        bm[p].input.add(ItemId::CopperOre, 8);
+        bm[p].fuel.add(ItemId::Charcoal, 4);
+
+        SELFTEST_CHECK(!machineTraits(BlockId::Bloomery).handCranked);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).burnsFuel);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).demand == 0); // never electric
+        // Still a manual-tier machine in every other sense: the Furnace's
+        // recipes, kManualSlowdown times as long, on fuel it wastes.
+        SELFTEST_CHECK(recipeGroupFor(BlockId::Bloomery) == BlockId::Furnace);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).speedMult == kManualSlowdown);
+        SELFTEST_CHECK(machineTraits(BlockId::Bloomery).fuelMult < 1.0f);
+
+        std::uint32_t rc = 0;
+        for (int i = 0; i < 400; ++i) { // left completely alone
+            MachineSystem::tickPowered(bw, bm, dead, 1u, rc, noCrops);
+        }
+        SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) > 0); // it ran
+        SELFTEST_CHECK(bm[p].input.count(ItemId::CopperOre) < 8);    // it ate ore
+        SELFTEST_CHECK(bm[p].fuel.count(ItemId::Charcoal) < 4);      // it burned
+
+        // ...and it is still slower than the Furnace it copies, on the same
+        // stock and the same number of ticks. That gap IS the tier.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm2;
+        const glm::ivec3 q{52, 20, 52};
+        bw.setBlock(q.x, q.y, q.z, BlockId::Furnace);
+        fm2[q].type = BlockId::Furnace;
+        fm2[q].input.add(ItemId::CopperOre, 8);
+        fm2[q].fuel.add(ItemId::Charcoal, 4);
+        std::uint32_t rc2 = 0;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, fm2, dead, 1u, rc2, noCrops);
+        SELFTEST_CHECK(fm2[q].output.count(ItemId::CopperIngot) >
+                       bm[p].output.count(ItemId::CopperIngot));
+
+        // Turning it OFF is what turning off any machine is: stop feeding the
+        // fire. No handle, no switch -- it simply stops when the fuel runs out.
+        bm[p].fuel.remove(ItemId::Charcoal, bm[p].fuel.count(ItemId::Charcoal));
+        bm[p].burnLeft = 0.0f;
+        const int made = bm[p].output.count(ItemId::CopperIngot);
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(bw, bm, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(bm[p].output.count(ItemId::CopperIngot) == made);
+    }
+
+    // ---- Buffers have a bottom, and a full one stops the line --------------
+    // Every Inventory is unbounded, so before these caps a machine's output
+    // swallowed everything and nothing in a factory could ever be wrong. The
+    // checks that matter are the ones about what a jam must NOT do: eat inputs,
+    // burn fuel, or touch the shared RNG counter.
+    {
+        World jw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> jm;
+        PowerState dead; // a Furnace burns fuel and asks for no power
+        const glm::ivec3 p{60, 20, 60};
+        jw.setBlock(p.x, p.y, p.z, BlockId::Furnace);
+        Machine& f = jm[p];
+        f.type = BlockId::Furnace;
+        f.input.add(ItemId::CopperOre, 8);
+        f.fuel.add(ItemId::Charcoal, 4);
+        f.output.add(ItemId::CopperIngot, vg::kMachineOutputCap); // nowhere to put one more
+
+        std::uint32_t rc = 7;
+        const std::uint32_t rcBefore = rc;
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(jm[p].jammed);
+        SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) == vg::kMachineOutputCap);
+        SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) == 8);   // inputs untouched
+        SELFTEST_CHECK(jm[p].fuel.count(ItemId::Charcoal) == 4);     // fire never lit
+        SELFTEST_CHECK(rc == rcBefore); // no roll thrown away -- see outputHasRoom
+
+        // Drain it and the same craft resumes; a jam holds, it doesn't cancel.
+        jm[p].output.remove(ItemId::CopperIngot, vg::kMachineOutputCap);
+        for (int i = 0; i < 200; ++i) MachineSystem::tickPowered(jw, jm, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(!jm[p].jammed);
+        SELFTEST_CHECK(jm[p].output.count(ItemId::CopperIngot) > 0);
+        SELFTEST_CHECK(jm[p].input.count(ItemId::CopperOre) < 8);
+
+        // A belt facing a machine that can take no more KEEPS its cargo. This
+        // is the whole of what makes a feed line back up: beltStep already
+        // stalls on a refusal, so capacity needed no belt code of its own.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> bm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> bb;
+        const glm::ivec3 mp{64, 20, 64};
+        bm[mp].type = BlockId::Furnace;
+        bm[mp].input.add(ItemId::CopperOre, vg::kMachineInputCap); // input full
+        const glm::ivec3 bp = mp - glm::ivec3(0, 0, 1);
+        bb[bp].facing = {0, 0, 1}; // pointing at the furnace
+        bb[bp].item = ItemId::CopperOre;
+        MachineSystem::beltStep(bb, bm);
+        SELFTEST_CHECK(bb[bp].item == ItemId::CopperOre); // stalled, not voided
+        SELFTEST_CHECK(bm[mp].input.count(ItemId::CopperOre) == vg::kMachineInputCap);
+
+        // Room for one, and it moves again.
+        bm[mp].input.remove(ItemId::CopperOre, 1);
+        MachineSystem::beltStep(bb, bm);
+        SELFTEST_CHECK(bb[bp].item == ItemId::None);
+        SELFTEST_CHECK(bm[mp].input.count(ItemId::CopperOre) == vg::kMachineInputCap);
+    }
+
+    // ---- A crate is feedable, drainable, and therefore also the splitter ----
+    // beltStep fills a machine's `input` and drains its `output`, so a crate is
+    // one buffer migration and no belt code. The second half is why the roadmap
+    // never needed a separate splitter block: every belt pointing AWAY from a
+    // crate pulls from it independently, so one line in feeds two lines out.
+    {
+        World kw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> km;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> kb;
+        PowerState dead; // a crate draws no power and is not a power node
+        SELFTEST_CHECK(!PowerSystem::isPowerNode(BlockId::StorageCrate));
+
+        const glm::ivec3 c{70, 20, 70};
+        kw.setBlock(c.x, c.y, c.z, BlockId::StorageCrate);
+        km[c].type = BlockId::StorageCrate;
+
+        // In from the north, out to east and west.
+        const glm::ivec3 in = c - glm::ivec3(0, 0, 1);
+        kb[in].facing = {0, 0, 1};
+        kb[in].item = ItemId::CopperOre;
+        const glm::ivec3 outE = c + glm::ivec3(1, 0, 0);
+        const glm::ivec3 outW = c - glm::ivec3(1, 0, 0);
+        kb[outE].facing = {1, 0, 0};
+        kb[outW].facing = {-1, 0, 0};
+
+        std::uint32_t rc = 0;
+        MachineSystem::beltStep(kb, km);
+        SELFTEST_CHECK(kb[in].item == ItemId::None);          // a crate takes anything
+        SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 1);
+
+        // The migration is the whole behaviour: what was fed in becomes stock.
+        MachineSystem::tickPowered(kw, km, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(km[c].input.count(ItemId::CopperOre) == 0);
+        SELFTEST_CHECK(km[c].output.count(ItemId::CopperOre) == 1);
+
+        // Stock it properly, then prove BOTH outgoing belts draw from it in the
+        // same step -- one item each, which is an even split with no splitter.
+        km[c].output.add(ItemId::CopperOre, 9); // 10 in the crate
+        MachineSystem::beltStep(kb, km);
+        SELFTEST_CHECK(kb[outE].item == ItemId::CopperOre);
+        SELFTEST_CHECK(kb[outW].item == ItemId::CopperOre);
+        SELFTEST_CHECK(km[c].output.count(ItemId::CopperOre) == 8);
+
+        // And it is deep: a crate has to hold far more than the machine whose
+        // jam it exists to relieve, or nobody would walk over to build one.
+        SELFTEST_CHECK(MachineSystem::inputCap(km[c]) == vg::kChestCap);
+        SELFTEST_CHECK(vg::kChestCap > vg::kMachineOutputCap);
+        km[c].output.add(ItemId::Stone, vg::kChestCap);
+        SELFTEST_CHECK(!MachineSystem::machineAccepts(km[c], ItemId::Stone)); // full
+        SELFTEST_CHECK(MachineSystem::machineAccepts(km[c], ItemId::Wood));   // room yet
+    }
+
+    // ---- Belt filters: the sorting half -----------------------------------
+    // What this replaced was beltStep draining a mixed output by lowest ItemId
+    // ordinal -- a rule no player could see or be taught. These checks pin both
+    // directions of the filter, because only the pair makes a sorting LANE:
+    // pull only your item, and refuse to accept anything else.
+    {
+        World fw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> fb;
+
+        // A crate holding two things, with a filtered belt out of each side.
+        const glm::ivec3 c{80, 20, 80};
+        fw.setBlock(c.x, c.y, c.z, BlockId::StorageCrate);
+        fm[c].type = BlockId::StorageCrate;
+        fm[c].output.add(ItemId::CopperOre, 5);
+        fm[c].output.add(ItemId::Stone, 5);
+
+        const glm::ivec3 east = c + glm::ivec3(1, 0, 0);
+        const glm::ivec3 west = c - glm::ivec3(1, 0, 0);
+        fb[east].facing = {1, 0, 0};
+        fb[east].filter = ItemId::Stone;      // deliberately NOT the low ordinal
+        fb[west].facing = {-1, 0, 0};
+        fb[west].filter = ItemId::CopperOre;
+
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[east].item == ItemId::Stone);
+        SELFTEST_CHECK(fb[west].item == ItemId::CopperOre);
+        SELFTEST_CHECK(fm[c].output.count(ItemId::Stone) == 4);
+        SELFTEST_CHECK(fm[c].output.count(ItemId::CopperOre) == 4);
+
+        // A filter that names something the machine hasn't got pulls NOTHING --
+        // it does not fall back to "whatever is there", which would quietly
+        // undo the whole point.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> gm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> gb;
+        const glm::ivec3 g{84, 20, 84};
+        gm[g].type = BlockId::StorageCrate;
+        gm[g].output.add(ItemId::Stone, 3);
+        const glm::ivec3 gout = g + glm::ivec3(1, 0, 0);
+        gb[gout].facing = {1, 0, 0};
+        gb[gout].filter = ItemId::IronIngot; // none in there
+        MachineSystem::beltStep(gb, gm);
+        SELFTEST_CHECK(gb[gout].item == ItemId::None);
+        SELFTEST_CHECK(gm[g].output.count(ItemId::Stone) == 3);
+
+        // Belt -> belt: a filtered belt refuses cargo it is not for, and the
+        // line behind it holds rather than losing the item.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> hm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> hb;
+        const glm::ivec3 a{90, 20, 90};
+        const glm::ivec3 nextBelt = a + glm::ivec3(0, 0, 1);
+        hb[a].facing = {0, 0, 1};
+        hb[a].item = ItemId::Stone;
+        hb[nextBelt].facing = {0, 0, 1};
+        hb[nextBelt].filter = ItemId::CopperOre; // not stone
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[a].item == ItemId::Stone); // stalled, not voided
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::None);
+
+        // Matching cargo passes.
+        hb[nextBelt].filter = ItemId::Stone;
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[a].item == ItemId::None);
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone);
+
+        // An unfiltered belt still carries anything -- the fallback has to
+        // stay, or every existing factory would stop on load.
+        hb[nextBelt].filter = ItemId::None;
+        hb[a].item = ItemId::IronIngot;
+        MachineSystem::beltStep(hb, hm);
+        SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone); // still occupied this step
+        SELFTEST_CHECK(hb[a].item == ItemId::IronIngot);
+    }
+
+    // ---- The master switch: off means FROZEN, not broken -------------------
+    // "Off" has to mean the same thing to four different systems at once (the
+    // tick, the power solve, the glow, the belts), and the easy bugs are all
+    // half-measures: a machine that stops working but still browns out its
+    // network, or a generator that stops producing but still counts as lit.
+    {
+        World sw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> sm;
+        PowerState dead;
+        const glm::ivec3 p{100, 20, 100};
+        sw.setBlock(p.x, p.y, p.z, BlockId::Furnace);
+        sm[p].type = BlockId::Furnace;
+        sm[p].input.add(ItemId::CopperOre, 8);
+        sm[p].fuel.add(ItemId::Charcoal, 4);
+
+        // Off: no product, no ore eaten, no fuel burned, however long it sits.
+        sm[p].enabled = false;
+        std::uint32_t rc = 0;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) == 0);
+        SELFTEST_CHECK(sm[p].input.count(ItemId::CopperOre) == 8);
+        SELFTEST_CHECK(sm[p].fuel.count(ItemId::Charcoal) == 4);
+        SELFTEST_CHECK(!sm[p].crafting); // and draws no progress bar
+
+        // ...but it is a PAUSE, not a reset: the buffers are still there and it
+        // picks straight back up.
+        sm[p].enabled = true;
+        for (int i = 0; i < 400; ++i) MachineSystem::tickPowered(sw, sm, dead, 1u, rc, noCrops);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) > 0);
+
+        // An off machine still ACCEPTS and still gives up its output. This is
+        // what makes the switch a logistics tool instead of a wall: the feed
+        // line backs up on its own once the input hits its cap, with no special
+        // case in beltStep at all.
+        sm[p].enabled = false;
+        SELFTEST_CHECK(MachineSystem::machineAccepts(sm[p], ItemId::CopperOre));
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> sb;
+        const glm::ivec3 drain = p + glm::ivec3(1, 0, 0);
+        sb[drain].facing = {1, 0, 0};
+        const int had = sm[p].output.count(ItemId::CopperIngot);
+        MachineSystem::beltStep(sb, sm);
+        SELFTEST_CHECK(sb[drain].item == ItemId::CopperIngot);
+        SELFTEST_CHECK(sm[p].output.count(ItemId::CopperIngot) == had - 1);
+    }
+
+    // ---- ...and the power network agrees ----------------------------------
+    {
+        World pw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm;
+        // A generator wired to a grinder: the smallest network with both a
+        // producer and a consumer.
+        const glm::ivec3 gen{110, 20, 110};
+        const glm::ivec3 wire = gen + glm::ivec3(1, 0, 0);
+        const glm::ivec3 mac = gen + glm::ivec3(2, 0, 0);
+        pw.setBlock(gen.x, gen.y, gen.z, BlockId::Generator);
+        pw.setBlock(wire.x, wire.y, wire.z, BlockId::Wire);
+        pw.setBlock(mac.x, mac.y, mac.z, BlockId::Grinder);
+        pm[gen].type = BlockId::Generator;
+        pm[gen].progress = 10.0f; // burning
+        pm[mac].type = BlockId::Grinder;
+
+        PowerState st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(st.energized(wire.x, wire.y, wire.z));
+
+        // Switch the CONSUMER off: it goes dark, but the wire between them
+        // stays live -- an off machine must never split a network, or idling
+        // one would black out everything downstream.
+        pm[mac].enabled = false;
+        st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(!st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(st.energized(wire.x, wire.y, wire.z));
+        SELFTEST_CHECK(st.energized(gen.x, gen.y, gen.z));
+
+        // An off consumer also stops DEMANDING, so its generator is no longer
+        // hungry and stops lighting fresh fuel.
+        std::unordered_set<glm::ivec3, IVec3Hash> hungry;
+        PowerSystem::solve(pw, pm, &hungry);
+        SELFTEST_CHECK(hungry.empty());
+        pm[mac].enabled = true;
+        PowerSystem::solve(pw, pm, &hungry);
+        SELFTEST_CHECK(hungry.count(gen) > 0);
+
+        // Switch the PRODUCER off instead: it stops producing, so the machine
+        // it fed goes dark too even though that machine is still on.
+        pm[gen].enabled = false;
+        st = PowerSystem::solve(pw, pm, nullptr);
+        SELFTEST_CHECK(!st.energized(mac.x, mac.y, mac.z));
+        SELFTEST_CHECK(!st.energized(gen.x, gen.y, gen.z));
+    }
+
+    // ---- Farming: the hoe, and what a plant will sit on --------------------
+    {
+        World fw;
+        MachineSystem::MachineMap fm;
+        MachineSystem::BeltMap fb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> fs, fsap;
+        CropSystem::CropMap fc;
+        const WorldEdit::Registries fr{fm, fb, fs, fsap, fc};
+
+        const glm::ivec3 g{200, 30, 200};
+        fw.setBlock(g.x, g.y, g.z, BlockId::Grass);
+
+        // Tilling is a tool RMB transmuting the aimed cell -- the fuseSources
+        // shape -- and it only works on plain ground.
+        SELFTEST_CHECK(WorldEdit::tillSoil(fw, g));
+        SELFTEST_CHECK(fw.getBlock(g.x, g.y, g.z) == BlockId::TilledSoil);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, g)); // already worked: no-op
+        const glm::ivec3 rock = g + glm::ivec3(1, 0, 0);
+        fw.setBlock(rock.x, rock.y, rock.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, rock)); // stone is not ground
+
+        // Tilling under a placed block would strand it on soil it no longer
+        // sits on, so a covered cell refuses.
+        const glm::ivec3 covered = g + glm::ivec3(0, 0, 1);
+        fw.setBlock(covered.x, covered.y, covered.z, BlockId::Grass);
+        fw.setBlock(covered.x, covered.y + 1, covered.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::tillSoil(fw, covered));
+
+        // A sapling wants soil, and TILLED ground still counts -- `provides`
+        // and `needsSoil` are ordered, so worked ground satisfies a plant that
+        // only asked for dirt without anything having to say so.
+        const glm::ivec3 above = g + glm::ivec3(0, 1, 0);
+        SELFTEST_CHECK(WorldEdit::placeBlock(fw, fr, above, BlockId::Sapling, {}).placed);
+        SELFTEST_CHECK(fsap.count(above) == 1);
+
+        // ...but stone is not soil, and the refusal is a silent no-op.
+        const glm::ivec3 onRock = rock + glm::ivec3(0, 1, 0);
+        SELFTEST_CHECK(!WorldEdit::placeBlock(fw, fr, onRock, BlockId::Sapling, {}).placed);
+        SELFTEST_CHECK(fw.getBlock(onRock.x, onRock.y, onRock.z) == BlockId::Air);
+    }
+
+    // ---- Farming: crops ripen, on tilled soil only -------------------------
+    {
+        World cw;
+        MachineSystem::MachineMap cm;
+        MachineSystem::BeltMap cb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> cs, csap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries cr{cm, cb, cs, csap, field};
+
+        const glm::ivec3 soil{210, 30, 210};
+        const glm::ivec3 plant = soil + glm::ivec3(0, 1, 0);
+        cw.setBlock(soil.x, soil.y, soil.z, BlockId::TilledSoil);
+
+        // A seed refuses plain dirt: a field is laid out on purpose.
+        const glm::ivec3 dirt{212, 30, 210};
+        cw.setBlock(dirt.x, dirt.y, dirt.z, BlockId::Dirt);
+        SELFTEST_CHECK(!WorldEdit::placeBlock(cw, cr, dirt + glm::ivec3(0, 1, 0),
+                                              BlockId::HerbCrop0, {}).placed);
+
+        SELFTEST_CHECK(WorldEdit::placeBlock(cw, cr, plant, BlockId::HerbCrop0, {}).placed);
+        SELFTEST_CHECK(field.count(plant) == 1);
+
+        // One stage per kCropStageSeconds. Run three stages' worth plus slack
+        // and the plant must be RIPE and no further -- ripe is the end of the
+        // line, so it waits to be picked rather than looping round.
+        const int perStage = static_cast<int>(vg::kCropStageSeconds / vg::kTickSeconds) + 1;
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(plant.x, plant.y, plant.z) == BlockId::HerbCrop1);
+        for (int i = 0; i < perStage * 8; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(plant.x, plant.y, plant.z) == BlockId::HerbCrop3);
+        SELFTEST_CHECK(CropSystem::isRipe(cw.getBlock(plant.x, plant.y, plant.z)));
+
+        // Rain is the rate. The same ticks get a second plant further along.
+        const glm::ivec3 wetSoil{214, 30, 210};
+        const glm::ivec3 wet = wetSoil + glm::ivec3(0, 1, 0);
+        cw.setBlock(wetSoil.x, wetSoil.y, wetSoil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(cw, cr, wet, BlockId::HerbCrop0, {}).placed);
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, true);
+        SELFTEST_CHECK(CropSystem::stageOf(cw.getBlock(wet.x, wet.y, wet.z)) > 1);
+
+        // Dig the soil out from under a crop and it dies rather than ripening
+        // in mid-air -- and the registry entry goes with it, so a field cannot
+        // leak timers for plants that are not there.
+        cw.setBlock(wetSoil.x, wetSoil.y, wetSoil.z, BlockId::Air);
+        for (int i = 0; i < perStage; ++i) CropSystem::tick(cw, field, false);
+        SELFTEST_CHECK(cw.getBlock(wet.x, wet.y, wet.z) == BlockId::Air);
+        SELFTEST_CHECK(field.count(wet) == 0);
+
+        // Breaking a crop unregisters it and hands back what it was worth:
+        // the seed while it is growing, the herb once it is ripe.
+        SELFTEST_CHECK(WorldEdit::breakBlock(cw, cr, plant).drop.id == ItemId::Herb);
+        SELFTEST_CHECK(field.count(plant) == 0);
+    }
+
+    // ---- The pebble route must stay a fallback, never a shortcut ----------
+    // hand/pebble-stone exists for content::validate()'s renewability closure:
+    // EVERY other producer of Stone costs Stone (compactor/stone needs a
+    // Compactor or a Tamper, and the Tamper, the Bloomery and the Circle all
+    // cost Stone), so without a route off dug topsoil the whole tech tree
+    // rests on whatever the island happened to bury. See checkRenewability.
+    //
+    // The price of having it is that Stone is gated at kTierWood while this is
+    // a HAND recipe, so it hands you a gated block with no pickaxe at all.
+    // What stops that being a shortcut around the gate is not a rule anywhere
+    // -- it is arithmetic, spread across four registry rows nobody edits
+    // together. Dirt's hardness, the pickaxe's miningSpeed, this recipe's
+    // price, or the pebble drop rate could each flip it in silence, and no
+    // other check would notice: reachability and renewability both come back
+    // greener the CHEAPER this recipe gets. So the ordering is pinned here.
+    {
+        const auto handRecipe = [](const std::string& key) -> const Recipe* {
+            for (const Recipe& r : handcraftRecipes()) {
+                if (r.key == key) return &r;
+            }
+            return nullptr;
+        };
+        const auto costOf = [](const Recipe& r, ItemId want) {
+            for (const ItemStack& in : r.inputs) {
+                if (in.id == want) return in.count;
+            }
+            return 0;
+        };
+
+        const Recipe* stone = handRecipe("hand/pebble-stone");
+        const Recipe* pick = handRecipe("hand/wood-pickaxe");
+        SELFTEST_CHECK(stone != nullptr);
+        SELFTEST_CHECK(pick != nullptr);
+
+        const int price = costOf(*stone, ItemId::Pebble);
+        SELFTEST_CHECK(price > 0);
+
+        // A pebble comes off dug topsoil, every time, and Dirt is ungated --
+        // so one pebble costs exactly one bare-handed dig. The real loop also
+        // pays to re-place the dirt it dug, which this deliberately ignores:
+        // the conservative form is the one worth pinning.
+        const float loopPerStone = static_cast<float>(price) * blockHardness(BlockId::Dirt);
+        // The road the gate intends, mirroring breakSeconds(): the right tool
+        // CLASS at the block's TIER divides the by-hand time by its speed.
+        SELFTEST_CHECK(itemTool(ItemId::WoodPickaxe) == blockTool(BlockId::Stone));
+        SELFTEST_CHECK(itemTier(ItemId::WoodPickaxe) >= blockToolTier(BlockId::Stone));
+        const float minedPerStone =
+            blockHardness(BlockId::Stone) / itemMiningSpeed(ItemId::WoodPickaxe);
+
+        // Grinding pebbles must be the SLOWER road, or the tool gate on Stone
+        // is decorative and the wood tier can be skipped outright.
+        SELFTEST_CHECK(loopPerStone > minedPerStone);
+        // ...and the pickaxe that beats it must cost less than a single Stone
+        // does, or there is a window at the very start where grinding wins
+        // anyway, because the tool that would beat it is out of reach.
+        SELFTEST_CHECK(costOf(*pick, ItemId::Pebble) < price);
+    }
+
+    // ---- A grafted sapling grows a bigger tree ----------------------------
+    // Which tree a sapling becomes is a REGISTRY field, not a second
+    // `id == BlockId::Sapling` in WorldEdit -- that hardcode is the one
+    // SoilKind exists to have removed. The consequence worth pinning is that
+    // the block carries the kind, which is why the sapling registry is still a
+    // plain pos -> float and the save format did not move.
+    {
+        SELFTEST_CHECK(blockInfo(BlockId::Sapling).treeSize == 1);
+        SELFTEST_CHECK(blockInfo(BlockId::SaplingGrafted).treeSize == 2);
+        // Exactly two saplings, or the "is this a sapling" test above silently
+        // starts matching something that has no business growing.
+        int growers = 0;
+        for (const BlockInfo& b : blockRows()) {
+            if (b.treeSize > 0) ++growers;
+        }
+        SELFTEST_CHECK(growers == 2);
+
+        // Both shapes root at the sapling's own cell, which is what lets
+        // updateSaplings skip `cell != pos` when it checks for clear space.
+        SELFTEST_CHECK(vg::treeCells(1).front().offset == glm::ivec3(0, 0, 0));
+        SELFTEST_CHECK(vg::treeCells(2).front().offset == glm::ivec3(0, 0, 0));
+        SELFTEST_CHECK(vg::treeCells(2).size() > vg::treeCells(1).size());
+        // An out-of-range size CLAMPS rather than indexing past the shapes --
+        // a content pack may write any integer into treeSize.
+        SELFTEST_CHECK(vg::treeCells(99).size() == vg::treeCells(2).size());
+        SELFTEST_CHECK(vg::treeCells(0).size() == vg::treeCells(1).size());
+
+        World tw;
+        MachineSystem::MachineMap tm;
+        MachineSystem::BeltMap tb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> ts, tsap;
+        CropSystem::CropMap tc;
+        const WorldEdit::Registries tr{tm, tb, ts, tsap, tc};
+
+        const glm::ivec3 soil{240, 30, 240};
+        const glm::ivec3 seat = soil + glm::ivec3(0, 1, 0);
+        tw.setBlock(soil.x, soil.y, soil.z, BlockId::Grass);
+        SELFTEST_CHECK(
+            WorldEdit::placeBlock(tw, tr, seat, BlockId::SaplingGrafted, {}).placed);
+        SELFTEST_CHECK(tsap.count(seat) == 1); // registered by treeSize, not by id
+        SELFTEST_CHECK(WorldEdit::breakBlock(tw, tr, seat).drop.id ==
+                       ItemId::GraftedSaplingItem);
+        SELFTEST_CHECK(tsap.count(seat) == 0);
+
+        // The bigger tree really is bigger where it counts: more logs (wood)
+        // and more leaves (sticks and the next saplings), on one plot.
+        const auto count = [](int size, BlockId want) {
+            World w;
+            vg::placeTree(w, {0, 40, 0}, size);
+            int n = 0;
+            for (const vg::TreeCell& c : vg::treeCells(size)) {
+                if (w.getBlock(c.offset.x, 40 + c.offset.y, c.offset.z) == want) ++n;
+            }
+            return n;
+        };
+        SELFTEST_CHECK(count(2, BlockId::Log) > count(1, BlockId::Log));
+        SELFTEST_CHECK(count(2, BlockId::Leaves) > count(1, BlockId::Leaves));
+    }
+
+    // ---- Rich Soil is worked ground one rung further up --------------------
+    // Compost is the tree's surplus arriving in the field, and enriching is the
+    // hoe's shape a step later: a held item RMB transmuting the aimed cell. The
+    // ladder is Soil -> Tilled -> Rich, and it only climbs.
+    {
+        World rw;
+        MachineSystem::MachineMap rm;
+        MachineSystem::BeltMap rb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> rs, rsap;
+        CropSystem::CropMap rc;
+        const WorldEdit::Registries rr{rm, rb, rs, rsap, rc};
+
+        const glm::ivec3 g{220, 30, 220};
+        rw.setBlock(g.x, g.y, g.z, BlockId::Grass);
+
+        // Compost is not a hoe: it works worked ground, and nothing else. This
+        // is the refusal the deny line has to distinguish, since "wrong block"
+        // and "already rich" are different mistakes.
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, g));
+        SELFTEST_CHECK(WorldEdit::tillSoil(rw, g));
+        SELFTEST_CHECK(WorldEdit::enrichSoil(rw, g));
+        SELFTEST_CHECK(rw.getBlock(g.x, g.y, g.z) == BlockId::RichSoil);
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, g)); // already rich: a no-op
+        // ...and the ladder does not run backwards: rich ground is not plain
+        // soil, so the hoe has nothing to do with it.
+        SELFTEST_CHECK(!WorldEdit::tillSoil(rw, g));
+
+        // Same reason tilling refuses a covered cell: enriching under a placed
+        // block would strand it on ground it no longer sits on.
+        const glm::ivec3 covered = g + glm::ivec3(0, 0, 1);
+        rw.setBlock(covered.x, covered.y, covered.z, BlockId::TilledSoil);
+        rw.setBlock(covered.x, covered.y + 1, covered.z, BlockId::Stone);
+        SELFTEST_CHECK(!WorldEdit::enrichSoil(rw, covered));
+
+        // Rich satisfies everything tilled ground does, for free, because
+        // `provides >= needsSoil` is ordered -- a crop AND a sapling, neither
+        // of which had to be told about the new rung.
+        SELFTEST_CHECK(soilAccepts(BlockId::RichSoil, BlockId::HerbCrop0));
+        SELFTEST_CHECK(soilAccepts(BlockId::RichSoil, BlockId::Sapling));
+        // The rungs below are unchanged, which is the other half of the claim.
+        SELFTEST_CHECK(soilAccepts(BlockId::TilledSoil, BlockId::HerbCrop0));
+        SELFTEST_CHECK(!soilAccepts(BlockId::Grass, BlockId::HerbCrop0));
+        SELFTEST_CHECK(soilAccepts(BlockId::Grass, BlockId::Sapling));
+
+        // Drops Dirt like the tilled ground it came from: neither tilling nor
+        // enriching may be a way to duplicate soil.
+        SELFTEST_CHECK(WorldEdit::breakBlock(rw, rr, g).drop.id == ItemId::DirtItem);
+    }
+
+    // ---- Nutrition stacks with water; water does not stack with itself -----
+    // Rain and irrigation share ONE multiplier because they are the same thing
+    // arriving two ways. Rich Soil is a different axis and deliberately DOES
+    // stack, so a fed and watered field runs at the product. The last check is
+    // the load-bearing one: it pins the rule the new multiplier sits next to,
+    // so a later edit cannot read the departure as a licence to stack water.
+    {
+        // Ticks until ripe, which is monotone in the growth rate -- unlike
+        // "stage after N ticks", which piles four different rates up against
+        // the same stage-3 ceiling and cannot tell them apart. Each run gets
+        // its own world, so a plant from an earlier measurement cannot keep
+        // ticking through a later one's weather.
+        const auto ticksToRipe = [](BlockId soil, bool rainy, bool irrigate) {
+            World w;
+            MachineSystem::MachineMap m;
+            MachineSystem::BeltMap b;
+            std::unordered_map<glm::ivec3, float, IVec3Hash> s, sap;
+            CropSystem::CropMap field;
+            const WorldEdit::Registries r{m, b, s, sap, field};
+
+            const glm::ivec3 base{230, 30, 230};
+            const glm::ivec3 top = base + glm::ivec3(0, 1, 0);
+            w.setBlock(base.x, base.y, base.z, soil);
+            WorldEdit::placeBlock(w, r, top, BlockId::HerbCrop0, {});
+            // The sprinkler sits in the soil cell itself: one below the plant,
+            // well inside kIrrigateRadius.
+            const std::vector<glm::ivec3> wet =
+                irrigate ? std::vector<glm::ivec3>{base} : std::vector<glm::ivec3>{};
+            for (int i = 0; i < 20000; ++i) {
+                if (CropSystem::isRipe(w.getBlock(top.x, top.y, top.z))) return i;
+                CropSystem::tick(w, field, rainy, wet);
+            }
+            return -1; // never ripened: a failed placement lands here too
+        };
+
+        const int dry     = ticksToRipe(BlockId::TilledSoil, false, false);
+        const int fed     = ticksToRipe(BlockId::RichSoil,   false, false);
+        const int watered = ticksToRipe(BlockId::TilledSoil, true,  false);
+        const int both    = ticksToRipe(BlockId::RichSoil,   true,  false);
+
+        SELFTEST_CHECK(dry > 0);
+        SELFTEST_CHECK(fed < dry);      // compost is worth something
+        SELFTEST_CHECK(watered < fed);  // ...and worth less than rain (2x vs 3x)
+        SELFTEST_CHECK(both < watered); // the deliberate departure: they stack
+
+        // The rule the departure sits BESIDE, pinned so a later edit cannot
+        // read it as a licence. Irrigating a field it is already raining on
+        // must change nothing, and irrigation alone must be exactly rain alone:
+        // one multiplier, two ways of earning it.
+        SELFTEST_CHECK(ticksToRipe(BlockId::TilledSoil, true, true) == watered);
+        SELFTEST_CHECK(ticksToRipe(BlockId::TilledSoil, false, true) == watered);
+    }
+
+    // ---- Farming: the Harvester reaps and REPLANTS -------------------------
+    {
+        World hw;
+        MachineSystem::MachineMap hm;
+        MachineSystem::BeltMap hb;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> hs, hsap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries hr{hm, hb, hs, hsap, field};
+        PowerState dead;
+        std::uint32_t rc = 0;
+
+        const glm::ivec3 mac{220, 30, 220};
+        hw.setBlock(mac.x, mac.y, mac.z, BlockId::Harvester);
+        hm[mac].type = BlockId::Harvester;
+
+        // One ripe plant and one still growing, both in reach.
+        const glm::ivec3 ripeSoil = mac + glm::ivec3(2, 0, 0);
+        const glm::ivec3 ripe = ripeSoil + glm::ivec3(0, 1, 0);
+        const glm::ivec3 youngSoil = mac + glm::ivec3(-2, 0, 0);
+        const glm::ivec3 young = youngSoil + glm::ivec3(0, 1, 0);
+        hw.setBlock(ripeSoil.x, ripeSoil.y, ripeSoil.z, BlockId::TilledSoil);
+        hw.setBlock(youngSoil.x, youngSoil.y, youngSoil.z, BlockId::TilledSoil);
+        hw.setBlock(ripe.x, ripe.y, ripe.z, BlockId::HerbCrop3);
+        SELFTEST_CHECK(WorldEdit::placeBlock(hw, hr, young, BlockId::HerbCrop0, {}).placed);
+
+        // An UNPOWERED harvester does nothing: it is a powered machine, because
+        // the point of a farm is that it runs while you are elsewhere.
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, dead, 1u, rc, field);
+        }
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop3);
+
+        PowerState live;
+        live.setEnergized(mac);
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, live, 1u, rc, field);
+        }
+        // The ripe one is banked as Herb...
+        SELFTEST_CHECK(hm[mac].output.count(ItemId::Herb) > 0);
+        // ...and the cell is a SEEDLING on intact tilled soil, not Air and not
+        // bare dirt. Untilling on harvest would mean re-tilling every automated
+        // field by hand forever, which is the opposite of automation.
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop0);
+        SELFTEST_CHECK(hw.getBlock(ripeSoil.x, ripeSoil.y, ripeSoil.z) == BlockId::TilledSoil);
+        // ...and it is REGISTERED, or the field would reap once and stand still.
+        SELFTEST_CHECK(field.count(ripe) == 1);
+
+        // The unripe plant was never touched.
+        SELFTEST_CHECK(hw.getBlock(young.x, young.y, young.z) == BlockId::HerbCrop0);
+
+        // A full output jams and holds, like every other machine: no reaping
+        // into a bottomless bucket.
+        hw.setBlock(ripe.x, ripe.y, ripe.z, BlockId::HerbCrop3);
+        hm[mac].hasTarget = false;
+        hm[mac].rescanCooldown = 0;
+        hm[mac].output.add(ItemId::Herb, 10000);
+        for (int i = 0; i < 200; ++i) {
+            MachineSystem::tickPowered(hw, hm, live, 1u, rc, field);
+        }
+        SELFTEST_CHECK(hm[mac].jammed);
+        SELFTEST_CHECK(hw.getBlock(ripe.x, ripe.y, ripe.z) == BlockId::HerbCrop3);
+    }
+
+    // ---- Farming: irrigation buys weather independence --------------------
+    {
+        World iw;
+        MachineSystem::MachineMap im;
+        MachineSystem::BeltMap ib;
+        std::unordered_map<glm::ivec3, float, IVec3Hash> is, isap;
+        CropSystem::CropMap field;
+        const WorldEdit::Registries ir{im, ib, is, isap, field};
+        PowerState dead;
+        std::uint32_t rc = 0;
+
+        const glm::ivec3 pump{230, 30, 230};
+        iw.setBlock(pump.x, pump.y, pump.z, BlockId::Irrigator);
+        im[pump].type = BlockId::Irrigator;
+
+        // Dry: no water in, nothing running, so the field is on the slow rate.
+        MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).empty());
+
+        // One Rain Water buys kIrrigateSeconds of wetness. It draws no power at
+        // all: what it spends is water, so a Barrel and a belt are the whole
+        // supply chain and no grid is needed.
+        im[pump].input.add(ItemId::SpringWater, 1);
+        MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+        SELFTEST_CHECK(im[pump].input.count(ItemId::SpringWater) == 0);
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).size() == 1);
+
+        // A crop in reach grows at the RAIN rate while it runs...
+        const glm::ivec3 soil = pump + glm::ivec3(3, 0, 0);
+        const glm::ivec3 plant = soil + glm::ivec3(0, 1, 0);
+        iw.setBlock(soil.x, soil.y, soil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(iw, ir, plant, BlockId::HerbCrop0, {}).placed);
+
+        // ...and one out of reach does not, on the very same ticks. Same world,
+        // same weather: the only difference is the water.
+        const glm::ivec3 farSoil = pump + glm::ivec3(vg::kIrrigateRadius + 4, 0, 0);
+        const glm::ivec3 far = farSoil + glm::ivec3(0, 1, 0);
+        iw.setBlock(farSoil.x, farSoil.y, farSoil.z, BlockId::TilledSoil);
+        SELFTEST_CHECK(WorldEdit::placeBlock(iw, ir, far, BlockId::HerbCrop0, {}).placed);
+
+        const int ticks = static_cast<int>(vg::kCropStageSeconds / vg::kTickSeconds) + 1;
+        for (int i = 0; i < ticks; ++i) {
+            MachineSystem::tickPowered(iw, im, dead, 1u, rc, field);
+            CropSystem::tick(iw, field, /*rainy=*/false,
+                             MachineSystem::activeIrrigators(im));
+        }
+        SELFTEST_CHECK(CropSystem::stageOf(iw.getBlock(plant.x, plant.y, plant.z)) >
+                       CropSystem::stageOf(iw.getBlock(far.x, far.y, far.z)));
+
+        // Switching it OFF has to stop the water, not merely stop it drinking.
+        im[pump].enabled = false;
+        SELFTEST_CHECK(MachineSystem::activeIrrigators(im).empty());
+    }
+
+    // ---- Every species' model is actually there -----------------------------
+    // The one asset check in here, and it earns the exception. Creature models
+    // load leniently by design -- a missing one disables that species with a
+    // log line and never crashes -- which meant boss #1 was absent from a fresh
+    // clone for weeks while every build stayed green, because its .bbmodel had
+    // never been committed. Leniency is right for a player and wrong for CI, so
+    // the same files a launch pillar depends on are parsed here (no window, no
+    // GL) and a problem fails the build. See CreatureSystem::checkModels.
+    {
+        const char* base = SDL_GetBasePath(); // owned by SDL; works pre-init
+        const std::vector<std::string> problems =
+            CreatureSystem::checkModels(base ? std::string(base) : std::string());
+        for (const std::string& msg : problems) std::printf("selftest: %s\n", msg.c_str());
+        SELFTEST_CHECK(problems.empty());
     }
 
     std::printf("selftest OK\n");
@@ -956,11 +1841,12 @@ int dumpRecipes() {
     for (const Recipe& r : handcraftRecipes()) {
         std::string out = itemName(r.output.id);
         if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
-        std::printf("| `%s` | %s | %s |\n", r.key, stackList(r.inputs).c_str(), out.c_str());
+        std::printf("| `%s` | %s | %s |\n", r.key.c_str(), stackList(r.inputs).c_str(),
+                    out.c_str());
     }
 
     std::printf("\n## Machines\n\n");
-    for (const MachineTraits& t : kMachineTraits) {
+    for (const MachineTraits& t : machineTraitRows()) {
         if (t.recipeGroup != BlockId::Air) continue; // twins share the rows below
         const auto rows = recipesForMachine(t.block);
 
@@ -970,7 +1856,7 @@ int dumpRecipes() {
         else std::printf("Runs unpowered. ");
         // Name the hand-cranked twin, if it has one: the two tiers run the
         // same rows, so listing them twice would be a lie about the data.
-        for (const MachineTraits& twin : kMachineTraits) {
+        for (const MachineTraits& twin : machineTraitRows()) {
             if (twin.recipeGroup != t.block) continue;
             std::printf("Hand tier: **%s** (%.0fx slower). ",
                         blockName(twin.block), static_cast<double>(twin.speedMult));
@@ -998,7 +1884,7 @@ int dumpRecipes() {
                         static_cast<int>(o.weight / total * 100.0f + 0.5f)) + "%)";
                 }
             }
-            std::printf("| `%s` | %s | %s | %.1f |\n", r->key,
+            std::printf("| `%s` | %s | %s | %.1f |\n", r->key.c_str(),
                         stackList(r->inputs).c_str(), out.c_str(),
                         static_cast<double>(r->seconds));
         }
@@ -1028,16 +1914,18 @@ int dumpRecipes() {
         }
         std::string out = itemName(r.output.id);
         if (r.output.count > 1) out += " x" + std::to_string(r.output.count);
-        std::printf("| `%s` | %s | %s | %s | %.1f |\n", r.key, centre.c_str(),
+        std::printf("| `%s` | %s | %s | %s | %.1f |\n", r.key.c_str(), centre.c_str(),
                     ring.c_str(), out.c_str(), static_cast<double>(r.seconds));
     }
 
     std::printf("\n## Fuels\n\n| item | seconds |\n|---|---|\n");
-    for (const FuelInfo& f : kFuels) {
+    for (const FuelInfo& f : fuelRows()) {
         std::printf("| %s | %.0f |\n", itemName(f.item), static_cast<double>(f.seconds));
     }
-    std::printf("\nA machine never burns an item its own recipes consume, which is why\n"
-                "a Furnace fed wood chars it instead of eating it.\n");
+    std::printf("\nA machine that both burns fuel and runs recipes has a FUEL buffer of its\n"
+                "own, so a Furnace can char wood while burning wood -- which pile an\n"
+                "arriving belt item joins is inferred (ingredient wins), and a hand-drag\n"
+                "lands in the cell you dropped it on.\n");
     return 0;
 }
 
@@ -1046,13 +1934,66 @@ int dumpRecipes() {
 int main(int argc, char** argv) {
     SDL_SetMainReady();
 
+    // ---- Content packs, before anything has read the tables ---------------
+    // Two ways in, and they are deliberately not the same way.
+    //
+    // The `packs/` folder beside the executable is the PLAYER'S installation,
+    // so it applies to the game and to nothing else. `--pack <file>` is the
+    // AUTHOR'S, and applies to whatever it is asked of -- which is what lets a
+    // generator run `--pack draft.json --validate` on its own output without
+    // installing it anywhere.
+    //
+    // Keeping the folder out of the headless tools is what stops an installed
+    // pack from silently rewriting the answers: --selftest asserts against the
+    // content compiled into the build, and --dump-content is the build's own
+    // spec. A pack changing either of those out from under CI would be a very
+    // confusing failure.
+    std::vector<std::string> packs;
+    const char* mode = "";
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--pack") == 0 && i + 1 < argc) packs.push_back(argv[++i]);
+        else if (!*mode) mode = argv[i];
+    }
+    const bool headless = std::strcmp(mode, "--selftest") == 0 ||
+                          std::strcmp(mode, "--dump-recipes") == 0 ||
+                          std::strcmp(mode, "--dump-content") == 0 ||
+                          std::strcmp(mode, "--validate") == 0;
+    if (packs.empty() && !headless) {
+        if (const char* base = SDL_GetBasePath()) { // owned by SDL, do not free
+            packs = content::findPacks(std::string(base) + "packs");
+        }
+    }
+    const std::vector<std::string> packProblems = content::applyPacks(packs);
+    if (!packProblems.empty() && headless) {
+        // A tool was asked about a named pack and the pack is not usable. Say
+        // why and stop, rather than quietly answer about the fallback.
+        for (const std::string& msg : packProblems) std::printf("%s\n", msg.c_str());
+        return 1;
+    }
+
     // Headless save round-trip for CI; runs before any window/GL setup.
-    if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0) {
+    if (std::strcmp(mode, "--selftest") == 0) {
         return runSelfTest();
     }
     // Regenerates RECIPES.md from the live tables; also headless.
-    if (argc > 1 && std::strcmp(argv[1], "--dump-recipes") == 0) {
+    if (std::strcmp(mode, "--dump-recipes") == 0) {
         return dumpRecipes();
+    }
+    // The whole content set as JSON, by key. The pack format's own spec, its
+    // vocabulary, and a worked example -- see ContentPack.h.
+    if (std::strcmp(mode, "--dump-content") == 0) {
+        const std::string doc = content::dumpContent();
+        std::fwrite(doc.data(), 1, doc.size(), stdout);
+        return 0;
+    }
+    // Is the content set coherent? The --selftest checks that are about
+    // CONTENT rather than about code, on their own and without the save
+    // round-trip: the answer a pack author (or a generator repairing its own
+    // output) actually wants, printed one problem per line.
+    if (std::strcmp(mode, "--validate") == 0) {
+        const std::vector<std::string> problems = content::validate();
+        for (const std::string& msg : problems) std::printf("%s\n", msg.c_str());
+        return problems.empty() ? 0 : 1;
     }
 
     // File logging + crash dumps live under the pref dir, next to the save, so
@@ -1062,6 +2003,34 @@ int main(int argc, char** argv) {
     if (!pref.empty()) {
         engine::Log::init(pref);
         engine::CrashHandler::install(pref);
+    }
+
+    // What content is this session actually running? A bug report from a
+    // player with packs installed is unreadable without it, and it is the one
+    // record that the folder was read at all.
+    for (const std::string& path : packs) {
+        SDL_Log("content pack: %s%s", path.c_str(),
+                packProblems.empty() ? "" : " (REFUSED)");
+    }
+
+    // A refused pack is not fatal -- applyPacks already put the compiled
+    // content back, so the game below is the ordinary one. But it must not be
+    // silent either: someone installed a pack and is about to not see it, and
+    // the reason is the one thing that lets them fix it. Logged in full (the
+    // log is what a bug report carries), shown as the first problem plus a
+    // count, because a broken pack can produce a great many.
+    if (!packProblems.empty()) {
+        for (const std::string& msg : packProblems) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "content pack: %s", msg.c_str());
+        }
+        std::string box = "A content pack was refused, so the game is running without it.\n\n" +
+                          packProblems.front();
+        if (packProblems.size() > 1) {
+            box += "\n\n(and " + std::to_string(packProblems.size() - 1) +
+                   " more -- see logs/game.log)";
+        }
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Voxel Factory - Content Pack",
+                                 box.c_str(), nullptr);
     }
 
     int exitCode = 0;

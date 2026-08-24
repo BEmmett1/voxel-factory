@@ -258,7 +258,11 @@ void VoxelGame::updateSaplings() {
             timer += kTickSeconds * (m_weather.raining ? kRainGrowthMult : 1.0f);
             continue;
         }
-        if (overworld().getBlock(pos.x, pos.y, pos.z) != BlockId::Sapling) {
+        // Which tree this becomes is carried by the BLOCK, so a grafted sapling
+        // needs nothing here beyond reading it -- and a stale timer over a cell
+        // that is no longer any kind of sapling is dropped by the same test.
+        const int size = blockInfo(overworld().getBlock(pos.x, pos.y, pos.z)).treeSize;
+        if (size == 0) {
             done.push_back(pos); // the block went away; drop the stale timer
             continue;
         }
@@ -266,7 +270,7 @@ void VoxelGame::updateSaplings() {
         // Grow only into open space -- and never onto the player, who must
         // not wake up entombed in a canopy.
         bool clear = true;
-        for (const TreeCell& c : treeCells()) {
+        for (const TreeCell& c : treeCells(size)) {
             const glm::ivec3 cell = pos + c.offset;
             if (cell != pos && overworld().getBlock(cell.x, cell.y, cell.z) != BlockId::Air) {
                 clear = false;
@@ -277,9 +281,16 @@ void VoxelGame::updateSaplings() {
                 break;
             }
         }
-        if (!clear) continue; // blocked: stay ripe and retry next tick
+        if (!clear) {
+            // Blocked: back OFF rather than re-running the clear check twenty
+            // times a second forever. A fenced-in sapling used to cost a
+            // permanent 25-cell scan at 20 Hz, and a grafted one is 80. The
+            // timer IS the backoff -- no second field, so no save change.
+            timer = kTreeGrowSeconds - kTreeRetrySeconds;
+            continue;
+        }
 
-        placeTree(overworld(), pos);
+        placeTree(overworld(), pos, size);
         done.push_back(pos);
     }
 
@@ -287,16 +298,41 @@ void VoxelGame::updateSaplings() {
 }
 
 // Every leaf that dies -- chopped by hand or decayed off a felled trunk --
-// rolls the same sapling drop into the player's pack. The shared pity counter
-// guarantees the supply across dry streaks either way.
-void VoxelGame::rollLeafSapling(const glm::ivec3& p) {
-    const std::uint32_t h = hash2(p.x * 31 + p.y, p.z * 17,
-                                  m_worldSeed + m_sourceRng++);
-    const bool lucky = (h % 100u) <
+// rolls the SAME two drops. Sticks used to hang off the chop path alone, which
+// quietly made trunk-first felling the optimal play: three axe swings orphaned
+// the whole canopy, and walking away collected the saplings for free while
+// punching the 22 leaves yourself was the only way to be taxed for them.
+//
+// The two rolls differ in where they land, and `chopped` is the whole of it:
+//   - Sticks follow the ordinary rule for breaking a block, a ground drop at
+//     the cell -- but only when a PLAYER broke it. A leaf decaying off a
+//     felled trunk can be forty blocks away, so a drop there is one nobody
+//     ever sees; those go to the pack.
+//   - Saplings ALWAYS go to the pack, chopped or not. The pity counter is a
+//     promise about your inventory ("guaranteed after N dry leaves"), and a
+//     drop resting on top of a canopy you have not felled yet would not keep
+//     it. This is the behaviour saplings already had; sticks are what changed.
+//
+// Both roll off the SAVED counter (m_sourceRng) rather than the transient
+// m_lootRng, with different salts so they stay independent: decay runs in the
+// sim, and a sim roll that a save cannot replay is a desync.
+void VoxelGame::rollLeafDrops(const glm::ivec3& p, bool chopped) {
+    const std::uint32_t hs = hash2(p.x * 31 + p.y, p.z * 17,
+                                   m_worldSeed + m_sourceRng++);
+    const bool lucky = (hs % 100u) <
         static_cast<std::uint32_t>(kSaplingDropChance * 100.0f + 0.5f);
     if (lucky || ++m_leafPity >= kSaplingPityLeaves) {
         m_leafPity = 0;
         m_inventory.add(ItemId::SaplingItem, 1);
+    }
+
+    const std::uint32_t hk = hash2(p.x * 17 + p.z, p.y * 31 + 7,
+                                   m_worldSeed + m_sourceRng++);
+    if (hk % 100u >= static_cast<std::uint32_t>(kStickChance * 100.0f + 0.5f)) return;
+    if (chopped) {
+        spawnDrop(glm::vec3(p) + glm::vec3(0.5f), ItemId::Stick, 1);
+    } else {
+        m_inventory.add(ItemId::Stick, 1);
     }
 }
 
@@ -342,7 +378,7 @@ void VoxelGame::updateLeafDecay() {
 
     for (const glm::ivec3& p : dying) {
         overworld().setBlock(p.x, p.y, p.z, BlockId::Air);
-        rollLeafSapling(p); // a felled canopy still seeds the next forest
+        rollLeafDrops(p, /*chopped=*/false); // a felled canopy still seeds the next forest
     }
 }
 
@@ -355,6 +391,10 @@ void VoxelGame::onTick() {
     updateSaplings();
     updateLeafDecay();
     updateGrassSpread();
+    // Crops are the same shape of job one file over, because unlike the three
+    // above it has to be testable without a GL context (CropSystem.h).
+    CropSystem::tick(overworld(), m_crops, m_weather.raining,
+                     MachineSystem::activeIrrigators(m_machines));
 
     // Generators and collectors first: a burn flip re-solves the network so
     // the powered machines below see fresh power in this same tick.
@@ -365,7 +405,8 @@ void VoxelGame::onTick() {
     updateBucketFill();
 
     // Powered machines process their input buffers into outputs over time.
-    MachineSystem::tickPowered(overworld(), m_machines, m_power, m_worldSeed, m_sourceRng);
+    MachineSystem::tickPowered(overworld(), m_machines, m_power, m_worldSeed, m_sourceRng,
+                               m_crops);
 
     // Advance conduits on a slower cadence so items visibly travel.
     if (++m_beltTimer >= kBeltStepTicks) {

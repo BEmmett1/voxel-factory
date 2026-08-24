@@ -24,6 +24,7 @@
 
 #include <glm/glm.hpp>
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -52,7 +53,11 @@ protected:
 private:
     void buildAtlas();           // load assets/atlas.png or generate a fallback
     void buildShapeSheet();      // load assets/shapes.png (optional; loud if absent)
-    void buildWorld();           // generate terrain + the demo structures
+    void buildWorld();           // generate terrain + the ruin + sources + the tree
+    // Stamp the derelict factory with its north row centred on `origin`. Split
+    // out of buildWorld so the thing can be SITED rather than hardcoded onto
+    // the plateau -- see the comment at the call site for why it moved.
+    void plantRuin(const glm::ivec3& origin);
     void buildArena(World& w, SpeciesId boss); // the boss's arena variant
     void enterArena(SpeciesId boss); // consume-key travel: regen arena + boss, go
     void returnHome();               // back to m_homePose in the Overworld
@@ -110,6 +115,15 @@ private:
     bool canCraft(const Recipe& r) const;
     void tryCraft(const Recipe& r);
     void updateTitle();          // show the selected item in the window title
+    // The single refusal funnel: play the deny sound AND say why, on one line
+    // over the hotbar. Every rejection the player can act on goes through here
+    // rather than calling play("deny") directly, so a silent no-op is now a
+    // visible omission instead of an invisible one. Nothing in the game teaches
+    // the game (see ROADMAP onboarding), and these call sites are the moments
+    // the player is already asking the question. `why` is uppercase, short, and
+    // limited to the bitmap font's glyphs (A-Z 0-9 and a little punctuation --
+    // no apostrophes).
+    void deny(const std::string& why);
     // The selected hotbar item (None for an empty slot). m_selectedSlot stays
     // in [0, kHotbarSlots) — enforced at load, number keys, and wheel.
     ItemId heldItem() const { return m_hotbar[m_selectedSlot]; }
@@ -124,13 +138,16 @@ private:
     // The registry bundle WorldEdit keeps in sync with the block grid
     // (player edits go through WorldEdit::breakBlock / placeBlock).
     WorldEdit::Registries editRegistries() {
-        return {m_machines, m_belts, m_sources, m_saplings};
+        return {m_machines, m_belts, m_sources, m_saplings, m_crops};
     }
     void updateSources();                           // grow patches around sources
     void updateSaplings();                          // grow planted saplings into trees
     void updateGrassSpread();                       // grass creeps onto adjacent dirt (renewable)
     void updateLeafDecay();                         // wither leaves cut off from logs
-    void rollLeafSapling(const glm::ivec3& p);      // sapling chance per lost leaf
+    // Sapling + stick rolls for a leaf that died. `chopped` = a player broke
+    // it (sticks drop at the cell); false = it decayed (sticks go to the pack,
+    // since nobody is standing there). See the definition for why.
+    void rollLeafDrops(const glm::ivec3& p, bool chopped);
     void buildRainMesh();                           // per-frame falling streaks
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
@@ -205,10 +222,10 @@ private:
     std::unordered_map<glm::ivec3, Belt, IVec3Hash>    m_belts;
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_sources;  // pos -> spawn timer
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
+    CropSystem::CropMap                                m_crops;    // pos -> seconds into this stage
     int m_beltTimer = 0;           // ticks since the last belt step
-    int m_leafPity = 0;            // chopped leaves since the last sapling drop
+    int m_leafPity = 0;            // leaves lost since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
-    std::uint32_t m_lootRng = 0x9E3779B9u; // rolls sift-pebble / leaf-stick drops
     std::uint32_t m_growthRng = 0xC2B2AE35u; // grass-spread cell sampling
 
     // The entity layer (test creature). Owns its model/GPU assets and
@@ -318,6 +335,13 @@ private:
     float      m_breakProgress = 0.0f; // seconds accumulated
     float      m_breakNeeded   = 0.0f; // seconds required (for the HUD bar)
 
+    // Held-RMB placing (transient). The cooldown paces the repeat; the last
+    // cell stops a single hold from re-placing into the same spot the instant
+    // the block there is broken or the raycast jitters.
+    float      m_placeCooldown  = 0.0f;
+    float      m_rmbHeld        = 0.0f; // seconds RMB has been down
+    glm::ivec3 m_placedLastCell{INT_MIN};
+
     // The player's body: velocities + health + move/damage (health is public
     // on the controller so SaveData binds to it). Reaching 0 hp triggers the
     // same penalty as falling off the island: pack lost, respawn.
@@ -325,4 +349,10 @@ private:
     float m_attackCooldown = 0.0f; // seconds until the sword can swing again
     float m_castCooldown = 0.0f;   // seconds until the Mana Vial can cast again
     float m_vigorTimer = 0.0f;     // seconds of Elixir of Vigor buff remaining
+
+    // The reason for the last refusal, fading over kDenySeconds. Transient by
+    // nature -- never saved, and it decays on real frame time so it still
+    // fades while the sim is paused behind a panel.
+    std::string m_denyText;
+    float       m_denyTimer = 0.0f;
 };

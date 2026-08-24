@@ -1,0 +1,621 @@
+#include "game/ContentValidate.h"
+
+#include "VoxelGameInternal.h" // kMaxTreeSize: the tree shapes this build has
+#include "game/AlchemyCircle.h"
+#include "game/Atlas.h"
+#include "game/Block.h"
+#include "game/BlockShape.h"
+#include "game/ContentRegistry.h"
+#include "game/Inventory.h"
+#include "game/Item.h"
+#include "game/Machine.h"
+#include "game/Recipes.h"
+#include "game/World.h"
+
+#include <array>
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+// Everything here used to live inside runSelfTest() in main.cpp, in the same
+// order, saying the same things. What changed is only who may ask: a validator
+// that returns text can be run against content that arrived at RUNTIME, which
+// an exit code cannot.
+
+namespace {
+
+    std::string name(ItemId id) { return itemName(id); }
+
+    // "recipe 'press/plate'" / "circle 'circle/wrench'" -- every diagnostic
+    // names the row it is about, since that is what the author edits.
+    std::string key(const MachineRecipe& r) { return "recipe '" + std::string(r.key) + "'"; }
+    std::string key(const CircleRecipe& r)  { return "circle '" + std::string(r.key) + "'"; }
+
+    // ---- Keys are the identity, so they must be unique and non-empty -------
+    // Shared by the recipe tables and the block/item registries, because it is
+    // the same rule for the same reason: a key IS what a save stores, so a
+    // duplicate makes two rows indistinguishable on load and an empty one makes
+    // the row unsaveable. Nothing else in the build catches either.
+    void checkKeys(const std::vector<std::string>& keys, const char* table,
+                   std::vector<std::string>& out) {
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            if (keys[i].empty()) {
+                out.push_back(std::string("a ") + table + " has an empty key");
+                continue;
+            }
+            for (std::size_t j = i + 1; j < keys.size(); ++j) {
+                if (keys[i] == keys[j]) {
+                    out.push_back(std::string("duplicate ") + table + " key '" + keys[i] + "'");
+                }
+            }
+        }
+    }
+
+    void checkRecipeKeys(std::vector<std::string>& out) {
+        std::vector<std::string> hand, mach, circ;
+        for (const Recipe& r : handcraftRecipes()) hand.push_back(r.key);
+        for (const MachineRecipe& r : machineRecipes()) mach.push_back(r.key);
+        for (const CircleRecipe& r : circleRecipes()) circ.push_back(r.key);
+        checkKeys(hand, "hand-craft recipe", out);
+        checkKeys(mach, "machine recipe", out);
+        checkKeys(circ, "circle recipe", out);
+
+        // A machine recipe must name a machine that actually RUNS a list.
+        // recipesForMachine() resolves a manual twin through its recipeGroup,
+        // so a row addressed to the twin (a natural mistake to write) would be
+        // returned by nothing at all -- a dead row rather than an error.
+        for (const MachineRecipe& r : machineRecipes()) {
+            if (!isMachine(r.machine)) {
+                out.push_back(key(r) + " names " + blockName(r.machine) +
+                              ", which is not a machine");
+            } else if (recipeGroupFor(r.machine) != r.machine) {
+                out.push_back(key(r) + " names " + blockName(r.machine) +
+                              ", which runs " + blockName(recipeGroupFor(r.machine)) +
+                              "'s recipes -- address it to that machine instead");
+            }
+        }
+
+        // Round-trip: a key resolves back to the row it names, for every row of
+        // every machine -- including the manual twins, which reach their
+        // powered counterpart's list through MachineTraits::recipeGroup.
+        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
+            const BlockId type = static_cast<BlockId>(b);
+            if (!isMachine(type)) continue;
+            const auto rows = recipesForMachine(type);
+            for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
+                if (recipeIndexForKey(type, recipeKeyFor(type, i)) != i) {
+                    out.push_back(std::string("recipe key '") + recipeKeyFor(type, i) +
+                                  "' does not resolve back to its own row on " +
+                                  blockName(type));
+                }
+            }
+            // A key that no longer names anything lands on AUTO, never on
+            // whatever row happens to sit at some index today. This is the
+            // whole promise that lets the tables be edited freely.
+            if (recipeIndexForKey(type, "no/such/recipe") != -1 ||
+                recipeIndexForKey(type, "") != -1) {
+                out.push_back(std::string("an unknown recipe key does not resolve to AUTO on ") +
+                              blockName(type));
+            }
+        }
+        for (int i = 0; i < static_cast<int>(circleRecipes().size()); ++i) {
+            if (circleIndexForKey(circleKeyFor(i)) != i) {
+                out.push_back(std::string("circle key '") + circleKeyFor(i) +
+                              "' does not resolve back to its own row");
+            }
+        }
+        if (circleIndexForKey("no/such/recipe") != -1) {
+            out.push_back("an unknown circle key does not resolve to AUTO");
+        }
+
+        // A manual twin must run EXACTLY its powered counterpart's rows, or the
+        // two tiers would drift and a lock would not survive an upgrade.
+        for (const MachineTraits& traits : machineTraitRows()) {
+            if (traits.recipeGroup == BlockId::Air) continue;
+            const auto mine = recipesForMachine(traits.block);
+            const auto theirs = recipesForMachine(traits.recipeGroup);
+            bool same = mine.size() == theirs.size();
+            for (std::size_t i = 0; same && i < mine.size(); ++i) same = mine[i] == theirs[i];
+            if (!same) {
+                out.push_back(std::string(blockName(traits.block)) + " does not run exactly " +
+                              blockName(traits.recipeGroup) + "'s recipes");
+            }
+        }
+    }
+
+    // ---- The registries themselves ----------------------------------------
+    // Every rule here is a static_assert in Block.cpp / Item.cpp / Machine.h
+    // as well, guarding the COMPILED rows. These are the same rules asked of
+    // the whole runtime table, which is where a pack's rows are -- and the
+    // reason they are worth asking twice is that the consequences are not
+    // "wrong behaviour" but memory: a block whose `solid` disagrees with its
+    // shape makes the collision code trust a box array that isn't there, and a
+    // tile index past the sheet is an out-of-bounds write in the fallback
+    // atlas generator.
+    void checkRegistries(std::vector<std::string>& out) {
+        constexpr std::size_t kTiles = static_cast<std::size_t>(Atlas::Rows * Atlas::Cols);
+
+        // The sentinel has to stay out of reach. A registry this large is
+        // absurd today, and would silently make "no such content" name a row.
+        if (blockCount() >= static_cast<std::size_t>(content::kNoBlock)) {
+            out.push_back("there are too many blocks for the 'no such block' sentinel");
+        }
+        if (itemCount() >= static_cast<std::size_t>(content::kNoItem)) {
+            out.push_back("there are too many items for the 'no such item' sentinel");
+        }
+
+        // Keys are the identity: a duplicate aliases two rows everywhere at
+        // once -- a save's id table maps both onto one, and two packs claiming
+        // the same key overwrite each other.
+        std::vector<std::string> keys;
+        for (const BlockInfo& b : blockRows()) keys.push_back(b.key ? b.key : "");
+        checkKeys(keys, "block", out);
+        keys.clear();
+        for (const ItemInfo& i : itemRows()) keys.push_back(i.key ? i.key : "");
+        checkKeys(keys, "item", out);
+
+        for (std::size_t i = 0; i < blockRows().size(); ++i) {
+            const BlockInfo& b = blockRows()[i];
+            const std::string named = std::string("block '") +
+                                      (b.key ? b.key : "?") + "' ";
+            if (static_cast<std::size_t>(b.id) != i) {
+                out.push_back(named + "is not at its own ordinal");
+            }
+            // fullCube decides what the mesher may HIDE behind this block, so a
+            // non-solid one would occlude a face you can walk and shoot through.
+            if (b.fullCube && !b.solid) out.push_back(named + "is a full cube but not solid");
+            if (static_cast<std::size_t>(b.shape) >= static_cast<std::size_t>(ShapeId::Count)) {
+                out.push_back(named + "names a shape this build does not have");
+                continue; // the checks below would read past kBlockShapes
+            }
+            // Solidity and geometry must agree, or physics and rendering
+            // disagree about where the block is: this is what lets Collision.cpp
+            // trust blockBoxes() alone.
+            if (b.solid != !blockShape(b.shape).boxes.empty()) {
+                out.push_back(named + "is solid exactly when its shape has collision "
+                                      "boxes, and these disagree");
+            }
+            const ShapeAabb& s = blockShape(b.shape).bounds;
+            if (b.fullCube && (s.lo != glm::vec3(0.0f) || s.hi != glm::vec3(1.0f))) {
+                out.push_back(named + "is a full cube but its shape does not fill the cell");
+            }
+            // The fallback atlas generator writes a 16x16 swatch at
+            // tile % Cols, tile / Cols -- with no bounds check, because until
+            // now every tile came from a table a human wrote.
+            for (const int tile : {b.tiles.top, b.tiles.side, b.tiles.bottom}) {
+                if (tile < 0 || static_cast<std::size_t>(tile) >= kTiles) {
+                    out.push_back(named + "uses atlas tile " + std::to_string(tile) +
+                                  ", which is outside the " + std::to_string(kTiles) +
+                                  "-tile sheet");
+                }
+            }
+            if (b.machine != hasMachineTraits(b.id)) {
+                out.push_back(named + (b.machine ? "is a machine with no traits row"
+                                                 : "is not a machine but has a traits row"));
+            }
+            if (b.source && b.spawnsNode == BlockId::Air) {
+                out.push_back(named + "is a source that grows nothing");
+            }
+            // treeCells() CLAMPS an unknown size rather than indexing past its
+            // shapes, so a bad value is not a crash -- it is a sapling that
+            // silently grows the wrong tree, which is worse. Say so instead.
+            if (b.treeSize < 0 || b.treeSize > vg::kMaxTreeSize) {
+                out.push_back(named + "grows tree size " + std::to_string(b.treeSize) +
+                              ", and this build only has 1.." +
+                              std::to_string(vg::kMaxTreeSize));
+            }
+            // A sapling that cannot be planted anywhere is a sapling that never
+            // grows: the timer is registered on PLACE, and place refuses a
+            // plant whose needsSoil no ground offers.
+            if (b.treeSize > 0 && b.needsSoil == SoilKind::None) {
+                out.push_back(named + "grows a tree but needs no soil, so nothing "
+                                      "roots it");
+            }
+        }
+
+        for (std::size_t i = 0; i < itemRows().size(); ++i) {
+            const ItemInfo& it = itemRows()[i];
+            const std::string named = std::string("item '") +
+                                      (it.key ? it.key : "?") + "' ";
+            if (static_cast<std::size_t>(it.id) != i) {
+                out.push_back(named + "is not at its own ordinal");
+            }
+            if (it.atlasTile >= 0 && static_cast<std::size_t>(it.atlasTile) >= kTiles) {
+                out.push_back(named + "uses atlas tile " + std::to_string(it.atlasTile) +
+                              ", which is outside the " + std::to_string(kTiles) +
+                              "-tile sheet");
+            }
+            // A placeable that places nothing is a click that does nothing, and
+            // iconTile() would borrow Air's tile for its icon.
+            if (it.placeable && it.placesBlock == BlockId::Air) {
+                out.push_back(named + "is placeable but places nothing");
+            }
+        }
+
+        // One row per machine, and a manual twin must delegate exactly one hop
+        // to a machine that runs its own list -- recipeGroupFor() is a plain
+        // lookup and two twins pointing at each other would spin.
+        for (std::size_t i = 0; i < machineTraitRows().size(); ++i) {
+            const MachineTraits& t = machineTraitRows()[i];
+            const std::string named =
+                std::string("machine '") + blockName(t.block) + "' ";
+            for (std::size_t j = i + 1; j < machineTraitRows().size(); ++j) {
+                if (machineTraitRows()[j].block == t.block) {
+                    out.push_back(named + "has more than one traits row");
+                }
+            }
+            // Cranked implies delegating, but NOT the reverse: the Bloomery
+            // borrows the Furnace's recipes and is driven by its fire rather
+            // than by an arm. A handle with no recipe list, though, is a handle
+            // attached to nothing.
+            if (t.handCranked && t.recipeGroup == BlockId::Air) {
+                out.push_back(named + "is hand-cranked but has no recipe group "
+                                      "to crank (a handle needs a job)");
+            }
+            if (t.recipeGroup == BlockId::Air) continue;
+            if (!hasMachineTraits(t.recipeGroup)) {
+                out.push_back(named + "delegates its recipes to something that is "
+                                      "not a machine");
+            } else if (machineTraits(t.recipeGroup).recipeGroup != BlockId::Air) {
+                out.push_back(named + "delegates to a machine that itself delegates");
+            }
+        }
+
+        for (const FuelInfo& f : fuelRows()) {
+            if (f.item == ItemId::None) out.push_back("a fuel row names no item");
+            else if (f.seconds <= 0.0f) {
+                out.push_back(std::string("fuel '") + itemName(f.item) +
+                              "' burns for no time at all");
+            }
+        }
+    }
+
+    // ---- Circle patterns are unambiguous ----------------------------------
+    // Ring slots match on "holds AT LEAST this many", so one pattern can be a
+    // superset of another and silently shadow it -- a recipe you can lay
+    // perfectly and never get. Order is the fix, and this is what checks it:
+    // lay each pattern exactly and confirm the matcher returns THAT recipe.
+    void checkCircleShadowing(std::vector<std::string>& out) {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        const glm::ivec3 core{80, 30, 80};
+        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
+        cm[core].type = BlockId::RuneCore;
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+            const glm::ivec3 p = AlchemyCircle::slotPos(core, sl);
+            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
+            cm[p].type = BlockId::Pedestal;
+        }
+
+        const auto& all = circleRecipes();
+        for (std::size_t k = 0; k < all.size(); ++k) {
+            const CircleRecipe& want = all[k];
+            if (want.ring.size() != 4 && want.ring.size() != 8) {
+                out.push_back(key(want) + " has " + std::to_string(want.ring.size()) +
+                              " ring slots; a pattern must have 4 (the cardinals) or 8");
+                continue;
+            }
+            for (int sl = 0; sl < AlchemyCircle::kRingSlots; ++sl) {
+                cm[AlchemyCircle::slotPos(core, sl)].input = Inventory{};
+            }
+            // A 4-slot pattern lists the CARDINALS (the even ring slots).
+            const int stride = want.ring.size() == 4 ? 2 : 1;
+            for (std::size_t ringIdx = 0; ringIdx < want.ring.size(); ++ringIdx) {
+                if (want.ring[ringIdx].id == ItemId::None) continue;
+                cm[AlchemyCircle::slotPos(core, static_cast<int>(ringIdx) * stride)]
+                    .input.add(want.ring[ringIdx].id, want.ring[ringIdx].count);
+            }
+            Inventory centre;
+            if (want.center.id != ItemId::None) centre.add(want.center.id, want.center.count);
+
+            const auto ring = AlchemyCircle::ringContents(cw, cm, core);
+            const auto got = AlchemyCircle::findMatch(ring, centre,
+                                                      AlchemyCircle::Tier::Greater, true);
+            if (!got || got.recipe != &want) {
+                out.push_back(key(want) + " is shadowed by '" +
+                              (got ? std::string(got.recipe->key) : std::string("(nothing)")) +
+                              "' -- list the more demanding pattern first");
+            }
+        }
+    }
+
+    // ---- The shared closure ----------------------------------------------
+    // Walk every recipe surface, gaining outputs once their inputs are known,
+    // until nothing more can be made. Both economy checks below run THIS, and
+    // differ only in what they seed it with -- which is the whole distinction
+    // between "can the tech tree open" and "does it stay open".
+    void closeOverRecipes(std::vector<bool>& have) {
+        auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
+        auto gain = [&](ItemId id) {
+            if (id == ItemId::None || known(id)) return false;
+            have[static_cast<std::size_t>(id)] = true;
+            return true;
+        };
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (const Recipe& r : handcraftRecipes()) {
+                bool ok = true;
+                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
+                if (ok) changed |= gain(r.output.id);
+            }
+            for (const CircleRecipe& r : circleRecipes()) {
+                bool ok = known(ItemId::RuneCoreItem) && known(ItemId::PedestalItem) &&
+                          (r.center.id == ItemId::None || known(r.center.id));
+                for (const ItemStack& in : r.ring) {
+                    ok = ok && (in.id == ItemId::None || known(in.id));
+                }
+                if (ok) changed |= gain(r.output.id);
+            }
+            for (const MachineRecipe& r : machineRecipes()) {
+                // ANY machine that runs this list will do. The manual twins are
+                // the whole point: a Bloomery smelts the Furnace's recipes,
+                // which is what breaks the circularity of "ingots need a
+                // Furnace, a Furnace needs ingots".
+                bool ok = false;
+                for (const MachineTraits& mt : machineTraitRows()) {
+                    if (recipeGroupFor(mt.block) != r.machine) continue;
+                    if (known(blockDrop(mt.block).id)) { ok = true; break; }
+                }
+                for (const ItemStack& in : r.inputs) ok = ok && known(in.id);
+                if (!ok) continue;
+                for (const RecipeOutput& o : r.outputs) changed |= gain(o.stack.id);
+            }
+        }
+    }
+
+    // ---- Tech-tree reachability (the deadlock check) ----------------------
+    // This is what replaces "the recipe tables are append-only". They can now
+    // be edited freely, so the guardrail has to be about MEANING rather than
+    // ordering: starting from nothing but what the world hands you, the closure
+    // over all three recipe surfaces must reach every machine and every recipe
+    // input. Edit a recipe into a deadlock and this says so.
+    void checkReachability(std::vector<std::string>& out) {
+        std::vector<bool> have(itemCount(), false);
+        auto known = [&](ItemId id) { return have[static_cast<std::size_t>(id)]; };
+        auto gain = [&](ItemId id) {
+            if (id == ItemId::None || known(id)) return false;
+            have[static_cast<std::size_t>(id)] = true;
+            return true;
+        };
+
+        // Seed: what the ISLAND is made of. A block whose drop counts here has
+        // to be one the world puts there, so two families are excluded, both
+        // for the same reason -- seeding them would let a thing pay for itself:
+        //
+        //   - machines and sources, which you PLACE (this was the original
+        //     rule, and the two below are the same rule stated more generally);
+        //   - anything an ITEM places, which is that item spelled differently.
+        //     A Conduit dropping a Conduit is not the world handing you one.
+        //   - anything PLANTED (needsSoil), because a crop stage dropping its
+        //     seed is not a seed faucet either.
+        //
+        // The two exclusions past the original matter: without them the closure
+        // believed Wire, Conduit, Scaffold and Herb Seed were free -- which
+        // short-circuited the whole Copper Plate line and all of farming -- and
+        // that is what a deadlock check is supposed to catch, not create.
+        for (int b = 1; b < static_cast<int>(blockCount()); ++b) {
+            const BlockId id = static_cast<BlockId>(b);
+            if (isMachine(id) || isSource(id)) continue;
+            if (blockInfo(id).needsSoil != SoilKind::None) continue;
+            bool placed = false;
+            for (const ItemInfo& it : itemRows()) {
+                if (it.placesBlock == id) { placed = true; break; }
+            }
+            if (placed) continue;
+            gain(blockDrop(id).id);
+        }
+        // What the rules above correctly drop but the world genuinely gives:
+        // terrain you dig, and the three things bare hands strip off it. None
+        // of these can be inferred from a `drop` row -- Grass and Dirt already
+        // spend theirs on GrassItem/DirtItem and BlockDrop is a single stack,
+        // so fiber, pebbles and sticks are spawned BESIDE the drop in
+        // VoxelGamePlayer's break path. Code, not data, so the closure is told.
+        gain(ItemId::GrassItem);  // dug and replaced; terrain is conserved
+        gain(ItemId::DirtItem);
+        gain(ItemId::Stick);      // chopped leaves
+        gain(ItemId::SaplingItem); // ditto, and the pity counter guarantees them
+        gain(ItemId::Pebble);     // topsoil
+        gain(ItemId::PlantFiber); // turf, and the whole tool ladder hangs off it
+        gain(ItemId::SpringWater); // the Bucket in the rain, and the barrel
+        // Resonance is seeded EXPLICITLY even though the loop above happens to
+        // reach it (a Resonant Node is neither placed nor planted): a Resonant
+        // Source is made by WorldEdit::fuseSources, a VERB no recipe table
+        // mentions, so its reachability must not rest on an exclusion rule
+        // accidentally not matching. Same shape as the boss drops below --
+        // gated on an action, which is the design rather than a deadlock.
+        gain(ItemId::Resonance);
+        // Boss drops enter the economy through COMBAT rather than a recipe, so
+        // the closure has to be told about them (kSpecies is private to
+        // CreatureSystem.cpp). Anything gated on these is gated on a fight,
+        // which is the design, not a deadlock.
+        gain(ItemId::VoidCatalyst);
+        gain(ItemId::StormCore);
+
+        // Fixpoint over the three surfaces. A machine recipe is only usable
+        // once the machine ITSELF is reachable, which is the part that makes
+        // this a real bootstrap test rather than a shopping list.
+        closeOverRecipes(have);
+
+        // Every machine must be buildable, and every recipe input obtainable.
+        for (const MachineTraits& traits : machineTraitRows()) {
+            if (known(blockDrop(traits.block).id)) continue;
+            out.push_back(std::string(blockName(traits.block)) + " can never be built");
+        }
+        for (const MachineRecipe& r : machineRecipes()) {
+            for (const ItemStack& in : r.inputs) {
+                if (known(in.id)) continue;
+                out.push_back(key(r) + " needs unreachable " + name(in.id));
+            }
+        }
+        for (const CircleRecipe& r : circleRecipes()) {
+            if (r.center.id != ItemId::None && !known(r.center.id)) {
+                out.push_back(key(r) + " needs unreachable " + name(r.center.id));
+            }
+            for (const ItemStack& in : r.ring) {
+                if (in.id == ItemId::None || known(in.id)) continue;
+                out.push_back(key(r) + " needs unreachable " + name(in.id));
+            }
+        }
+
+        // The bootstrap itself: the Alchemy Circle is where nearly every recipe
+        // now lives, and its two parts cost Copper Ingots, which cost a fire.
+        // So SOME machine that needs neither power nor a circle must be
+        // hand-craftable, or a fresh world is stuck at sticks and pebbles.
+        if (!known(ItemId::CopperIngot)) {
+            out.push_back("nothing reachable smelts a Copper Ingot -- a fresh world "
+                          "is stuck at sticks and pebbles");
+        }
+        if (!known(ItemId::RuneCoreItem) || !known(ItemId::PedestalItem)) {
+            out.push_back("the Alchemy Circle's own parts are unreachable, so every "
+                          "recipe on it is too");
+        }
+        if (!known(ItemId::MachineFrame)) {
+            out.push_back("Machine Frame is unreachable, so no machine past the "
+                          "bootstrap pair can be built");
+        }
+    }
+
+    // Balance checks report only on `core:` rows -- see checkRenewability.
+    bool isCorePart(const char* k) {
+        return std::string_view(k).substr(0, 5) == "core:";
+    }
+
+    // ---- Balance checks: is the economy a closed loop? --------------------
+    // The two below are BALANCE claims about the shipped game, not coherence
+    // claims about a content set, so both report only on `core:` rows. A mod is
+    // allowed to add a trophy with no sink or a boss drop that never regrows;
+    // the game this repo ships is not, and these are what keep it honest.
+    //
+    // They also run through content::validate(), which the PACK LOADER calls --
+    // so scoping is not decoration. Without it, installing any pack that adds
+    // an ornament would refuse the pack, and --selftest's own "a pack may add
+    // content" case (main.cpp) would fail.
+    // ---- Renewability: can you still get one on your thousandth hour? -----
+    // Reachability asks whether the tech tree OPENS. This asks whether it stays
+    // open: seeded from nothing but the faucets the SIMULATION refills, every
+    // item must still be producible. An item that only reachability can find is
+    // one the island happened to generate a finite pile of.
+    //
+    // What it is NOT: proof that any individual recipe is net-positive. It is a
+    // ratchet, not a discovery tool -- it should come back clean today and only
+    // ever speak up when an edit takes a faucet away.
+    void checkRenewability(std::vector<std::string>& out) {
+        std::vector<bool> have(itemCount(), false);
+        auto gain = [&](ItemId id) {
+            if (id != ItemId::None) have[static_cast<std::size_t>(id)] = true;
+        };
+
+        // GROWN. A source respawns its node forever (updateSources), and a
+        // source block itself survives being mined -- it drops its own item, so
+        // relocating one never destroys it. Both halves are needed: nothing
+        // crafts a Resonant Source, so without the second the hybrid line reads
+        // as finite when it is the opposite.
+        for (const BlockInfo& row : blockRows()) {
+            if (!row.source) continue;
+            gain(blockDrop(row.spawnsNode).id);
+            gain(blockDrop(row.id).id);
+        }
+
+        // GATHERED. Forestry is self-seeding (a tree returns ~8 saplings for
+        // the one that made it), grass spreads back over bare dirt on its own
+        // (updateGrassSpread), and terrain is CONSERVED -- digging a block and
+        // putting it back neither creates nor destroys it. None of these can be
+        // derived from a registry row; they are sim behaviour.
+        gain(ItemId::Wood);        // logs, from a tree a sapling grew
+        gain(ItemId::Stick);
+        gain(ItemId::SaplingItem);
+        gain(ItemId::PlantFiber);  // turf, which grass spread renews
+        gain(ItemId::Pebble);
+        gain(ItemId::GrassItem);
+        gain(ItemId::DirtItem);
+        // WEATHER, and the two the fights hand out. A boss is repeatable, so
+        // its drop is renewable in exactly the sense this check means.
+        gain(ItemId::SpringWater);
+        gain(ItemId::VoidCatalyst);
+        gain(ItemId::StormCore);
+
+        // Deliberately NOT seeded, and the interesting part of this check:
+        // Stone and Sand. The island generates both, so reachability never had
+        // to ask where the next one comes from -- and every producer of stone
+        // costs stone (compactor/stone needs a Compactor or Tamper, circle
+        // patterns cost Stone, hand/bloomery costs Stone x8). The one thing
+        // that breaks that cycle is hand/pebble-stone off sifted topsoil.
+        closeOverRecipes(have);
+
+        for (const ItemInfo& row : itemRows()) {
+            if (row.id == ItemId::None || !isCorePart(row.key)) continue;
+            if (have[static_cast<std::size_t>(row.id)]) continue;
+            // Worded to cover both shapes this catches: an item with no
+            // producer at all, and one whose every producer spends something
+            // finite. "No chain reaches it" is true of both.
+            out.push_back(std::string(row.name) + " is not renewable -- no chain of "
+                          "recipes reaches it from what the world regrows");
+        }
+    }
+
+    // ---- Orphans: does anything pile up with nowhere to go? ---------------
+    // The mirror of reachability. That one proves you can GET everything; this
+    // proves everything you get is for something. Four allowances, all derived
+    // rather than flagged on a registry row, so a new item earns its exemption
+    // by being what it claims to be.
+    void checkOrphans(std::vector<std::string>& out) {
+        std::vector<bool> consumed(itemCount(), false);
+        auto eat = [&](ItemId id) {
+            if (id != ItemId::None) consumed[static_cast<std::size_t>(id)] = true;
+        };
+        for (const Recipe& r : handcraftRecipes()) {
+            for (const ItemStack& in : r.inputs) eat(in.id);
+        }
+        for (const MachineRecipe& r : machineRecipes()) {
+            for (const ItemStack& in : r.inputs) eat(in.id);
+        }
+        for (const CircleRecipe& r : circleRecipes()) {
+            eat(r.center.id);
+            for (const ItemStack& in : r.ring) eat(in.id);
+        }
+
+        // Spent by a VERB rather than by a recipe. ContentValidate cannot see
+        // VoxelGamePlayer's right-click table, so the four items it consumes
+        // are named here -- the same reason the boss drops are named in
+        // checkReachability. A wrench is not eaten but it GATES the two conduit
+        // verbs, which is a job; without it there is no logistics tier at all.
+        constexpr ItemId kVerbSinks[] = {ItemId::Wrench, ItemId::TeleportKey,
+                                         ItemId::StormKey, ItemId::FusionCatalyst};
+        for (ItemId id : kVerbSinks) eat(id);
+
+        for (const ItemInfo& row : itemRows()) {
+            if (row.id == ItemId::None || !isCorePart(row.key)) continue;
+            if (consumed[static_cast<std::size_t>(row.id)]) continue;
+            // Placing IS a sink -- it is what a Conduit or a Storage Crate is
+            // FOR, and it is what gives Grass a job without a recipe (you lay
+            // it back down to farm fiber off it).
+            if (row.placesBlock != BlockId::Air) continue;
+            // Gear is terminal by nature: you wear it or you swing it.
+            if (row.tool != ToolType::None || row.weaponDamage > 0.0f ||
+                row.armorSlot != ArmorSlot::None) {
+                continue;
+            }
+            if (fuelSeconds(row.id) > 0.0f) continue; // burning it is a use
+            out.push_back(std::string(row.name) + " has no sink -- nothing consumes "
+                          "it, it places nothing, it is not gear and it does not burn");
+        }
+    }
+
+} // namespace
+
+namespace content {
+
+    std::vector<std::string> validate() {
+        std::vector<std::string> out;
+        checkRegistries(out);
+        checkRecipeKeys(out);
+        checkCircleShadowing(out);
+        checkReachability(out);
+        checkRenewability(out);
+        checkOrphans(out);
+        return out;
+    }
+
+} // namespace content

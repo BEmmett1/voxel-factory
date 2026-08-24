@@ -1,7 +1,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 // The set of block types. Air is the empty block.
 //  - Terrain:    Grass / Dirt / Stone
@@ -111,6 +113,37 @@ enum class BlockId : std::uint16_t {
     Still,          // Alembic
     HandDistiller,  // Distiller
     HandTransmuter, // Transmuter
+    // Bulk storage. The answer to a machine whose output has filled up, and
+    // -- with belt filters -- the sorter, since every belt pointing away from
+    // one drains it independently.
+    StorageCrate,
+    // Farming: worked ground a crop can be planted on. Laying a field out is
+    // a deliberate build step (a Copper Hoe RMB'd at Grass/Dirt), not a side
+    // effect of walking around.
+    TilledSoil,
+    // The crop's four growth stages. Each visible stage costs a row because the
+    // mesher picks a shape from the BlockId alone and Chunk is a flat BlockId
+    // array with no per-cell metadata -- the timer can live in a side registry,
+    // the LOOK cannot. Stage 3 is ripe; that is the only one the Harvester takes
+    // and the only one that yields Herb.
+    HerbCrop0,
+    HerbCrop1,
+    HerbCrop2,
+    HerbCrop3,
+    // Reaps ripe crops in reach and replants the cell, so a field runs itself.
+    Harvester,
+    // Spends Rain Water to keep the crops around it growing at the rain rate.
+    Irrigator,
+    // Tilled soil fed compost. One rung above TilledSoil on the SoilKind
+    // ladder, so it grows everything tilled ground grows -- and, because the
+    // check is `provides >= needsSoil`, a sapling too -- only faster. This is
+    // where the tree's surplus ends up: saplings and sticks compost into the
+    // ground that makes the field quicker.
+    RichSoil,
+    // A sapling grafted from two, which grows the larger tree. A separate BLOCK
+    // rather than a flag because a chunk is a flat BlockId array with no
+    // per-cell metadata -- the same reason the crop stages each cost a row.
+    SaplingGrafted,
     Count
 };
 
@@ -122,6 +155,25 @@ enum class ToolType : std::uint8_t;
 // Defined in BlockShape.h (which includes THIS header, so it can only be
 // forward-declared); same fixed-underlying-type trick as ToolType.
 enum class ShapeId : std::uint8_t;
+
+// What a block offers underfoot, and what a plant demands of the cell below it.
+// ORDERED, and the check is one comparison (`provides >= needsSoil`), so Tilled
+// Soil satisfies a sapling for free without anything having to say so: tilled
+// ground is still ground. This replaced a hardcoded
+// `if (id == BlockId::Sapling)` in WorldEdit, which crops would have had to
+// grow a second branch of -- and which a content pack could never have reached.
+enum class SoilKind : std::uint8_t {
+    None = 0, // not plantable at all
+    Soil,     // Grass or Dirt: a sapling takes root here
+    Tilled,   // worked ground: what crops need, and laying it out is a build step
+    Rich,     // tilled ground fed compost: everything Tilled does, but faster
+};
+
+// Spellings for the content pack format -- see kToolNames in Item.h. Index
+// matches the enum.
+inline constexpr const char* kSoilNames[] = {"none", "soil", "tilled", "rich"};
+static_assert(std::size(kSoilNames) == 4,
+              "kSoilNames needs one name per SoilKind");
 
 // What mining a block yields ({None, 0} = nothing).
 struct BlockDrop {
@@ -173,6 +225,20 @@ struct BlockInfo {
     float       hardness = 0.0f;
     ToolType    tool = ToolType{};  // ToolType::None (0)
     int         toolTier = 0;
+    // Farming's two halves of the same question. `provides` is what standing on
+    // this block offers a plant; `needsSoil` is what this block demands of the
+    // cell beneath it when placed. Both default to None, so an ordinary block
+    // neither grows things nor cares what it sits on.
+    SoilKind    provides = SoilKind::None;
+    SoilKind    needsSoil = SoilKind::None;
+    // Which tree this block grows into when its timer ripens; 0 = not a
+    // sapling. Data rather than `id == BlockId::Sapling` for the same reason
+    // SoilKind exists: that hardcode was in WorldEdit once, a second sapling
+    // would have had to grow a branch of it, and a content pack could never
+    // have reached it. The BLOCK carrying the kind is also what lets the
+    // sapling registry stay a plain pos -> float, so the save format is
+    // untouched by a second tree.
+    int         treeSize = 0;
     // Which sub-cube geometry the block occupies (BlockShape.h). Default is
     // ShapeId::FullCube — the implicit unit cube every block was before shapes
     // existed. Presentation only: never saved, so ShapeId may be reordered.
@@ -185,6 +251,41 @@ struct BlockInfo {
 // Static properties for a block type.
 const BlockInfo& blockInfo(BlockId id);
 
+// ---- The registry is a RUNTIME table ---------------------------------------
+// kBlocks in Block.cpp is the SEED, not the registry: it is copied into a
+// vector at first use, and content loaded from a pack is appended past it. So
+// `BlockId::Count` no longer means "how many blocks there are" -- it means how
+// many were COMPILED IN, which is a different and much narrower claim.
+//
+// Anything iterating all content wants blockCount(); anything sizing an array
+// by content wants it too. `BlockId::Count` survives as the boundary between
+// compiled and loaded content, and as the "no such block" sentinel that
+// content::blockFromKey() returns.
+//
+// An ordinal past BlockId::Count is still a perfectly good BlockId: the enum
+// has a fixed underlying type, so every value in its range is valid, which is
+// what lets a loaded block ride every path a compiled one does -- including
+// the raw bytes of a chunk and a save's id table.
+std::size_t blockCount();
+
+// Every row, compiled and loaded. Iterating this is the same as walking
+// 0..blockCount(), and is what the validators and the content dump use.
+const std::vector<BlockInfo>& blockRows();
+
+// Append a row loaded from a content pack, and return its new ordinal. The
+// caller owns proving the row is coherent (content::validate()); this only
+// promises the id it hands back is the row's position.
+//
+// STARTUP ONLY, and for the same reason the recipe tables are: existing
+// BlockIds must not move, and nothing may already be holding a BlockInfo& --
+// growing the vector invalidates every one of them.
+BlockId addBlock(const BlockInfo& row);
+
+// Put the whole table back. A pack has to be APPLIED before anyone can ask
+// whether the content set it produces is coherent, so a refusal needs a way
+// back -- see content::applyPacks().
+void restoreBlocks(std::vector<BlockInfo> rows);
+
 inline const char* blockName(BlockId id)   { return blockInfo(id).name; }
 inline bool isSolid(BlockId id)            { return blockInfo(id).solid; }
 inline bool isFullCube(BlockId id)         { return blockInfo(id).fullCube; }
@@ -196,3 +297,10 @@ inline BlockId sourceSpawnsNode(BlockId id){ return blockInfo(id).spawnsNode; }
 inline float blockHardness(BlockId id)     { return blockInfo(id).hardness; }
 inline ToolType blockTool(BlockId id)      { return blockInfo(id).tool; }
 inline int  blockToolTier(BlockId id)      { return blockInfo(id).toolTier; }
+
+// Can `id` be placed on top of `under`? One ordered comparison: a block that
+// needs nothing goes anywhere, a sapling needs Soil or better, a crop needs
+// Tilled exactly.
+inline bool soilAccepts(BlockId under, BlockId id) {
+    return blockInfo(under).provides >= blockInfo(id).needsSoil;
+}

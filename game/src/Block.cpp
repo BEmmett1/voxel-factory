@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <iterator>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -25,10 +27,12 @@ namespace {
         // (Every other row keeps the default ShapeId::FullCube.)
         {.id = B::Grass, .key = "core:grass",
          .name = "Grass", .color = {0.30f, 0.62f, 0.26f},
-         .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel},
+         .drop = {I::GrassItem, 1}, .tiles = {0, 1, 2}, .hardness = 0.75f, .tool = T::Shovel,
+         .provides = SoilKind::Soil},
         {.id = B::Dirt, .key = "core:dirt",
          .name = "Dirt", .color = {0.45f, 0.31f, 0.18f},
-         .drop = {I::DirtItem, 1}, .tiles = {2, 2, 2}, .hardness = 0.75f, .tool = T::Shovel},
+         .drop = {I::DirtItem, 1}, .tiles = {2, 2, 2}, .hardness = 0.75f, .tool = T::Shovel,
+         .provides = SoilKind::Soil},
         {.id = B::Stone, .key = "core:stone",
          .name = "Stone", .color = {0.50f, 0.50f, 0.53f},
          .drop = {I::Stone, 1}, .tiles = {3, 3, 3},
@@ -127,7 +131,8 @@ namespace {
         // wood (fuel AND structure).
         {.id = B::Sapling, .key = "core:sapling",
          .name = "Sapling", .color = {0.45f, 0.72f, 0.28f},
-         .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f},
+         .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f,
+         .needsSoil = SoilKind::Soil, .treeSize = 1},
         {.id = B::Log, .key = "core:log",
          .name = "Log", .color = {0.45f, 0.33f, 0.18f},
          .drop = {I::Wood, 2}, .tiles = {6, 7, 6},
@@ -260,6 +265,67 @@ namespace {
          .name = "Hand Transmuter", .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::HandTransmuterItem, 1}, .tiles = {160, 161, 161},
          .hardness = 0.5f},
+        // ---- Bulk storage -------------------------------------------------
+        {.id = B::StorageCrate, .key = "core:storage_crate",
+         .name = "Storage Crate", .color = {0.55f, 0.40f, 0.22f},
+         .machine = true, .drop = {I::StorageCrateItem, 1}, .tiles = {192, 193, 193},
+         .hardness = 0.5f}, // lid on top, slatted sides
+        // ---- Farming ------------------------------------------------------
+        // Worked ground. Drops Dirt, so tilling is not a way to duplicate soil,
+        // and it must SURVIVE a harvest -- the Harvester resets a cell to
+        // stage 0 and never untills, or an automated field would need
+        // re-tilling by hand forever. Softer than Dirt: it has been broken up.
+        {.id = B::TilledSoil, .key = "core:tilled_soil",
+         .name = "Tilled Soil", .color = {0.36f, 0.24f, 0.13f},
+         .drop = {I::DirtItem, 1}, .tiles = {9, 10, 2}, .hardness = 0.5f,
+         .tool = T::Shovel, .provides = SoilKind::Tilled},
+        // Crops: crossed planes, so they do not fill their cell (no occlusion,
+        // no keeping the rain off the field below). They stay SOLID, which is
+        // what lets you aim at one and break it -- walking through wheat is a
+        // later change that splits ray boxes from physics boxes, and today's
+        // Sapling is a whole solid cube, so a crop is already strictly better.
+        // Pull one early and you get the seed back; only the ripe stage is
+        // worth anything.
+        {.id = B::HerbCrop0, .key = "core:herb_crop_0",
+         .name = "Herb Seedling", .fullCube = false, .color = {0.42f, 0.66f, 0.30f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop0},
+        {.id = B::HerbCrop1, .key = "core:herb_crop_1",
+         .name = "Herb Sprout", .fullCube = false, .color = {0.42f, 0.68f, 0.30f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop1},
+        {.id = B::HerbCrop2, .key = "core:herb_crop_2",
+         .name = "Herb Plant", .fullCube = false, .color = {0.44f, 0.70f, 0.32f},
+         .drop = {I::HerbSeed, 1}, .tiles = {11, 11, 11}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop2},
+        {.id = B::HerbCrop3, .key = "core:herb_crop_3",
+         .name = "Ripe Herb", .fullCube = false, .color = {0.52f, 0.72f, 0.36f},
+         .drop = {I::Herb, 2}, .tiles = {12, 12, 12}, .hardness = 0.15f,
+         .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop3},
+        {.id = B::Harvester, .key = "core:harvester",
+         .name = "Harvester", .color = {0.62f, 0.58f, 0.30f},
+         .machine = true, .drop = {I::HarvesterItem, 1}, .tiles = {13, 14, 14},
+         .hardness = 0.5f},
+        {.id = B::Irrigator, .key = "core:irrigator",
+         .name = "Irrigator", .color = {0.42f, 0.58f, 0.72f},
+         .machine = true, .drop = {I::IrrigatorItem, 1}, .tiles = {15, 45, 45},
+         .hardness = 0.5f},
+        // Tilled soil fed compost. Drops Dirt like the tilled ground it came
+        // from, for the same reason: enriching must not be a way to duplicate
+        // soil either. It has no item of its own -- you make it in place with
+        // compost, the way you make Tilled Soil in place with the hoe.
+        {.id = B::RichSoil, .key = "core:rich_soil",
+         .name = "Rich Soil", .color = {0.30f, 0.21f, 0.13f},
+         .drop = {I::DirtItem, 1}, .tiles = {194, 195, 2}, .hardness = 0.5f,
+         .tool = T::Shovel, .provides = SoilKind::Rich},
+        // Two saplings bound together with compost. Grows the size-2 tree
+        // (5 logs, 74 leaves) in the same 45 seconds, which is what turns the
+        // sapling SURPLUS -- a tree returns ~8 for the one that made it -- into
+        // more wood per plot rather than more saplings you cannot place.
+        {.id = B::SaplingGrafted, .key = "core:sapling_grafted",
+         .name = "Grafted Sapling", .color = {0.38f, 0.66f, 0.24f},
+         .drop = {I::GraftedSaplingItem, 1}, .tiles = {196, 196, 196},
+         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),
@@ -328,16 +394,51 @@ namespace {
     static_assert([] {
         for (const BlockInfo& b : kBlocks) {
             bool hasTraits = false;
-            for (const MachineTraits& t : kMachineTraits) {
+            for (const MachineTraits& t : kMachineTraitSeed) {
                 if (t.block == b.id) hasTraits = true;
             }
             if (b.machine != hasTraits) return false;
         }
         return true;
-    }(), "kMachineTraits must have one row per machine block (and only machine blocks)");
+    }(), "kMachineTraitSeed must have one row per machine block (and only machine blocks)");
+
+    // The registry proper: seeded from kBlocks above, grown by content packs.
+    //
+    // Every static_assert in this file still guards kBlocks, because kBlocks is
+    // still a compile-time table -- moving the REGISTRY to runtime storage cost
+    // none of that. What a loaded row gets instead is content::validate(),
+    // which re-asks the same questions of the whole table.
+    //
+    // A function-local static rather than a namespace-scope one: this is read
+    // from other translation units' code, and a Meyers singleton has no
+    // initialization-order hazard. blockInfo() was already an out-of-line call,
+    // so the lookup costs what it always did.
+    std::vector<BlockInfo>& blockTable() {
+        static std::vector<BlockInfo> table(std::begin(kBlocks), std::end(kBlocks));
+        return table;
+    }
 
 } // namespace
 
 const BlockInfo& blockInfo(BlockId id) {
-    return kBlocks[static_cast<std::size_t>(id)];
+    return blockTable()[static_cast<std::size_t>(id)];
+}
+
+std::size_t blockCount() {
+    return blockTable().size();
+}
+
+const std::vector<BlockInfo>& blockRows() {
+    return blockTable();
+}
+
+void restoreBlocks(std::vector<BlockInfo> rows) {
+    blockTable() = std::move(rows);
+}
+
+BlockId addBlock(const BlockInfo& row) {
+    const auto id = static_cast<BlockId>(blockTable().size());
+    blockTable().push_back(row);
+    blockTable().back().id = id; // the row's id IS its position, always
+    return id;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/Block.h"
+#include "game/CropSystem.h"
 #include "game/HashIVec3.h"
 #include "game/Item.h"
 #include "game/MachineSystem.h"
@@ -25,6 +26,7 @@ namespace WorldEdit {
         MachineSystem::BeltMap&    belts;
         std::unordered_map<glm::ivec3, float, IVec3Hash>& sources;
         std::unordered_map<glm::ivec3, float, IVec3Hash>& saplings;
+        CropSystem::CropMap& crops;
     };
 
     struct BreakResult {
@@ -45,16 +47,20 @@ namespace WorldEdit {
         bool powerChanged = false; // a power node joined the grid: re-solve
     };
 
-    // Place `id` at `pos` if the world allows it (cell not solid; saplings
-    // only take root on Grass/Dirt), registering whatever it is. Belts face
+    // Place `id` at `pos` if the world allows it (cell not solid; a plant only
+    // takes root on ground offering at least its `needsSoil`), registering
+    // whatever it is. Belts face
     // `beltFacing`. Player-side rules — stock, not-inside-the-player — are
     // the caller's to check first; a world-side refusal is a silent no-op.
     PlaceResult placeBlock(World& world, const Registries& regs, const glm::ivec3& pos,
                            BlockId id, const glm::ivec3& beltFacing);
 
     // Re-aim the conduit at `pos`, cycling its facing through the six
-    // cardinals (and queueing the arrow remesh). False = no belt there.
-    bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos);
+    // cardinals (and queueing the arrow remesh). `reverse` steps the other way,
+    // which is what keeps overshooting by one from costing five presses.
+    // False = no belt there.
+    bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& pos,
+                    bool reverse = false);
 
     // Source fusion: if `aimed` is a source with an orthogonally-adjacent
     // source of a DIFFERENT type, consume both (partner cell -> Air) and
@@ -62,5 +68,18 @@ namespace WorldEdit {
     // in sync. Returns false (no change) if there is no valid pair. The
     // caller owns the catalyst spend + the sound.
     bool fuseSources(World& world, const Registries& regs, const glm::ivec3& aimed);
+
+    // Till `aimed` into Tilled Soil if it is ground a hoe can work and nothing
+    // is sitting on it. The fuseSources shape: a tool RMB transmuting the cell
+    // it points at. False = not workable, and the caller plays the deny. The
+    // caller owns the sound; there is nothing to spend, because a hoe is a tool
+    // and nothing in this game has durability.
+    bool tillSoil(World& world, const glm::ivec3& aimed);
+
+    // Enrich `aimed` from Tilled Soil into Rich Soil -- one rung further up the
+    // same ladder, same shape as tillSoil. False = not workable, and the caller
+    // plays the deny. UNLIKE tillSoil the caller must SPEND its compost, and
+    // only on a true return: compost is a plain material, not a tool.
+    bool enrichSoil(World& world, const glm::ivec3& aimed);
 
 } // namespace WorldEdit

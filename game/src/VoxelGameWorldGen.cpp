@@ -33,7 +33,74 @@ namespace {
         return glm::mix(glm::mix(a, b, sx), glm::mix(c, d, sx), sz);
     }
 
+    // The ruin's footprint, as offsets from its origin (the centre of its north
+    // row). plantRuin must stay inside this and the siting code must level
+    // exactly it -- a machine outside the pad is a machine buried in a hillside.
+    constexpr int kRuinMinX = -7;
+    constexpr int kRuinMaxX = 7;
+    constexpr int kRuinMinZ = -1; // the wire spur runs one row north of the line
+    constexpr int kRuinMaxZ = 7;  // the mining bay is seven rows south of it
+
 } // namespace
+
+// The derelict factory: a power line feeding a grinder, a conduit run into a
+// cauldron, a rain barrel plumbed in, and a mining bay south of it. Laid out
+// exactly as it was on the plateau, because as a TEACHING object it works --
+// what was wrong was where it stood and how much it gave away.
+//
+// Stocked to LIMP. It still has a couple of wood and a few herb in it, so it is
+// running when you arrive and stops while you watch, which teaches what it
+// needs far better than either a dead ruin or a full one.
+void VoxelGame::plantRuin(const glm::ivec3& origin) {
+    const int ox = origin.x, oy = origin.y, oz = origin.z;
+
+    m_world->setBlock(ox - 5, oy, oz, BlockId::Generator);
+    registerMachine({ox - 5, oy, oz}, BlockId::Generator);
+    m_machines[{ox - 5, oy, oz}].input.add(ItemId::Wood, kRuinFuelWood);
+    for (int x = ox - 4; x <= ox; ++x) {
+        m_world->setBlock(x, oy, oz, BlockId::Wire);
+    }
+    m_world->setBlock(ox + 1, oy, oz, BlockId::Grinder);
+    registerMachine({ox + 1, oy, oz}, BlockId::Grinder);
+    m_machines[{ox + 1, oy, oz}].input.add(ItemId::Herb, kRuinHerb);
+
+    for (int x = ox + 2; x <= ox + 4; ++x) {
+        m_world->setBlock(x, oy, oz, BlockId::Belt);
+        registerBelt({x, oy, oz}, {1, 0, 0}); // carry items toward +x
+    }
+    m_world->setBlock(ox + 5, oy, oz, BlockId::Cauldron);
+    registerMachine({ox + 5, oy, oz}, BlockId::Cauldron);
+
+    // Wire spur alongside the belts so the cauldron is powered too (belts are
+    // not power nodes, so the network can't reach it through them).
+    for (int x = ox + 1; x <= ox + 5; ++x) {
+        m_world->setBlock(x, oy, oz - 1, BlockId::Wire);
+    }
+
+    // A rain barrel feeds the cauldron water whenever the sky opens up --
+    // rain is the island's only water.
+    m_world->setBlock(ox + 7, oy, oz, BlockId::RainBarrel);
+    registerMachine({ox + 7, oy, oz}, BlockId::RainBarrel);
+    m_world->setBlock(ox + 6, oy, oz, BlockId::Belt);
+    registerBelt({ox + 6, oy, oz}, {-1, 0, 0}); // carry toward the cauldron
+
+    // The mining bay: a herb source grows a patch, a powered miner harvests it,
+    // and belts carry the herb north to the line. The source came out here with
+    // the rest of it -- one five blocks from spawn contradicted the whole rule
+    // that sources sit past kSourceMinRadius so reaching them is the problem.
+    const int mz = oz + kRuinMaxZ;
+    m_world->setBlock(ox - 7, oy, mz, BlockId::SourceHerb);
+    m_sources[{ox - 7, oy, mz}] = 0.0f;
+    m_world->setBlock(ox - 5, oy, mz, BlockId::Miner);
+    registerMachine({ox - 5, oy, mz}, BlockId::Miner);
+    m_world->setBlock(ox - 4, oy, mz, BlockId::Generator);
+    registerMachine({ox - 4, oy, mz}, BlockId::Generator);
+    m_machines[{ox - 4, oy, mz}].input.add(ItemId::Wood, kRuinFuelWood);
+    for (int i = 1; i <= 2; ++i) {
+        m_world->setBlock(ox - 5, oy, mz - i, BlockId::Belt);
+        registerBelt({ox - 5, oy, mz - i}, {0, 0, -1}); // carry toward the line
+    }
+}
 
 void VoxelGame::buildWorld() {
     // Fresh island layout every launch.
@@ -84,55 +151,91 @@ void VoxelGame::buildWorld() {
         }
     }
 
-    // Automation demo on the plateau: generator -> wire -> grinder, then a
-    // conduit line auto-carries the grinder's ground herb into a cauldron.
     const int cxi = static_cast<int>(cx);
-    const int dy = kPlateauY + 1;              // on top of the plateau grass
-    const int dzRow = static_cast<int>(cz) - 4; // demo row, just north of center
 
-    m_world->setBlock(cxi - 5, dy, dzRow, BlockId::Generator);
-    registerMachine({cxi - 5, dy, dzRow}, BlockId::Generator);
-    m_machines[{cxi - 5, dy, dzRow}].input.add(ItemId::Wood, kDemoFuelWood);
-    for (int x = cxi - 4; x <= cxi; ++x) {
-        m_world->setBlock(x, dy, dzRow, BlockId::Wire);
+    // ---- The ruin -------------------------------------------------------
+    // This used to be a working demo line on the spawn plateau, and it made
+    // the "empty starting kit" a fiction: every block of it is hardness 0.5
+    // and ungated (so your own gear stays retrievable), and breakBlock hands
+    // back every buffered item -- so a bare-handed player five blocks from
+    // spawn collected 16 Wood, 20 Herb, seven machines and a Herb Source.
+    // Sixteen wood alone is a Bucket, a Sieve and a Crate without ever owning
+    // an axe, which is the tree, the tool ladder and the Bloomery skipped.
+    //
+    // Out past the sources it is a REWARD for walking instead, and the walk is
+    // the tutorial. Stamped BEFORE the source scatter below, so the scatter's
+    // existing "grass with air above" test declines to land inside it without
+    // having to be told it exists.
+    bool ruinPlaced = false;
+    for (int attempt = 0; attempt < 400; ++attempt) {
+        const std::uint32_t h = hash2(attempt * 313 + 17, attempt * 89 + 5,
+                                      m_worldSeed ^ 0x2D15C0DEu);
+        const int rx = static_cast<int>(h % static_cast<std::uint32_t>(extent));
+        const int rz = static_cast<int>((h >> 11) % static_cast<std::uint32_t>(extent));
+
+        const float rdx = static_cast<float>(rx) - cx;
+        const float rdz = static_cast<float>(rz) - cz;
+        const float rdist = std::sqrt(rdx * rdx + rdz * rdz);
+        if (rdist < kRuinMinRadius) continue; // too close to be a journey
+        if (rdist > kRuinMaxRadius) continue; // saves attempts; the land test decides
+
+        // Every column of the footprint has to find land within one levelling
+        // step of the anchor. Hunting for naturally flat ground out here would
+        // almost always fail -- surfaceY varies by several blocks across a
+        // 15-wide span -- but a ruin is a BUILT thing, so its builders levelled
+        // the site, and the slack is how much levelling we let them have done.
+        const auto surfaceAt = [&](int x, int z) {
+            for (int y = kSurfaceY + 12; y >= kSurfaceY - 8; --y) {
+                if (m_world->getBlock(x, y, z) != BlockId::Air) return y;
+            }
+            return -1;
+        };
+        const int floorY = surfaceAt(rx, rz);
+        if (floorY < 0) continue;
+
+        bool sited = true;
+        for (int dz = kRuinMinZ - 1; dz <= kRuinMaxZ + 1 && sited; ++dz) {
+            for (int dx = kRuinMinX - 1; dx <= kRuinMaxX + 1; ++dx) {
+                const int s = surfaceAt(rx + dx, rz + dz);
+                if (s < 0 || std::abs(s - floorY) > kRuinLevelSlack) {
+                    sited = false;
+                    break;
+                }
+            }
+        }
+        if (!sited) continue;
+
+        // Level it: cut down to the floor and fill up to it. Both bounds are
+        // driven by the slack the test above just enforced, which is what makes
+        // this safe in either direction -- clearing kRuinHeadroom (> slack)
+        // always tops the highest hummock, and filling slack+1 cells BELOW the
+        // floor always reaches the lowest natural surface, so the pad can never
+        // be left hanging over a dip with nothing under it.
+        static_assert(kRuinHeadroom > kRuinLevelSlack,
+                      "clearing must reach a column standing kRuinLevelSlack proud");
+        for (int dz = kRuinMinZ - 1; dz <= kRuinMaxZ + 1; ++dz) {
+            for (int dx = kRuinMinX - 1; dx <= kRuinMaxX + 1; ++dx) {
+                const int x = rx + dx, z = rz + dz;
+                for (int y = floorY + 1; y <= floorY + kRuinHeadroom; ++y) {
+                    m_world->setBlock(x, y, z, BlockId::Air);
+                }
+                m_world->setBlock(x, floorY, z, BlockId::Grass);
+                for (int y = floorY - 1; y >= floorY - kRuinLevelSlack - 1; --y) {
+                    m_world->setBlock(x, y, z, BlockId::Dirt);
+                }
+            }
+        }
+
+        plantRuin({rx, floorY + 1, rz});
+        ruinPlaced = true;
+        SDL_Log("worldgen: ruin at %d,%d (%.0f from centre)", rx, rz,
+                static_cast<double>(rdist));
+        break;
     }
-    m_world->setBlock(cxi + 1, dy, dzRow, BlockId::Grinder);
-    registerMachine({cxi + 1, dy, dzRow}, BlockId::Grinder);
-    m_machines[{cxi + 1, dy, dzRow}].input.add(ItemId::Herb, 20); // fuel for the demo
-
-    for (int x = cxi + 2; x <= cxi + 4; ++x) {
-        m_world->setBlock(x, dy, dzRow, BlockId::Belt);
-        registerBelt({x, dy, dzRow}, {1, 0, 0}); // carry items toward +x
-    }
-    m_world->setBlock(cxi + 5, dy, dzRow, BlockId::Cauldron);
-    registerMachine({cxi + 5, dy, dzRow}, BlockId::Cauldron);
-
-    // Wire spur alongside the belts so the cauldron is powered too (belts are
-    // not power nodes, so the network can't reach it through them).
-    for (int x = cxi + 1; x <= cxi + 5; ++x) {
-        m_world->setBlock(x, dy, dzRow - 1, BlockId::Wire);
-    }
-
-    // A rain barrel feeds the cauldron water whenever the sky opens up --
-    // rain is the island's only water.
-    m_world->setBlock(cxi + 7, dy, dzRow, BlockId::RainBarrel);
-    registerMachine({cxi + 7, dy, dzRow}, BlockId::RainBarrel);
-    m_world->setBlock(cxi + 6, dy, dzRow, BlockId::Belt);
-    registerBelt({cxi + 6, dy, dzRow}, {-1, 0, 0}); // carry toward the cauldron
-
-    // Mining demo on the plateau's south side: a herb source grows a patch,
-    // a powered miner harvests it, and belts carry the herb away.
-    const int mz = static_cast<int>(cz) + 3;
-    m_world->setBlock(cxi - 7, dy, mz, BlockId::SourceHerb);
-    m_sources[{cxi - 7, dy, mz}] = 0.0f;
-    m_world->setBlock(cxi - 5, dy, mz, BlockId::Miner);
-    registerMachine({cxi - 5, dy, mz}, BlockId::Miner);
-    m_world->setBlock(cxi - 4, dy, mz, BlockId::Generator);
-    registerMachine({cxi - 4, dy, mz}, BlockId::Generator);
-    m_machines[{cxi - 4, dy, mz}].input.add(ItemId::Wood, kDemoFuelWood);
-    for (int i = 1; i <= 2; ++i) {
-        m_world->setBlock(cxi - 5, dy, mz - i, BlockId::Belt);
-        registerBelt({cxi - 5, dy, mz - i}, {0, 0, -1}); // carry toward the demo row
+    if (!ruinPlaced) {
+        // Never fatal and never a retry loop: worldgen has to finish. A ruinless
+        // island is playable -- it was never a kit -- it is just quieter.
+        SDL_Log("worldgen: found no level site for the ruin; skipping it");
     }
 
     // Scatter glowing resource sources across the island (seeded random),
@@ -174,15 +277,16 @@ void VoxelGame::buildWorld() {
     }
 
     // One grown tree near the middle seeds forestry: chopping its leaves is
-    // the only starting supply of saplings. Seeded random spot on plateau
-    // grass, clear of the demo rows and the spawn point.
+    // the only starting supply of saplings, and with the ruin moved out it is
+    // now the ONLY thing on the plateau besides you. Seeded random spot on
+    // plateau grass, clear of the spawn point. (It used to dodge the two demo
+    // rows as well; there are no demo rows here any more.)
     const glm::vec3 spawn = spawnFeet();
     for (int attempt = 0; attempt < 200; ++attempt) {
         const std::uint32_t h = hash2(attempt * 53 + 11, attempt * 197 + 3,
                                       m_worldSeed ^ 0x07EE5EEDu);
         const int tx = cxi + static_cast<int>(h % 17u) - 8;
         const int tz = static_cast<int>(cz) + static_cast<int>((h >> 8) % 17u) - 8;
-        if (std::abs(tz - dzRow) <= 1 || std::abs(tz - mz) <= 1) continue;
         if (std::abs(tx - static_cast<int>(spawn.x)) <= 1 &&
             std::abs(tz - static_cast<int>(spawn.z)) <= 1) continue;
 

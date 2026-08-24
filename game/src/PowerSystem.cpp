@@ -68,15 +68,22 @@ namespace PowerSystem {
                             const BlockId id = world.getBlock(c.x, c.y, c.z);
                             if (isMachine(id)) {
                                 const MachineTraits& t = machineTraits(id);
-                                if (t.powerOutput > 0) {
+                                const auto mit = machines.find(c);
+                                // A switched-off machine is electrically
+                                // absent: it neither asks for power nor makes
+                                // any. It still CONDUCTS (the flood fill above
+                                // runs on block ids), so idling one can never
+                                // split a network and black out everything
+                                // downstream of it.
+                                const bool on = mit == machines.end() || mit->second.enabled;
+                                if (t.powerOutput > 0 && on) {
                                     generators.push_back(c);
                                     // Only a burning generator produces.
-                                    const auto mit = machines.find(c);
                                     if (mit != machines.end() && mit->second.progress > 0.0f) {
                                         totalProduction += t.powerOutput;
                                     }
                                 }
-                                totalDemand += t.demand;
+                                if (on) totalDemand += t.demand;
                             }
 
                             for (const glm::ivec3& n : kNeighbors) {
@@ -91,6 +98,13 @@ namespace PowerSystem {
                         const bool powered = totalProduction > 0 && totalProduction >= totalDemand;
                         if (powered) {
                             for (const glm::ivec3& c : component) {
+                                // An off machine stays dark on a live network,
+                                // which costs nothing extra: the energized set
+                                // already drives the emissive glow AND the
+                                // shape animation, so excluding it here is the
+                                // whole of "it looks switched off".
+                                const auto mit = machines.find(c);
+                                if (mit != machines.end() && !mit->second.enabled) continue;
                                 state.setEnergized(c);
                             }
                         }

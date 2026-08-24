@@ -121,12 +121,15 @@ void VoxelGame::startNewGame(int slot) {
     buildWorld();
 
     camera().position = spawnFeet() + glm::vec3(0.0f, kEyeHeight, 0.0f);
-    camera().yaw = -90.0f;   // looking toward -Z (the demo row)
+    camera().yaw = -90.0f;   // looking toward -Z, across the bare plateau
     camera().pitch = -15.0f;
 
-    // Empty kit: the hard start. You bootstrap from the world by hand — punch
-    // leaves for Sticks, sift dirt/grass for Pebbles, craft Wood tools, mine
-    // Stone, climb the Stone -> Copper tool ladder. Nothing is handed to you.
+    // Empty kit: the hard start. You bootstrap from the world by hand — dig
+    // turf for Plant Fiber (three twist into the Twine every tool needs),
+    // punch leaves for Sticks, dig topsoil for Pebbles, craft Wood tools,
+    // mine Stone, climb the Stone -> Copper tool ladder. Nothing is handed to
+    // you, and since the ruin moved off the plateau there is nothing out
+    // there to pick up either -- see buildWorld.
     // (F6 stays the dev shortcut for testing the later game.)
     m_armor.fill(ItemId::None); // a fresh start is unarmored
 
@@ -213,6 +216,7 @@ bool VoxelGame::loadGame() {
         m_belts.clear();
         m_sources.clear();
         m_saplings.clear();
+        m_crops.clear();
         m_drops.clear();
         m_armor.fill(ItemId::None);
         m_weather = Weather{};
@@ -344,6 +348,15 @@ void VoxelGame::onEscape() {
     } else {
         openPauseMenu(); // quitting lives on its SAVE AND QUIT row
     }
+}
+
+void VoxelGame::deny(const std::string& why) {
+    // Sound and reason together, deliberately: the sound was already the
+    // universal "no" and every site that plays it is a site that knows the
+    // answer, so binding the two here is what stops the two drifting apart.
+    audio().play("deny", kCraftVolume);
+    m_denyText = why;
+    m_denyTimer = kDenySeconds;
 }
 
 void VoxelGame::updateTitle() {

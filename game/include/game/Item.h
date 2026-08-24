@@ -2,7 +2,10 @@
 
 #include "game/Block.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <vector>
 
 // Things the player can hold in their inventory. Distinct from BlockId: some
 // items are placeable (they place a block when used), most are materials.
@@ -169,6 +172,31 @@ enum class ItemId : std::uint16_t {
     StillItem,
     HandDistillerItem,
     HandTransmuterItem,
+    StorageCrateItem,
+    // ---- Farming ------------------------------------------------------
+    // The Hoe is a hotbar TOOL, not a mining tool: it has no ToolType, so it
+    // breaks nothing faster and gates nothing. RMB at Grass/Dirt tills.
+    // (Tilled Soil has no item of its own: it drops Dirt, so tilling can never
+    // duplicate soil, and you make more of it with the hoe rather than by
+    // carrying it around.)
+    CopperHoe,
+    // Planted onto tilled soil. Ground from Herb, so the loop bootstraps off
+    // the wild bushes that already grow on the island and then sustains itself
+    // -- and the reachability closure needs no special case for it.
+    HerbSeed,
+    HarvesterItem,
+    IrrigatorItem,
+    // ---- The primitive tier -------------------------------------------
+    // What the island gives up to bare hands, and the first thing made out
+    // of it. Turf pulls apart into Fiber, three of which twist into Twine --
+    // the binding every wood and stone tool needs. Compost is the other
+    // half: the tree's surplus (saplings and sticks) has to go somewhere,
+    // and a Composter turning it into soil and briquettes is where.
+    PlantFiber,
+    Twine,
+    Compost,
+    BioBriquette,
+    GraftedSaplingItem,
     Count
 };
 
@@ -182,6 +210,14 @@ enum class ToolType : std::uint8_t { None, Pickaxe, Axe, Shovel };
 enum class ArmorSlot : std::uint8_t { None, Head, Body, Feet };
 
 inline constexpr int kArmorSlots = 3; // head, body, feet
+
+// Enum spellings for the content pack format (ContentPack.h). One table read
+// by both the writer and the reader, so the two cannot drift -- and adding an
+// enumerator without naming it here is a compile error.
+inline constexpr const char* kToolNames[] = {"none", "pickaxe", "axe", "shovel"};
+inline constexpr const char* kArmorSlotNames[] = {"none", "head", "body", "feet"};
+static_assert(std::size(kToolNames) == 4 && std::size(kArmorSlotNames) == 4,
+              "tool/armor-slot names must cover every enumerator");
 
 // Tool tiers, low to high. A block's required tier (BlockInfo::toolTier) gates
 // its drop; a tool's tier (ItemInfo::toolTier) must meet it. 0 = no tool / not
@@ -224,6 +260,15 @@ struct ItemStack {
 };
 
 const ItemInfo& itemInfo(ItemId id);
+
+// The item registry is a RUNTIME table, exactly like the block one -- see the
+// note on blockCount() in Block.h for what that costs and what it buys.
+// `ItemId::Count` is the number of items COMPILED IN (and the "no such item"
+// sentinel); itemCount() is how many there are.
+std::size_t itemCount();
+const std::vector<ItemInfo>& itemRows();
+ItemId addItem(const ItemInfo& row);
+void restoreItems(std::vector<ItemInfo> rows); // rollback; see restoreBlocks
 
 inline const char* itemName(ItemId id) { return itemInfo(id).name; }
 inline ToolType    itemTool(ItemId id)        { return itemInfo(id).tool; }

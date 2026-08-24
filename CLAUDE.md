@@ -100,7 +100,7 @@ interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 
 `VoxelGame` is one class split across per-concern implementation files in
 `game/src/`: `VoxelGame.cpp` (lifecycle: start/save/load/Esc/title),
-`VoxelGameWorldGen.cpp` (island + demo lines), `VoxelGameSim.cpp` (the 20 Hz
+`VoxelGameWorldGen.cpp` (island + the ruin), `VoxelGameSim.cpp` (the 20 Hz
 tick: machines/belts/power/growth/weather + registries),
 `VoxelGamePlayer.cpp` (per-frame input, walking physics, mine/place),
 `VoxelGameRender.cpp` (atlas, meshes, onRender), and `VoxelGameUi.cpp` (HUD +
@@ -111,6 +111,20 @@ stay in their file's anonymous namespace.
 ## Conventions
 
 - Engine code in `engine::`; game code in the global namespace.
+- **The registries are RUNTIME tables** (Aug 2026). `kBlocks`/`kItems`/
+  `kMachineTraitSeed`/`kFuelSeed` are SEEDS copied into vectors at first use;
+  a content pack appends. So **`BlockId::Count` means "how many were COMPILED
+  IN"**, not how many exist — iterate `blockCount()`/`itemCount()` and use
+  `blockRows()`/`itemRows()`/`machineTraitRows()`/`fuelRows()`, never the seed
+  arrays. An ordinal past `Count` is a valid id (fixed underlying type), and
+  rides every path a compiled one does including a chunk's bytes and a save's
+  key table. "No such content" is `content::kNoBlock`/`kNoItem` at the top of
+  the underlying type — NOT `::Count`, which a pack turns into a real row.
+  Every `static_assert` still guards the seeds (a bad `kBlocks` edit is still
+  a compile error); `content::validate()` asks the same questions of the whole
+  runtime table. Shapes stay compiled — a shape needs a Blockbench bake.
+  Registry writes are STARTUP ONLY: growing a vector invalidates every
+  `BlockInfo&` and would move nothing but break everything.
 - Block/item content lives in id-tagged registry tables (`kBlocks` in Block.cpp,
   `kItems` in Item.cpp — name, flags, drops, atlas tiles, all of it), one
   designated-initializer row per enum value, `static_assert`ed against enum order.
@@ -138,7 +152,10 @@ stay in their file's anonymous namespace.
   things replace it as the safety net, both in `--selftest`: a tech-tree
   **reachability closure** (edit a recipe into a deadlock and it fails) and a
   **circle-pattern shadowing check** (lay every pattern, prove the matcher
-  returns it). `RECIPES.md` is generated — `voxel-factory --dump-recipes`.
+  returns it) — both now live in `content::validate()`, below.
+  `RECIPES.md` is generated — `voxel-factory --dump-recipes`. Since Aug 2026
+  the tables are also loadable from a **content pack**, not only editable in
+  source.
 - **Content identity is the key, not the ordinal** (`ContentRegistry.h`/.cpp,
   save v22). A `BlockId`/`ItemId` ordinal is an ENCODING — the raw byte in a
   chunk, the slot position in an inventory — and only means anything relative
@@ -157,6 +174,78 @@ stay in their file's anonymous namespace.
   `--selftest` fabricates a foreign save by swapping two keys in the file and
   asserts the world comes back MIRRORED — a load that ignores the tables
   returns it unchanged, so the check fails loudly if the layer goes decorative.
+- **Content packs: recipes are authorable from data** (`ContentPack.h`,
+  `ContentDump.cpp`, `ContentPack.cpp`, Aug 2026). `--dump-content` writes
+  the whole content set as JSON, by KEY, and `ContentPack.cpp` reads exactly
+  that back — the writer IS the format's spec, and `--selftest` holds a
+  dump → load → dump round-trip so the two cannot drift. A pack **patches** a
+  row whose key matches (in PLACE, which is what makes the round-trip work and
+  what keeps a rebalanced circle pattern from falling behind the pattern that
+  shadows it), appends anything new, and `"remove": [keys]` deletes. Two doors,
+  deliberately different: `packs/*.json` beside the exe is the PLAYER's and
+  applies to the game only; `--pack <file>` is the AUTHOR's and applies to any
+  mode, so a generator can `--pack draft.json --validate` without installing
+  anything. Keeping the folder out of the headless tools is what stops an
+  installed pack from rewriting what CI asserts.
+  **All-or-nothing:** nothing applies unless everything parses, and because
+  "would this tech tree close?" cannot be asked of a table the pack is not in,
+  `applyPacks` applies first and judges after — a refusal restores exactly what
+  was there. At launch a refused pack is logged and shown in a message box but
+  is never fatal (the compiled content is already back).
+  A pack authors all three RECIPE tables plus **blocks, items, machine traits
+  and fuels** (Aug 2026) — a new machine with its own recipes, a new ore, a
+  better fuel, all from JSON. Rows may name content the same pack is adding,
+  in either file order: `loadPack` declares every new key before resolving any
+  field.
+  **A row is a PATCH of the row it names, in every table** (Aug 2026): an
+  absent field inherits what that row already had rather than resetting to the
+  type's default, so `{"key": "core:stone", "hardness": 6.0}` is Stone but
+  harder — not a black, untextured Stone that drops nothing and needs no
+  pickaxe. The dump-round-trip could never have caught the difference, because
+  a full dump states every non-default field and both readings agree on it;
+  what the difference governs is the small hand-written or generated pack,
+  which is the case the format exists for. Stating a field explicitly still
+  resets it, so nothing is lost. The same rule closed a hole in the recipe
+  tables, where an omitted `inputs` used to author a FREE craft in silence —
+  `inputs`/`outputs`/`machine` are now inherited when absent and complained
+  about when a new row has none.
+  Still needs a compiler: block SHAPES (a Blockbench bake), new
+  `MachineKind`s/`CreatureKind`s (hand-written dispatch), item effects,
+  worldgen presence.
+- **`content::validate()`** (`ContentValidate.h`) is the coherence check —
+  recipe key uniqueness + round-trip, circle-pattern shadowing, and three
+  economy closures — returning DIAGNOSTICS, not an exit code.
+  Three callers: `--selftest` (prints and fails), `--validate` (the same
+  without the save round-trip), and the pack loader. It answers in English
+  because its caller is often not a person.
+- **Three closures, one walk** (Aug 2026). `closeOverRecipes` is the shared
+  fixpoint over all three recipe surfaces; the checks differ ONLY in what they
+  seed it with, which is the whole distinction between them.
+  **Reachability** asks whether the tech tree OPENS: seeded from what the island
+  is made of, every machine must be buildable and every recipe input obtainable.
+  **Renewability** asks whether it STAYS open: seeded from nothing but the
+  faucets the SIMULATION refills (source patches, self-seeding forestry, grass
+  spread, weather, repeatable boss drops), every item must still be producible —
+  an item only reachability can find is one the island generated a finite pile
+  of. **Orphans** is reachability's mirror: everything you can get must be FOR
+  something, with four allowances *derived* rather than flagged (it places a
+  block, it is a tool/weapon/armor, it burns, or a VERB spends it), so a new item
+  earns its exemption by being what it claims to be.
+- **The two balance closures are scoped to `core:` keys**, and that is not
+  decoration: the PACK LOADER calls `validate()`, so without the scoping any pack
+  adding an ornament or a trophy would be refused, and `--selftest`'s own "a pack
+  may add content" case would fail. They are BALANCE claims about the shipped
+  game, not coherence claims about a content set — a mod may ship a trophy with
+  no sink; this repo may not. Both are RATCHETS: they come back clean today and
+  should only ever speak up when an edit takes a faucet or a sink away.
+- **Reachability's seed rule got stricter at the same time.** A block whose drop
+  counts as "the world gave it to you" must be one the world PUT there, so
+  besides machines and sources it now excludes anything an ITEM places (a Conduit
+  dropping a Conduit is not the world handing you one) and anything PLANTED
+  (a crop stage dropping its seed is not a seed faucet). Without those the
+  closure believed Wire, Conduit, Scaffold and Herb Seed were free, which
+  short-circuited the whole Copper Plate line and all of farming — a deadlock
+  check creating the blind spot it exists to catch.
 - Block place/break side effects funnel through **`WorldEdit`**
   (WorldEdit.h/.cpp): `breakBlock`/`placeBlock`/`rotateBelt` own setBlock +
   machine/belt/source/sapling registry sync and return facts (drop, handed-back
@@ -226,7 +315,8 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
 World & closed-loop economy:
 - **Island** — the world is a floating sky island (6×6 chunks): noise-wobbled circular
   coastline, gentle hills, tapered stone underside, per-launch seed (`m_worldSeed`), and a
-  flattened center plateau holding the demo line + spawn (`buildWorld`).
+  flattened center plateau holding spawn (`buildWorld`). Since Aug 2026 the plateau
+  holds **nothing else but one tree** — the demo line became the ruin (below).
 - **Living sources** — glowing `Source*` blocks (BlockInfo has an `emissive` field) grow
   patches of their resource's nodes nearby over time (`updateSources`, cap 5 within r=4,
   ~7 s cadence, registry `m_sources`). Mining a source drops its placeable item
@@ -256,6 +346,23 @@ World & closed-loop economy:
   (drawn grey-tinted, RMB place plays "deny") and the death wipe — restocking
   re-enables them. Fresh games and pre-v12 saves seed `vg::kDefaultHotbar` (the ten
   machine placeables). Tab/E/F1 overlays are mutually exclusive.
+
+**Refusals say why** (Aug 2026, the first onboarding item): `VoxelGame::deny()`
+is the single funnel — it plays the "deny" sound AND sets `m_denyText` /
+`m_denyTimer`, drawn as one amber line over the hotbar in `drawHud`, fading over
+its last third (`kDenySeconds`). **Never call `audio().play("deny", ...)`
+directly for a player-facing rejection**; the site that knows the reason is the
+site that must state it, and binding sound to reason in one call is what keeps
+the two from drifting. Messages are UPPERCASE and limited to the bitmap font's
+glyphs — A-Z 0-9 and `()-:/.,>+<%`, so **no apostrophes**. The timer decays on
+real frame time, not the pause-aware clock, because several call sites are inside
+panels where the sim is frozen. Reasons that name a keybind read it live
+(`SDL_GetScancodeName(key(Action::...))`) rather than hardcoding the default.
+Two of the sites re-derive a distinction the callee folded away
+(`tillSoil`/`placeBlock` both return one bool for several refusals) — that is
+deliberate: the player's mistake is different in each case. Sound-only "deny"
+survives where it is not a refusal at all: the master switch turning OFF, and a
+slipped crank grip.
 
 UI: an **F1 help overlay** (goal + quickstart + controls — the controls lines are
 built per draw from the current keybinds) on `UiRenderer`; the bitmap font also
@@ -292,12 +399,36 @@ Settings (`Settings.h`/`Settings.cpp` own the model; UI in VoxelGameUi.cpp):
   radius 4, one per 4 s (`kMineSeconds`/`kMineRadius`, special-cased in `onTick` before
   recipe lookup), dropping the yield into its output buffer for belts to pull; throughput
   is bounded by patch regrowth. Recipe-less machines show an info row in their panel. The
-  plateau's south side hosts a demo trio (source + miner + generator + belts).
+  ruin's mining bay is one of these, standing (source + miner + generator + belts) — it
+  used to sit on the plateau's south side, until the whole ruin moved out (see **The
+  hard start**).
 
 Forestry (saplings → trees → wood):
-- **Trees** — a 3-log trunk + 14-leaf canopy, defined once in `treeCells()`/`placeTree()`
-  (VoxelGameInternal.h) and shared by world-gen, growth, and the grow-space check. Exactly one
-  grown tree spawns near the plateau each game — the starting sapling supply.
+- **Trees** — a trunk of logs, a leaf ring around the top one, a full square layer and
+  a plus-shaped cap, built once by `treeCells(size)`/`placeTree()` (VoxelGameInternal.h)
+  and shared by world-gen, growth, and the grow-space check. Exactly one grown tree
+  spawns near the plateau each game — the starting sapling supply, and now the only
+  thing on the plateau besides you.
+- **Two sizes, one builder** (Aug 2026). Size 1 is the wild tree (3 logs, 22 leaves);
+  size 2 is what a **Grafted Sapling** grows (5 logs, 74 leaves) in the same
+  `kTreeGrowSeconds`. Which tree a sapling becomes is `BlockInfo::treeSize`, a REGISTRY
+  field — the same move `SoilKind` was, replacing a hardcoded `id == BlockId::Sapling`
+  in `WorldEdit` that a second sapling would have grown a branch of and a content pack
+  could never have reached. Because the BLOCK carries the kind, the sapling registry
+  stays a plain `pos -> float` and **the save format did not move at all**.
+  `treeCells` CLAMPS an unknown size rather than indexing past its shapes (a pack may
+  write any integer), so a bad value grows the ordinary tree; `content::validate()`
+  says so rather than letting it pass silently, and also refuses a sapling with no
+  `needsSoil`, which could never be planted and so would never grow.
+- **The graft is where the sapling surplus goes.** A grown tree returns ~8 saplings for
+  the ONE that made it and only one replaces it, so the rest either compost or become a
+  bigger tree on the same plot: `circle/grafted-sapling` is Sapling ×2 + Compost. It is
+  on the Circle rather than in the hand menu deliberately — it costs a machine product,
+  and the hand tier has to stay buildable from nothing.
+- **A blocked sapling backs off.** `updateSaplings` used to re-run the clear-space scan
+  every tick forever for a fenced-in sapling — a permanent 25-cell scan at 20 Hz, and 80
+  for a grafted one. It now rewinds the timer by `kTreeRetrySeconds` instead. The timer
+  IS the backoff, so there is no second field and no save change.
 - **Renewable loop** — chopping a Log yields Wood; chopping Leaves has a
   `kSaplingDropChance` sapling drop with a pity guarantee (`m_leafPity`, every
   `kSaplingPityLeaves`th dry leaf), so felling a whole tree can't strand the player.
@@ -305,9 +436,20 @@ Forestry (saplings → trees → wood):
   timers (`updateSaplings`; a blocked or player-overlapped spot retries each tick).
   Leaves with no Log within `kLeafReach` decay staggered (`updateLeafDecay`,
   `kLeafDecaySeconds`/`kLeafDecayChance`); every lost leaf — chopped OR decayed —
-  rolls the same sapling drop into the player's pack (`rollLeafSapling`, shared
-  pity counter), so trunk-first felling doesn't starve the forest. All knobs sit
-  with the other cadence constants in VoxelGameInternal.h.
+  rolls the same TWO drops through `rollLeafDrops`, so trunk-first felling doesn't
+  starve the forest. All knobs sit with the other cadence constants in
+  VoxelGameInternal.h.
+- **Sticks ride that shared path too** (Aug 2026). They used to hang off the chop path
+  alone, which quietly made trunk-first felling the optimal play: three axe swings
+  orphaned the whole canopy and walking away collected the saplings for free, while
+  punching the 22 leaves yourself was the only way to be taxed for them. The two rolls
+  differ only in WHERE they land, and `chopped` is the whole of it — sticks are a ground
+  drop at the cell when a player broke it, but go to the pack when a leaf decayed off a
+  felled trunk forty blocks away, where a drop is one nobody would ever see. Saplings
+  always go to the pack, chopped or not, because the pity counter is a promise about
+  your INVENTORY and a drop resting on an unfelled canopy would not keep it. Both roll
+  off the SAVED `m_sourceRng` with different salts: decay runs in the sim, and a sim
+  roll a save cannot replay is a desync. The transient `m_lootRng` is gone.
 - **Wood's first recipe** — Wood ×3 → Bucket (inert until the rain system arrives).
 
 Performance (measured with the **F3 overlay**: frame avg/worst ms, remesh/solve
@@ -517,6 +659,15 @@ Entities (Blockbench import — the combat pillar's first brick):
   `render(Camera&, rainDim)` / `tryMeleeAttack` — takes engine services as
   parameters, never VoxelGame&. Knobs in the `// ---- Entities ----` block. Missing/corrupt model = creatureless
   launch + log; failed texture = magenta checker (never fatal).
+  **That leniency is player-facing only**: `CreatureSystem::checkModels(dir)`
+  (static, no window/GL — `loadBbModel` is pure parsing) parses every `kSpecies`
+  row's model and returns English diagnostics, and `--selftest` fails on any.
+  It exists because boss #1's `.bbmodel` was never committed and every build
+  stayed green for weeks while a launch pillar was absent from fresh clones. It
+  asks more than "does the file exist": no geometry, an undecodable texture, a
+  missing `idle`/`walk` clip, and a row with `swingImpact > 0` whose model has no
+  `attack` clip (a telegraph the player cannot see). **Adding a `kSpecies` row
+  therefore means committing its model**, under the convention above.
 
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine, extracted as the **`Weather`**
@@ -552,6 +703,188 @@ Economy v2 (difficulty by design; hand table in `Recipes.cpp`):
   machine = Frame + extras), a lean starting kit (exactly the bootstrap pair plus
   slack), logs drop Wood ×2, and sources scatter beyond `kSourceMinRadius` so the
   outer band is where the resources are — logistics distance is the point.
+
+Logistics: buffers, the crate, and belt filters (Aug 2026 — the factory
+becomes a puzzle):
+- **Machine buffers have a bottom.** Every `Inventory` is an unbounded
+  count-per-item array, which for the player's pack is deliberate (hardcore
+  death is its pressure) but for a MACHINE meant nothing could ever back up:
+  an output never filled, a machine never jammed, and a belt never had to be
+  routed anywhere in particular. `kMachineInputCap` (64) and
+  `kMachineOutputCap` (32) — per item TYPE, matching how `Inventory` counts —
+  are what give every logistics block a job. **The capacity rule lives in two
+  places only**: `machineAccepts` (split into `wantsItem` + a room check, so
+  the rule isn't repeated down every branch) and a gate in `tickPowered`.
+  Belts needed **no change at all** — `beltStep` already leaves an item sitting
+  on a belt whose target refuses it, so lines congest for free.
+- **A jam HOLDS; it never cancels or eats.** Progress is kept, inputs are
+  untouched, and the fuel gate sits *after* the jam check so a jammed burner
+  doesn't consume its stock standing still (the generator's "hungry" rule).
+  Crucially the check runs BEFORE `rollOutput`, because that roll advances the
+  world's shared RNG counter and one thrown away would desync a sifting line
+  from its own save — so a weighted recipe needs room for **every** face it
+  could roll. `Machine::jammed` is transient (re-derived each tick, never
+  saved). Miners and Rune Cores jam by the same rule.
+- **Feedback, because an invisible jam is worse than none**: the floating bar
+  goes fully amber (a jam is FULL, not partial — a frozen sliver would read as
+  "slow"), the panel header shows OUTPUT FULL outranking every other status,
+  and the look-at tooltip names which pile is full and says what to do.
+- **The Storage Crate** (`MachineKind::Storage`, `demand = 0` so it stays off
+  the power graph — the Rain Barrel/Pedestal precedent). Its tick migrates
+  `input` → `output` each tick before the power gate, which is the whole trick:
+  `beltStep` fills a machine's `input` and drains its `output`, so one buffer
+  swap makes a single block both feedable and drainable with no belt code.
+  `kChestCap` = 512/item. `machineAccepts` counts BOTH halves for a crate or
+  the cap would never bind. **A crate is also the splitter** — every belt
+  pointing away from one pulls independently, so one line in feeds two out —
+  which is why the roadmap's separate splitter/router block was not needed.
+  Hand-craftable (Wood ×8) on purpose: outputs fill long before you own a
+  Circle, and gating the fix behind one would mean meeting the problem with no
+  way to solve it. Generic machine save records = no save bump.
+- **Belt filters** (`Belt::filter`, save **v23**). This retired `beltStep`'s
+  rule for draining a mixed output — "whichever item has the lowest ItemId
+  ordinal" — which was arbitrary, invisible, and impossible to teach. It binds
+  BOTH ways: a filtered belt pulls only its item from a machine, and refuses
+  anything else from the belt behind, which is what makes a sorting **lane**
+  rather than just a sorting tap. The stall that creates is the intended,
+  visible failure (the stuck cargo and the target's filter both draw). Set with
+  `Action::BeltFilter` (default **F**, rebindable, needs a Wrench in the pack):
+  the aimed conduit takes the selected hotbar item, pressing again with the
+  same item clears it. The selected item is a REFERENCE, never consumed, so you
+  can plumb a line before the factory has made any of what will run down it.
+  An empty filtered belt draws its filter as a ghosted icon (`kFilterGhost` —
+  deliberately not `kOutOfStockTint`, which means "you don't own this").
+  v23 is a tail append **within the belt record**, read version-gated like
+  v20's `burnLeft` and v21's fuel buffer; `kOldestLoadable` does not move and a
+  pre-v23 belt loads unfiltered, which is what it was.
+- **Build ergonomics, which the above makes load-bearing** — richer logistics
+  means laying many more belts, so shipping it without these would have made
+  the game worse. Held RMB keeps placing (**only** the place path; every other
+  RMB verb re-tests the edge, so a repeat aimed at a machine places against it
+  instead of reopening its panel). Two knobs, not one: `kPlaceRepeatDelay`
+  (0.28 s) is what stops an ordinary 80–150 ms click placing twice, and only
+  past it does `kPlaceRepeatSeconds` matter — the same shape as any key-repeat.
+  A belt placed against a MACHINE now aims away from it (`beltStep` only pulls
+  from the machine directly behind a belt, so the camera guess was wrong
+  exactly when you stand at a machine looking at it). Shift+R reverses
+  `rotateBelt`, capping the worst case at two presses instead of five.
+  Middle-click picks the aimed block onto the hotbar. F3 finally shows XYZ.
+- Covered by `--selftest`: a jam holds progress + spends no fuel + leaves the
+  RNG counter alone, a belt facing a full machine keeps its cargo, a crate
+  feeds two belts one item each per step, filters pull only their item and
+  refuse the rest, and a belt filter round-trips through the save.
+
+Farming (Aug 2026 — the island's last renewable, and the one with an
+economic job rather than flavour):
+- **The problem it solves is a hard cap.** A Source grows at most 5 nodes
+  within r=4 and a Miner takes the nearest one every 4 s, so the whole
+  Herb → Ground Herb → Tincture → Healing Draught branch was bounded by patch
+  regrowth no matter how much factory you pointed at it. A field is bounded by
+  **area and layout** instead — the game's difficulty axis (logistics distance)
+  applied to agriculture. The crop is **Herb** for exactly that reason.
+- **`SoilKind`, ordered** (`provides` / `needsSoil` on `BlockInfo`). This
+  replaced a hardcoded `if (id == BlockId::Sapling)` in `WorldEdit::placeBlock`,
+  which crops would have grown a second branch of and which a content pack could
+  never have reached. The whole rule is `provides >= needsSoil`, and the
+  ordering pays immediately: Tilled Soil satisfies a sapling for free, because
+  worked ground is still ground.
+- **Tilled Soil + the Copper Hoe.** RMB the hoe at Grass/Dirt
+  (`WorldEdit::tillSoil`, the `fuseSources` shape — a tool RMB transmuting the
+  aimed cell). Tilled Soil drops Dirt, so tilling can never duplicate soil, and
+  has no item of its own. It **must survive a harvest** or every automated field
+  would need re-tilling by hand forever. Emphatically not a durability system.
+- **Rich Soil is the next rung, and compost is how you climb it** (Aug 2026).
+  `SoilKind::Rich` extends the ordered ladder, so `provides >= needsSoil` gave it
+  everything Tilled does for free — including a sapling — with nothing told about
+  the new rung. `WorldEdit::enrichSoil` is `tillSoil` one step later and the same
+  shape, with one deliberate difference: compost is a plain MATERIAL, not a tool,
+  so the CALLER spends it, and only on a true return, or a misclick at a wall
+  would eat it. It tests for Tilled Soil by BLOCK rather than `provides < Rich`,
+  which is what makes re-enriching a silent no-op instead of an accident (the
+  player-facing site then distinguishes "already rich" from "wrong block" from
+  "something is sitting on it", because those are three different mistakes).
+  Rich Soil drops Dirt like the tilled ground it came from — enriching must not
+  be a way to duplicate soil either.
+- **Nutrition is a second axis, and it deliberately DOES stack with water.**
+  Rain and irrigation share one multiplier because they are the same thing
+  arriving two ways; compost is not water. It is a standing build investment
+  spent into the cell rather than onto the weather, so a fed and watered field
+  runs at `kRainGrowthMult * kRichSoilMult` — the only place two growth
+  multipliers meet in the game, and the point of it: it is what makes forestry
+  worth pointing at a farm. `kRichSoilMult` is deliberately the smaller of the
+  two, since laying rich soil is permanent and free to run while water costs a
+  barrel, a belt and an Irrigator forever. `CropSystem` tests `provides >=
+  SoilKind::Rich` rather than `BlockId::RichSoil`, so a content pack's own richer
+  soil earns the bonus by saying so. `--selftest` pins the departure AND the rule
+  it sits beside — irrigating a field it is already raining on must change
+  nothing — so a later edit cannot read one as a licence for the other.
+- **The Composter is where the tree's surplus goes**, and the reason it exists.
+  A grown tree returns ~8 saplings and ~11 sticks for the ONE sapling that made
+  it, and only one of those replaces it, so without a sink the most net-positive
+  loop in the game dead-ends. Green + brown makes **Compost**, and compost is the
+  branch point: `composter/dirt` (soil), `composter/briquette` (fuel), or
+  enriching a field. There is deliberately no PlantFiber variant — a second
+  compost row would make a mixed-input Composter non-deterministic under AUTO for
+  no gain, and AUTO takes the first row whose inputs are present, so row ORDER is
+  gameplay here as everywhere.
+- **Four stages, four `kBlocks` rows** (`HerbCrop0..3`). The mesher picks a
+  shape from the BlockId alone and `Chunk` is a flat BlockId array with no
+  per-cell metadata: the timer can live in a side registry, the LOOK cannot.
+  Since save v22 those rows are no longer a permanent commitment.
+- **`CropSystem`** (CropSystem.h/.cpp) — free functions over
+  `(World&, CropMap&, ...)`, the MachineSystem/WorldEdit/DropSystem precedent,
+  rather than a fifth `VoxelGame::update*` beside `updateSaplings`. The
+  deciding reason is testability: a member of the GL-owning VoxelGame cannot be
+  exercised by `--selftest` at all. Timers RESET on each advance rather than
+  accumulating, so retuning one stage does not shift the ladder above it. Dig
+  the soil out from under a crop and it dies rather than ripening in mid-air.
+- **Seeds come off the Sifter**, which means the hand-craftable **Sieve**, so a
+  field is reachable before the Alchemy Circle and the island's wild bushes are
+  the bootstrap. Deterministic, not a weighted roll: farming's promise is that
+  it scales with area, and a seed you might not get would put that behind luck.
+- **The crop model is crossed planes** (`tools/make_crop_models.py` →
+  `models/herb_crop_*.bbmodel` → the usual bake). This is the first content
+  placed in BULK, so the quad budget is the real constraint: **4 quads and
+  0.8 KB of chunk mesh** against the Infuser's 367 and 77 KB. It needed one bake
+  change — the guard at `bbmodel_to_shape.py` counted ANY zero extent as
+  degenerate, so both planes were skipped and the model died on "nothing to
+  bake"; it now rejects only two-or-more flat axes and drops a flat box's four
+  zero-area faces. A flat element's COLLISION box alone gets a one-unit
+  thickness (a zero-thickness AABB overlaps nothing, so the crop would be
+  neither walk-into-able nor breakable); genuinely thin boxes are untouched, or
+  four shipped models would have quietly fattened. This is also what finally
+  **exercises the alpha cutout** in `voxel.frag`, inert since July 2026.
+  Crops stay `solid` so you can aim at one; walking through wheat is a later
+  change that splits ray boxes from physics boxes.
+- **The Harvester is the Miner one field over**, so `tickMiner` became
+  `tickReaper`, parameterized by what counts as a target and what the cell
+  becomes afterward. It is its own `MachineKind` precisely because of the
+  second: a Miner leaves Air, a Harvester must leave a stage-0 seedling on
+  intact tilled soil. The replant also needs its growth TIMER, which is why
+  `MachineSystem::tickPowered` now takes the crop registry — without it a field
+  reaps once and stands still, looking planted. Powered, deliberately: what the
+  powered tier sells is not having to be there.
+- **The Irrigator closes the weather loop.** It spends Rain Water to keep a
+  radius growing at the rain rate, giving the Rain Barrel and Bucket a real
+  sink. Rain and irrigation share ONE multiplier so they can never stack into a
+  third rate nobody tuned. `demand = 0` (the Rain Barrel precedent) — what it
+  spends is water, so Barrel → belt → Irrigator is a complete answer needing no
+  grid. `MachineSystem::activeIrrigators` hands CropSystem positions, never the
+  machine map: a growth system has no business knowing what a machine is, and
+  MachineSystem already includes CropSystem.
+- **Save v25** appends the crop timers at the end of the file (the v15/v16/v18
+  shape). The plants themselves ride the chunk data like any block, since v22's
+  key tables already name them; a pre-v25 save loads with an empty field.
+  Verified against a real v23 save: loads intact and re-saves losslessly.
+- **No hunger meter, ever** (decided July 2026). Hardcore death is the pressure;
+  crops feed the FACTORY, not the player.
+- Covered by `--selftest`: tilling only works on plain ground and refuses a
+  covered cell, a sapling accepts tilled ground, a crop refuses plain dirt,
+  a field ripens and STOPS at ripe, rain is faster, a crop with no soil dies and
+  drops its timer, the Harvester takes only ripe plants and leaves stage 0 on
+  intact soil and registers it, it jams on a full output, an unpowered one does
+  nothing, and two identical plants on identical ticks end at different stages
+  when one is in an irrigator's reach.
 
 The core loop is complete, closed, and fully automatable. Possible next directions:
 - **Generator tiers / better fuels:** charcoal or essence-based fuels with longer
@@ -594,8 +927,31 @@ Dimensions & the first boss (the combat pillar's opening move):
   arena rim is a real threat; `kBossKnockback`/`kBossKnockUp`). `tryMeleeAttack` returns a `MeleeResult` — a
   boss kill hands back its drop (**Void Catalyst**), sets `m_bossDefeated`
   (saved, v13 append), shows VICTORY, and rides home. Boss HP bar top-center
-  in drawHud. Model: `tools/make_boss_model.py` → `boss.bbmodel` (same
-  lenient loading as the creature). Knobs in `// ---- Boss & arena ----`.
+  in drawHud. **A strike is telegraphed and dodgeable** (Aug 2026): a species
+  with `swingImpact > 0` COMMITS on contact — spending `strikeCooldown`, playing
+  its one-shot `"attack"` clip via `playOnce` — and the damage/knockback land
+  `swingImpact` seconds later *only if the player is still inside
+  `strikeRange`*, so stepping out means the axe hits nothing. The countdown
+  (`Creature::swingLeft`) runs down in `update` (the SIM), never in
+  `frameAdvance`: when the blow lands is gameplay and must not drift with frame
+  rate; `frameAdvance` owns only `attackLeft`, the render-side lock that stops
+  the next step cutting the swing off. `swingImpact = 0` keeps the old
+  on-contact behaviour, so it is **opt-in by AUTHORING** — a species without an
+  `attack` clip gets it for free, and `checkModels` fails a row that promises a
+  wind-up its model cannot show. Model: the hand-authored
+  `game/assets/models/void_warden.bbmodel`
+  (`vg::kWardenModel`; same lenient loading as the creature), which is what
+  forced the four Blockbench-loader capabilities above. Knobs in
+  `// ---- Boss & arena ----`.
+- **Model files have a convention** (Aug 2026): `models/` holds **block-shape
+  bake sources only** — `bbmodel_to_shape.py` input, never loaded at runtime —
+  and every CREATURE `.bbmodel` lives only in `game/assets/models/`, which
+  `copy-assets` ships. A creature model in `models/` is a copy that will drift;
+  the bake correctly ignores it, silently. Generated starters
+  (`make_test_model.py`, `make_tempest_model.py`) write straight into
+  `game/assets/models/`, so a hand-authored replacement of the same name just
+  overwrites the starter — but then **delete the generator's half**, or the
+  next run silently reinstates the placeholder the game no longer loads.
 - **Boss #2 — THE TEMPEST** (rising tier): the **Storm Key** (Void Catalyst
   ×1 + Crystal ×4 + Rain Water ×4 — the warden's drop is the gate) opens the
   same BossArena dimension with a variant generation: a tighter ring with a
@@ -826,36 +1182,91 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **`RECIPES.md` is generated** — `voxel-factory --dump-recipes > RECIPES.md`.
   It used to be a hand-maintained mirror carrying an "update both together"
   warning, which is a promise a repo cannot keep.
-- **The manual tier is thirteen data rows plus one branch.** Hand-cranked twins
-  (Bloomery, Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap,
-  Mixing Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter) — one per
-  Processor. Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
+- **The manual tier is thirteen data rows plus one branch.** One twin per
+  Processor: the Bloomery (fire-driven — see below) plus twelve hand-cranked
+  (Sieve, Mortar, Hand Press, Anvil, Blowpipe, Tamper, Compost Heap,
+  Mixing Bowl, Infusion Stand, Still, Hand Distiller, Hand Transmuter). Each is a kBlocks row, a kItems row, a `kMachineTraits` row and a
   build recipe; **no new `MachineKind`**. `recipeGroup` points at the powered
   twin so `recipesForMachine()` returns its rows (a recipe stays authored
   exactly once, and a static_assert keeps the delegation one hop), `speedMult`
   (`kManualSlowdown` = 3) is the price, and `demand = 0` bypasses the power gate
   at `tickPowered`'s one `traits.demand > 0 &&` and keeps them off the power
   graph via `isPowerNode` — the Rain Barrel precedent.
+- **The Bloomery is the one manual-tier machine that is NOT cranked** (Aug
+  2026, user decision). `recipeGroup` and `handCranked` used to be tied by an
+  equivalence — cranked *iff* delegating — which silently forced a hand-turned
+  fire, and a lit bloomery full of ore did nothing at all unless somebody stood
+  there pressing arrows. The two questions are genuinely separate:
+  `recipeGroup` asks WHOSE RECIPES do I run, `handCranked` asks WHO SUPPLIES
+  THE WORK, and a bloomery answers "the Furnace's" and "the fire". So the
+  invariant is now one-directional (cranked ⇒ delegates, not the reverse) in
+  BOTH the `static_assert` and `content::validate()`, and the Bloomery runs on
+  the clock like every other machine. It still pays its manual-tier dues in the
+  other two currencies — `kManualSlowdown` times as long as a Furnace, on fuel
+  it wastes (`fuelMult = 0.6`) — so the tier gap is intact while the crank tier
+  now means one coherent thing (a machine your ARM drives) instead of two.
+  Its panel is a Furnace's — no dial, W/S drives the rows, the header reads
+  BURNING/OUT OF FUEL, and it has the same master switch as everything else
+  (see above, which this change is what prompted). `--selftest` pins that it runs unattended,
+  that it is slower than the Furnace over the same ticks, and that it stops
+  when the fuel does; the crank test moved to a Mortar.
+- **Every machine has a master switch** (`Machine::enabled`, save **v24**, Aug
+  2026, user request). **OFF means FROZEN, not broken**: no work, no power drawn
+  or produced, dark — but every buffer, the progress, and the recipe lock are
+  kept, so switching back on resumes mid-craft. It is asked ONCE, at the top of
+  `tickPowered` and `tickSelfPowered`, before power/fuel/recipes/the crank, so
+  "off" means the same thing for every `MachineKind` instead of being
+  re-implemented per branch.
+  Three things it deliberately does NOT do. It does not stop the machine
+  **conducting** — `isPowerNode` is by block id and the flood fill runs on
+  those, so idling a machine can never split a network and black out everything
+  downstream. It does not stop the machine **accepting** deliveries or giving
+  up its output, which is what makes it a logistics tool rather than a wall: an
+  idled machine fills to its input cap and the feed line backs up from there on
+  its own, with no special case in `beltStep`. And it is not a per-kind opt-in —
+  only a Pedestal lacks one (`hasPowerSwitch`), because its tick is already a
+  `continue` and a dead control teaches players the live ones might be dead too.
+  In `PowerSystem::solve` an off machine contributes no `demand` and no
+  `powerOutput` and is skipped when the energized set is filled — that last part
+  is the whole of "it looks switched off", because the energized set already
+  drives both the emissive glow and the shape animation, so no mesher change was
+  needed. The panel row is **LAST** (`switchRow`), so adding it shifted no
+  recipe row's index; the row says what pressing it DOES (TURN OFF / TURN ON)
+  while the header says the state (OFF outranks even a jam), and the look-at
+  tooltip reads OFF so an idled machine isn't confused with a starved one.
+  Toggling re-solves power (`solvePowerAndMarkDirty`) — required, not tidy.
+  `--selftest` pins the freeze, that it is a pause and not a reset, that belts
+  still fill and drain it, that an off consumer leaves the wire live, that an
+  off consumer stops making its generator hungry, that an off generator darkens
+  what it fed, and the v24 save round-trip (one machine on, one off).
 - **Cranking is what makes the tier manual rather than merely slow** (Aug 2026).
-  It shipped as pure data — a 3× wall-clock stretch — which meant a Bloomery ran
+  It shipped as pure data — a 3× wall-clock stretch — which meant a Mortar ran
   itself overnight and the powered tier sold nothing but speed. A `handCranked`
-  traits flag (static_asserted to agree with the manual tier, since the two must
-  never come apart) now makes `tickPowered` advance those machines by
+  traits flag (static_asserted to IMPLY the manual tier — a handle needs a
+  recipe list; the reverse does not hold, see the Bloomery above) makes
+  `tickPowered` advance those machines by
   `Machine::crankBanked` instead of `kTickSeconds`. The bank is filled by the
   **panel**: with it open, the four ARROWS pressed in order (`vg::kCrankOrder`,
   clockwise from up) turn the handle, and a completed rotation banks
   `kCrankProgress` seconds. A wrong key resets the turn. `crankStep`/`crankBanked`
   are transient, so a half-turn is not saved and needs no version bump; W/S keep
   the rows via `menuNav`'s new `useArrows` flag, so the two never fight. The tick
-  bails BEFORE spending the bank when the fire is out, so a turn against an unlit
-  Bloomery is owed, not swallowed — and fuel burns only on a tick that banked a
-  crank, so an unattended burner costs nothing. **Belts still load a manual
-  machine but can never run one**: the tier is now genuinely un-automatable, and
-  what the powered tier sells is not speed but not having to be there. Covered by
-  `--selftest` (400 ticks of a loaded Bloomery must produce and burn nothing).
-- **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, Charcoal
-  60s) replaced the Generator's single `.fuel`/`.burnSeconds` pair, so a better
-  fuel is one row. A Processor with `burnsFuel` runs on heat instead of
+  bails BEFORE spending the bank when a cranked machine's fire is out, so the
+  turn is owed rather than swallowed — and fuel burns only on a tick that banked
+  a crank, so an unattended cranked burner costs nothing. (No cranked machine
+  burns fuel any more, now that the Bloomery has left the set, but the rule
+  stands for the next one.) **Belts still load a cranked machine but can never
+  run one**: those are genuinely un-automatable, and what the powered tier sells
+  is not speed but not having to be there. Covered by `--selftest` (400 ticks of
+  a loaded Mortar must produce nothing).
+- **Fuel is a registry.** `kFuels` (Stick 5s, Sapling 5s, Wood 20s, **Bio
+  Briquette 35s**, Charcoal 60s) replaced the Generator's single
+  `.fuel`/`.burnSeconds` pair, so a better fuel is one row — which is exactly
+  what the briquette turned out to be. It is the rung between wood and charcoal
+  and the reason a Composter is worth building before you own a fire: it turns
+  the tree's leftovers into fuel without spending the wood you want for
+  building. (`kFuels` is listed in burn order for readability only — `pickFuel`
+  scans by `seconds`, not by position.) A Processor with `burnsFuel` runs on heat instead of
   electricity (the Furnace and Bloomery; `Machine::burnLeft`, appended in v20).
   It lights fuel only when a craft is ready — the generator's "hungry" rule
   applied to a recipe — and burns the SHORTEST fuel first.
@@ -900,12 +1311,94 @@ The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **The bootstrap.** Smelting, glass, vials and dirt+sand→stone left the hand
   menu, so two machines had to stay hand-craftable or the tree deadlocks (the
   Rune Core costs ingots, and an ingot now costs a fire): **Bloomery**
-  (Stone ×8) and **Sieve** (Wood ×4 + Stick ×4). Ladder: sticks + pebbles →
+  (Stone ×8) and **Sieve** (Wood ×4 + Twine ×2 — a sieve is a MESH, so it costs
+  twine rather than loose sticks). Ladder: fiber + sticks + pebbles → twine →
   wood/stone tools → Bloomery + Sieve → ingots and iron → hand-craft the Circle
   → the manual tier → the powered tier. The reachability check pins all of it.
+- **Charcoal is 1 wood, not 2, and the arithmetic is the reason** (Aug 2026). At
+  2:1 a BLOOMERY charring wood was a net energy LOSS: `kManualSlowdown` stretches
+  the craft to 18 s and `fuelMult` 0.6 shortens a wood to 12 s, so it spent 1.5
+  wood burning plus 2 wood charring — 70 burn-seconds in for 60 out. At 1:1 both
+  tiers are positive (Furnace 2.3×, Bloomery 1.2×) and the tier gap survives
+  where it belongs, in `speedMult`. Retune this ratio and check the BLOOMERY, not
+  the Furnace.
+- **Wire is drawn from a rod**, which retired the Copper Rod's long spell as a
+  part with no consumer. `press/copper-wire` turns an ingot into two rods into
+  four wire, against `circle/wire`'s ingot → two by hand: automating wire is
+  worth twice doing it yourself, which is the bargain every machine tier here is
+  supposed to offer. Listed after the frame so a Press holding ingots still makes
+  plates first, and before `press/copper-rod` so a Press holding rods drains them
+  into wire rather than sitting on them.
 - **Weapons are data.** `ItemInfo::weaponDamage` (0 = not a weapon) replaced
   the two hardcoded `held == ItemId::CopperSword` tests, so the Iron Sword is a
   registry row and the old `kSwordDamage` knob is gone.
+
+The hard start (Aug 2026 — the primitive tier, and the ruin that stopped
+undercutting it):
+- **The problem was that the empty starting kit was a fiction.** A working demo
+  line stood on the spawn plateau: every block of it is hardness 0.5 and ungated
+  (so your own machines stay retrievable by hand) and `breakBlock` hands back
+  every buffered item — so a bare-handed player five blocks from spawn collected
+  16 Wood, 20 Herb, seven machines and a Herb Source. Sixteen wood alone is a
+  Bucket, a Sieve and a Crate without ever owning an axe: the tree, the tool
+  ladder and the Bloomery all skipped, in the first minute.
+- **The ruin is the same object, sited instead of placed.** As a TEACHING object
+  the line works, so the layout is unchanged — generator → wire → grinder →
+  conduits → cauldron, a rain barrel plumbed in, a mining bay south of it.
+  What changed is where it stands and how much it gives away. `plantRuin` was
+  split out of `buildWorld` precisely so the thing could be sited, and it is
+  stocked to **limp**: `kRuinFuelWood` (2) and `kRuinHerb` (4), enough to still
+  be running when you find it and to die while you watch. That teaches what it
+  needs far better than either a dead ruin or a full one. Its Herb Source came
+  out with it — one five blocks from spawn contradicted the whole rule that
+  sources sit past `kSourceMinRadius` so that reaching them is the problem.
+- **Siting is a search, and it may come up empty.** 400 seeded attempts in the
+  `kRuinMinRadius`..`kRuinMaxRadius` band (22–30, the same band as the sources,
+  because that is where the resources are and so where a factory would have been
+  built). The outer bound only saves wasted attempts; what actually keeps the pad
+  on land is a **per-column test** over the whole footprint plus a one-cell
+  margin, since the coastline wobbles by ±7 and a radius alone cannot tell a
+  headland from a bay. A ruin is a BUILT thing, so its builders are assumed to
+  have levelled the site: every column must find land within `kRuinLevelSlack`
+  of the anchor, and the pad is then cut down and filled up to it. Both bounds
+  are driven by that same slack, which is what makes the levelling safe in either
+  direction — hence the `static_assert` that `kRuinHeadroom > kRuinLevelSlack`.
+  Failure is **never fatal and never a retry loop**: worldgen has to finish, and
+  a ruinless island is playable (it was never a kit), just quieter.
+  Measured at **12/12 across fresh worlds**, with the sites clustering hard at
+  the inner bound (six of ten at radius 22–23) — the outer band rarely satisfies
+  the land+level test, so `kRuinMaxRadius` is close to decorative in practice.
+- Stamped BEFORE the source scatter, so the scatter's existing "grass with air
+  above" test declines to land inside it without having to be told it exists.
+- **The primitive tier is what the plateau leaves you with.** Turf pulls apart
+  into **Plant Fiber** and topsoil turns up a **Pebble**, both EVERY time, and
+  three fiber twist into **Twine** — the binding every wood and stone tool needs,
+  and so the true step one, before any tool at all. A sieve is a MESH, so it
+  costs twine too.
+- **They used to share one 25% roll, and that was two mistakes at once.** It made
+  Grass and Dirt the same resource — no reason to dig one over the other — and it
+  put a coin flip on the FIRST thing a new game asks you to collect: two wood
+  tools cost six pebbles, so ~24 blocks of dirt-punching before the game started.
+  Now turf is where binding comes from and topsoil is where stone starts, which
+  is two verbs. Leaves keep a roll because a leaf yields two different things.
+- **None of it can be a `BlockDrop` row.** Grass and Dirt already spend theirs on
+  GrassItem/DirtItem and `BlockDrop` is a single stack, so fiber, pebbles and
+  sticks are spawned BESIDE the drop in VoxelGamePlayer's break path. They are
+  CODE, not data — which is exactly why `content::validate()`'s closures have to
+  name those items by hand, and why that hand-naming is not an oversight.
+- **`hand/pebble-stone` (Pebble ×4 → Stone) is load-bearing in two opposite
+  directions**, which is the interesting part. It is the only producer of Stone
+  that does not COST Stone (compactor/stone needs a Compactor or Tamper; the
+  Tamper, the Bloomery and the Circle all cost Stone), so without it the whole
+  tech tree rests on whatever the island happened to bury — that is what the
+  renewability closure is asking about. But Stone is gated at `kTierWood` and
+  this is a HAND recipe, so it is also a way past that gate with no pickaxe,
+  harmless only while it stays the SLOWER road. At 4 it is: four bare-handed digs
+  is 3 s of Dirt at hardness 0.75, against 1 s for a Wood Pickaxe (miningSpeed 4)
+  on Stone at hardness 4 — and that pickaxe costs three pebbles, fewer than one
+  Stone does here. Neither closure would notice it being cheapened, since both
+  only get GREENER as it gets cheaper, so `--selftest` pins the ordering directly
+  ("the pebble route must stay a fallback").
 
 Persistence:
 - **Save/load** (`SaveSystem.*`): versioned binary (`save.vxf` in the SDL pref dir —
@@ -944,7 +1437,12 @@ Persistence:
   irrelevant at the current 6×6-chunk cap, and the fix if the world ever grows
   is a per-chunk palette, which would land it below the original. Pre-v22 saves
   migrate on read (identity map + 1-byte ids); v14/v18/v21 real saves were
-  verified to load and re-save losslessly.
+  verified to load and re-save losslessly. The Aug 2026 content batch (the
+  primitive tier, compost, grafted saplings) changed the format NOT AT ALL --
+  new blocks and items ride v22's key tables, the sapling registry is still a
+  plain `pos -> float`, and the retired `m_lootRng` was transient -- and a real
+  399 KB **v25** save was checked the same way: load -> re-save -> reload, three
+  generations, identical size and an identical world each time.
 
 Commercial shell (main menu + save slots + logging/crash dumps — July 2026):
 - **Main menu on launch** — the game boots into a NEW GAME / CONTINUE / SETTINGS /

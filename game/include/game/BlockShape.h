@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <iterator>
 #include <span>
+#include <string_view>
 
 // Sub-cube block geometry: the boxes a block actually occupies inside its cell,
 // instead of the implicit 1x1x1 every block was until now. A block names a
@@ -71,6 +72,14 @@ enum class ShapeId : std::uint8_t {
     AlchemicalAlembic,
     AugerMiningRig,
     ArcaneInfuser,
+    // Farming's four growth stages. Crossed planes rather than a detailed
+    // model, deliberately: this is the first content placed in BULK, and 4
+    // quads (0.8 KB of chunk mesh) against the Infuser's 367 is what keeps a
+    // field from costing megabytes.
+    HerbCrop0,
+    HerbCrop1,
+    HerbCrop2,
+    HerbCrop3,
     Count
 };
 
@@ -113,6 +122,26 @@ inline constexpr BlockShape kBlockShapes[] = {
      .boxes = kShapeBoxesArcaneInfuser,
      .bounds = kShapeBoundsArcaneInfuser,
      .anim = kShapeAnimArcaneInfuser},
+    {.id = ShapeId::HerbCrop0,
+     .quads = kShapeQuadsHerbCrop0,
+     .boxes = kShapeBoxesHerbCrop0,
+     .bounds = kShapeBoundsHerbCrop0,
+     .anim = kShapeAnimHerbCrop0},
+    {.id = ShapeId::HerbCrop1,
+     .quads = kShapeQuadsHerbCrop1,
+     .boxes = kShapeBoxesHerbCrop1,
+     .bounds = kShapeBoundsHerbCrop1,
+     .anim = kShapeAnimHerbCrop1},
+    {.id = ShapeId::HerbCrop2,
+     .quads = kShapeQuadsHerbCrop2,
+     .boxes = kShapeBoxesHerbCrop2,
+     .bounds = kShapeBoundsHerbCrop2,
+     .anim = kShapeAnimHerbCrop2},
+    {.id = ShapeId::HerbCrop3,
+     .quads = kShapeQuadsHerbCrop3,
+     .boxes = kShapeBoxesHerbCrop3,
+     .bounds = kShapeBoundsHerbCrop3,
+     .anim = kShapeAnimHerbCrop3},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -130,6 +159,33 @@ inline constexpr const BlockShape& blockShape(ShapeId id) {
 }
 inline const BlockShape& blockShape(BlockId id) {
     return blockShape(blockInfo(id).shape);
+}
+
+// ---- Shape names, for the content pack format -----------------------------
+// A shape is baked from a Blockbench model, so a pack cannot author one -- but
+// it must be able to SAY which existing shape a block uses, and "3" is exactly
+// the kind of ordinal the whole content-key exercise was about not writing
+// down. One table serves both the dump and the loader, so a new shape is a name
+// here and nothing else.
+inline constexpr const char* kShapeNames[] = {
+    "full_cube", "empty", "brewing_cauldron",
+    "alchemical_alembic", "auger_mining_rig", "arcane_infuser",
+    "herb_crop_0", "herb_crop_1", "herb_crop_2", "herb_crop_3",
+};
+static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
+              "kShapeNames needs exactly one name per ShapeId");
+
+inline const char* shapeName(ShapeId id) {
+    return kShapeNames[static_cast<std::size_t>(id)];
+}
+
+// ShapeId::Count when the name is unknown -- shapes are compiled in, so unlike
+// blocks and items this sentinel can never collide with a real row.
+inline ShapeId shapeFromName(std::string_view name) {
+    for (std::size_t i = 0; i < std::size(kShapeNames); ++i) {
+        if (name == kShapeNames[i]) return static_cast<ShapeId>(i);
+    }
+    return ShapeId::Count;
 }
 
 // The boxes a block occupies, cell-local. Physics and raycasts walk these

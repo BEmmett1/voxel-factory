@@ -44,6 +44,25 @@ namespace {
     bool yieldsDrop(BlockId block, ItemId held) {
         return blockToolTier(block) == 0 || hasHarvestTool(held, block);
     }
+    // What a gated block wants, in words, for the moment it breaks into
+    // nothing. Tiers are numbers in the registry but a MATERIAL to the player,
+    // and naming the material is the only form of this sentence that tells them
+    // what to go and make.
+    std::string toolWanted(BlockId block) {
+        const char* cls = "TOOL";
+        switch (blockTool(block)) {
+            case ToolType::Pickaxe: cls = "PICKAXE"; break;
+            case ToolType::Axe:     cls = "AXE";     break;
+            case ToolType::Shovel:  cls = "SHOVEL";  break;
+            case ToolType::None:    break;
+        }
+        const int tier = blockToolTier(block);
+        const char* mat = tier <= kTierWood     ? "WOODEN"
+                          : tier == kTierStone  ? "STONE"
+                          : tier == kTierCopper ? "COPPER"
+                                                : "IRON";
+        return std::string(mat) + " " + cls;
+    }
 
 } // namespace
 
@@ -72,6 +91,11 @@ void VoxelGame::onUpdate(float dt) {
         m_debugOpen = !m_debugOpen;
     }
 
+    // A refusal's reason fades on REAL frame time, not the pause-aware clock
+    // below: several of the sites that call deny() are inside panels, where the
+    // sim is frozen and a message that never expired would hang there.
+    m_denyTimer = std::max(0.0f, m_denyTimer - dt);
+
     // Entity animation clocks tick at render rate (menus keep animating, just
     // like onTick keeps simulating); a true pause freezes them.
     if (!paused()) {
@@ -83,6 +107,8 @@ void VoxelGame::onUpdate(float dt) {
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);
+        m_placeCooldown = std::max(0.0f, m_placeCooldown - dt);
+        m_rmbHeld = input().isMouseDown(SDL_BUTTON_RIGHT) ? m_rmbHeld + dt : 0.0f;
 
         // Victory linger: soak in the win, then ride home automatically.
         if (m_victoryTimer > 0.0f) {
@@ -182,6 +208,15 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::CompactorItem, 1);
         m_inventory.add(ItemId::MortarItem, 1);
         m_inventory.add(ItemId::HandPressItem, 1);
+        // Logistics: crates and a spool of conduit, so a sorting line (machine
+        // -> crate -> filtered belts) can be laid without first chopping the
+        // wood for it. This is the tier F6 most needs to reach, because a jam
+        // is the one thing you cannot set up by hand in a fresh world.
+        give(ItemId::StorageCrateItem, 4, kHotbarSlots - 4);
+        give(ItemId::Conduit, 32, kHotbarSlots - 5);
+        // The Wrench gates BOTH conduit verbs (re-aim and set filter), so a kit
+        // without one leaves half the logistics tier untestable.
+        m_inventory.add(ItemId::Wrench, 1);
         // Iron: stock at every link of the sand -> nugget -> ingot -> plate
         // chain, plus the fuel to run it.
         m_inventory.add(ItemId::Charcoal, 32);
@@ -198,6 +233,14 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::Essence, 12);
         m_inventory.add(ItemId::Sand, 32);
         m_inventory.add(ItemId::DirtItem, 32);
+        // Farming: the hoe on the bar, since a field starts with tilling and
+        // there is nothing else in the kit that can make Tilled Soil.
+        give(ItemId::CopperHoe, 1, kHotbarSlots - 6);
+        give(ItemId::HerbSeed, 32, kHotbarSlots - 7);
+        give(ItemId::HarvesterItem, 2, kHotbarSlots - 8);
+        m_inventory.add(ItemId::IrrigatorItem, 2);
+        m_inventory.add(ItemId::SpringWater, 32);
+        m_inventory.add(ItemId::Herb, 32);
         updateTitle();
         audio().play("craft", kCraftVolume);
     }
@@ -295,7 +338,7 @@ void VoxelGame::onUpdate(float dt) {
         // the void, and any death in the transient arena, still fully wipes.
         if (!mv.fellOff && m_dimension == DimensionId::Overworld) {
             const glm::vec3 feet = preMoveEye - glm::vec3(0.0f, kEyeHeight, 0.0f);
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 const int c = m_inventory.count(id);
                 if (c > 0) {
@@ -350,6 +393,11 @@ void VoxelGame::onUpdate(float dt) {
             audio().play("heal", kHurtVolume);
             updateTitle();
             drank = true;
+        } else if (held == ItemId::HealingDraught && m_inventory.has(held)) {
+            // Holding a draught you cannot use yet. Silent before, which reads
+            // as a broken item rather than as a full health bar.
+            deny("ALREADY AT FULL HEALTH");
+            drank = true; // the click is spent on the explanation
         } else if (held == ItemId::ElixirOfVigor && m_inventory.has(held)) {
             // A draught of vigor: refresh the timed weapon-damage buff.
             m_inventory.remove(held, 1);
@@ -430,7 +478,7 @@ void VoxelGame::onUpdate(float dt) {
     if (aim.hit && m_dimension != DimensionId::Overworld) {
         if ((!swordHit && input().wasMousePressed(SDL_BUTTON_LEFT)) ||
             (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT))) {
-            audio().play("deny", kCraftVolume);
+            deny("NO BUILDING IN THE ARENA - FIGHT OR GO HOME");
         }
     } else if (aim.hit) {
         const glm::ivec3 tb = aim.block;
@@ -439,9 +487,22 @@ void VoxelGame::onUpdate(float dt) {
         // below, after the RMB/wrench edits.)
         // RMB: on a machine, open its panel (Shift+RMB to place against it
         // instead); otherwise place the held item into the empty target cell.
-        if (!drank && input().wasMousePressed(SDL_BUTTON_RIGHT)) {
+        // Placing repeats while RMB is HELD, but only the place path: every
+        // other RMB verb below (open a panel, drink, spend a key, fuse) stays
+        // edge-triggered, because repeating those would be a disaster. Gated on
+        // a cooldown AND on the cell changing, so holding the button down a
+        // line of belts lays one per cell instead of racing the raycast.
+        const bool placeRepeat =
+            input().isMouseDown(SDL_BUTTON_RIGHT) && m_rmbHeld >= kPlaceRepeatDelay &&
+            m_placeCooldown <= 0.0f && m_placedLastCell != aim.block + aim.normal;
+        if (!drank && (input().wasMousePressed(SDL_BUTTON_RIGHT) || placeRepeat)) {
             const bool aimedMachine = m_machines.find(tb) != m_machines.end();
-            if (held == ItemId::FusionCatalyst && m_inventory.has(held)) {
+            // Only the final `else` (placing) may run on a repeat -- so both
+            // one-shot verbs below re-test the EDGE. A repeat aimed at a
+            // machine therefore places against it rather than re-opening its
+            // panel every frame, which is what you want mid-line anyway.
+            const bool pressed = input().wasMousePressed(SDL_BUTTON_RIGHT);
+            if (pressed && held == ItemId::FusionCatalyst && m_inventory.has(held)) {
                 // Fuse the aimed source with a different adjacent source; the
                 // catalyst is spent only on a successful pairing.
                 if (WorldEdit::fuseSources(*m_world, editRegistries(), tb)) {
@@ -450,15 +511,63 @@ void VoxelGame::onUpdate(float dt) {
                     m_inventory.remove(held, 1);
                     updateTitle();
                 } else {
-                    audio().play("deny", kCraftVolume);
+                    deny("FUSION NEEDS TWO DIFFERENT SOURCES SIDE BY SIDE");
                 }
-            } else if (aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
+            } else if (pressed && held == ItemId::CopperHoe) {
+                // Till the aimed cell into a bed a crop will take. A tool, so
+                // nothing is spent and nothing wears out -- the cost of a field
+                // is the walking, not the hoe.
+                if (WorldEdit::tillSoil(*m_world, tb)) {
+                    audio().playAt("place", glm::vec3(tb) + glm::vec3(0.5f),
+                                   kPlaceVolume, pitchJitter(tb));
+                } else if (isSolid(m_world->getBlock(tb.x, tb.y + 1, tb.z))) {
+                    // The two refusals tillSoil folds into one `false` are
+                    // different mistakes, so they get different answers.
+                    deny("SOMETHING IS SITTING ON THIS GROUND");
+                } else {
+                    deny("THE HOE ONLY WORKS ON GRASS OR DIRT");
+                }
+            } else if (pressed && held == ItemId::Compost && m_inventory.has(held)) {
+                // One rung above the hoe: worked ground fed compost grows
+                // faster. Unlike the hoe and the catalyst this is a plain
+                // MATERIAL, so it is spent -- and only on a true return, or a
+                // misclick at a wall would eat it.
+                if (WorldEdit::enrichSoil(*m_world, tb)) {
+                    audio().playAt("place", glm::vec3(tb) + glm::vec3(0.5f),
+                                   kPlaceVolume, pitchJitter(tb));
+                    m_inventory.remove(held, 1);
+                    updateTitle();
+                } else if (m_world->getBlock(tb.x, tb.y, tb.z) == BlockId::RichSoil) {
+                    // Re-enriching is a no-op in WorldEdit, but silence here
+                    // would read as compost vanishing into nothing.
+                    deny("THIS SOIL IS ALREADY RICH");
+                } else if (isSolid(m_world->getBlock(tb.x, tb.y + 1, tb.z))) {
+                    deny("SOMETHING IS SITTING ON THIS GROUND");
+                } else {
+                    deny("COMPOST GOES ON TILLED SOIL - USE THE HOE FIRST");
+                }
+            } else if (pressed && aimedMachine && !input().isKeyDown(SDL_SCANCODE_LSHIFT)) {
                 openMachineUi(tb);
             } else {
                 const glm::ivec3 p = aim.block + aim.normal;
                 if (itemInfo(held).placeable && !m_inventory.has(held)) {
                     // Assigned but out of stock: make the restock need audible.
-                    audio().play("deny", kCraftVolume);
+                    // The slot stays assigned on purpose (it greys out), so the
+                    // reason has to distinguish "none left" from "not a block".
+                    deny(std::string("OUT OF ") + itemName(held));
+                } else if (itemInfo(held).placeable && m_inventory.has(held) &&
+                           cellOverlapsPlayer(p)) {
+                    // Was silent before. Nothing looks more broken than a click
+                    // that does nothing while you are standing in the cell.
+                    deny("YOU ARE STANDING THERE");
+                } else if (pressed && held == ItemId::Bucket) {
+                    // Silent before, and the bucket is the one tool whose verb
+                    // is not a click at all -- so the click is exactly when to
+                    // say so.
+                    deny("HOLD THE BUCKET OUT IN THE RAIN TO FILL IT");
+                } else if (pressed && held == ItemId::Wrench) {
+                    deny(std::string("THE WRENCH TURNS BELTS - PRESS ") +
+                         SDL_GetScancodeName(key(Action::WrenchRotate)));
                 } else if (itemInfo(held).placeable && m_inventory.has(held) &&
                            !cellOverlapsPlayer(p)) {
                     // A conduit carries items the way the player is facing --
@@ -473,17 +582,45 @@ void VoxelGame::onUpdate(float dt) {
                     } else {
                         facing = {0, 0, f.z > 0 ? 1 : -1};
                     }
+                    // ...unless you clicked against a MACHINE, in which case
+                    // aim away from it. beltStep only pulls from the machine
+                    // directly BEHIND a belt, so a belt built onto a machine
+                    // face and pointing any other way is silently useless --
+                    // by far the most common mis-facing, and the camera guess
+                    // gets it wrong precisely when you are standing at the
+                    // machine looking at it.
+                    if (itemInfo(held).placesBlock == BlockId::Belt &&
+                        m_machines.find(aim.block) != m_machines.end()) {
+                        facing = aim.normal;
+                    }
 
-                    // WorldEdit refuses world-side (cell taken, saplings need
-                    // soil) as a silent no-op, matching the old guards.
+                    // WorldEdit refuses world-side (cell taken, plants need the
+                    // right ground) as a no-op. It reports only `placed`, but
+                    // both refusals are cheap to re-derive here, and a plant
+                    // that will not go down is the single most confusing one --
+                    // there is nothing on screen to tell you tilled ground is a
+                    // different thing from dirt.
+                    const BlockId want = itemInfo(held).placesBlock;
                     const WorldEdit::PlaceResult r = WorldEdit::placeBlock(
-                        *m_world, editRegistries(), p, itemInfo(held).placesBlock, facing);
+                        *m_world, editRegistries(), p, want, facing);
+                    if (!r.placed) {
+                        const SoilKind needs = blockInfo(want).needsSoil;
+                        if (isSolid(m_world->getBlock(p.x, p.y, p.z))) {
+                            deny("THAT CELL IS ALREADY FULL");
+                        } else if (needs == SoilKind::Tilled) {
+                            deny("PLANT THIS ON TILLED SOIL - USE THE HOE");
+                        } else if (needs == SoilKind::Soil) {
+                            deny("THIS ONLY TAKES ROOT ON GRASS OR DIRT");
+                        }
+                    }
                     if (r.placed) {
                         audio().playAt("place", glm::vec3(p) + glm::vec3(0.5f),
                                        kPlaceVolume, pitchJitter(p));
                         m_inventory.remove(held, 1);
                         if (r.powerChanged) solvePowerAndMarkDirty();
                         updateTitle();
+                        m_placedLastCell = p;
+                        m_placeCooldown = kPlaceRepeatSeconds;
                     }
                 }
             }
@@ -491,7 +628,57 @@ void VoxelGame::onUpdate(float dt) {
 
         // Wrench (default R): re-aims the targeted conduit, cycling six ways.
         if (input().wasKeyPressed(key(Action::WrenchRotate)) && m_inventory.has(ItemId::Wrench)) {
-            WorldEdit::rotateBelt(*m_world, m_belts, tb);
+            WorldEdit::rotateBelt(*m_world, m_belts, tb,
+                                  input().isKeyDown(SDL_SCANCODE_LSHIFT));
+        }
+
+        // Middle-click picks the aimed block onto the hotbar, if you own one.
+        // Costs nothing, saves a Tab round trip every time you extend a line
+        // with a block you are already standing next to.
+        if (input().wasMousePressed(SDL_BUTTON_MIDDLE)) {
+            const ItemId want = blockDrop(m_world->getBlock(tb.x, tb.y, tb.z)).id;
+            if (want != ItemId::None && itemInfo(want).placeable && m_inventory.has(want)) {
+                // Already on the hotbar: just select it. Otherwise take the
+                // current slot, which is the whole point -- you aimed at the
+                // thing you want in your hand.
+                int slot = -1;
+                for (int i = 0; i < kHotbarSlots; ++i) {
+                    if (m_hotbar[static_cast<std::size_t>(i)] == want) { slot = i; break; }
+                }
+                if (slot < 0) {
+                    slot = m_selectedSlot;
+                    m_hotbar[static_cast<std::size_t>(slot)] = want;
+                }
+                m_selectedSlot = slot;
+                audio().play("click", kCraftVolume);
+                updateTitle();
+            } else {
+                deny(want == ItemId::None || !itemInfo(want).placeable
+                         ? "NOTHING TO PICK UP HERE"
+                         : std::string("YOU DO NOT OWN A ") + itemName(want));
+            }
+        }
+
+        // Belt filter (default F): the aimed conduit carries only the item on
+        // the hotbar; pressing it again with that same item clears the filter.
+        // A binding of its own rather than a modifier on the wrench, because
+        // both the item and the belt already say what they are -- the player
+        // should not also have to hold a mode.
+        if (input().wasKeyPressed(key(Action::BeltFilter)) &&
+            m_inventory.has(ItemId::Wrench)) {
+            const auto bit = m_belts.find(tb);
+            if (bit == m_belts.end()) {
+                deny("FILTERS GO ON A CONDUIT");
+            } else {
+                // The selected item is a REFERENCE here, never consumed, so an
+                // out-of-stock hotbar assignment still names a filter -- which
+                // is the normal case when you are laying out a line before the
+                // factory has made any of what will run down it.
+                const ItemId want = (held == ItemId::Wrench) ? ItemId::None : held;
+                bit->second.filter = (bit->second.filter == want) ? ItemId::None : want;
+                audio().playAt("click", glm::vec3(tb) + glm::vec3(0.5f), kCraftVolume);
+                m_world->markDirtyAt(tb.x, tb.y, tb.z);
+            }
         }
     }
 
@@ -524,26 +711,42 @@ void VoxelGame::onUpdate(float dt) {
             }
             // Machine buffers / belt cargo handed back are the player's own,
             // gated or not — they always drop.
-            for (int i = 1; i < static_cast<int>(ItemId::Count); ++i) {
+            for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
                 const ItemId id = static_cast<ItemId>(i);
                 const int c = r.returned.count(id);
                 if (c > 0) spawnDrop(dropPos, id, c);
             }
-            // Sifting topsoil turns up pebbles (the wooden-tool ingredient), and
-            // chopped leaves shed sticks — the two hand-gathered bootstrap items.
-            auto roll = [&](float p) {
-                m_lootRng = m_lootRng * 1664525u + 1013904223u;
-                return (m_lootRng >> 8) % 10000u < static_cast<std::uint32_t>(p * 10000.0f);
-            };
-            if (keepDrop && (bid == BlockId::Grass || bid == BlockId::Dirt) &&
-                roll(kPebbleChance)) {
+            // The three things bare hands get out of the island, BESIDES each
+            // block's own drop: turf pulls apart into fiber, topsoil turns up a
+            // pebble, and a dying leaf sheds a stick and sometimes a sapling.
+            //
+            // Grass and Dirt yield theirs every time. They shared one 25% roll
+            // until Aug 2026, which made them the same resource — no reason to
+            // dig one over the other — and put a coin flip on the first thing a
+            // fresh game asks you to collect. Now turf is where binding comes
+            // from and topsoil is where stone starts, which is two verbs.
+            //
+            // None of this can be a BlockDrop row: Grass and Dirt already have
+            // one (GrassItem / DirtItem) and BlockDrop is a single stack. That
+            // is exactly why content::validate()'s closures have to name these
+            // three items by hand — they are code, not data.
+            if (keepDrop && bid == BlockId::Grass) {
+                spawnDrop(dropPos, ItemId::PlantFiber, 1);
+            }
+            if (keepDrop && bid == BlockId::Dirt) {
                 spawnDrop(dropPos, ItemId::Pebble, 1);
             }
-            if (r.brokeLeaves) {
-                rollLeafSapling(tb);
-                if (roll(kStickChance)) spawnDrop(dropPos, ItemId::Stick, 1);
-            }
+            if (r.brokeLeaves) rollLeafDrops(tb, /*chopped=*/true);
             audio().playAt("mine", dropPos, kMineVolume, pitchJitter(tb));
+            // The block is gone and you got nothing for it. This was entirely
+            // silent, and it is the rule new players lose the most time to --
+            // the pickaxe tier is invisible, so a stone that yields no stone
+            // reads as the game being broken rather than as a missing tool.
+            // Said AFTER the break, when the loss is what needs explaining.
+            if (!keepDrop && r.drop.id != ItemId::None) {
+                deny(std::string("NO DROP - ") + itemName(r.drop.id) + " NEEDS A " +
+                     toolWanted(bid));
+            }
             if (r.powerChanged) solvePowerAndMarkDirty();
             updateTitle();
             m_breaking = false;

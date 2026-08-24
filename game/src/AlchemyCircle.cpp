@@ -82,7 +82,7 @@ std::array<ItemStack, kRingSlots> ringContents(const World& world,
         if (!p) continue;
         // A pedestal is a one-item-TYPE holder, so the first non-empty entry
         // is the whole story.
-        for (int k = 1; k < static_cast<int>(ItemId::Count); ++k) {
+        for (int k = 1; k < static_cast<int>(itemCount()); ++k) {
             const ItemId id = static_cast<ItemId>(k);
             const int c = p->input.count(id);
             if (c > 0) { out[static_cast<std::size_t>(i)] = {id, c}; break; }

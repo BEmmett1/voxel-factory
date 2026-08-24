@@ -153,7 +153,18 @@ COMPACTOR = (124, 122, 116)  # rammed-earth press
 CRUDEWOOD = (128, 96, 58)  # manual-tier timber
 CRUDESTONE = (112, 110, 104)  # manual-tier fieldstone
 IRON = (198, 200, 208)     # the structural metal
+HARVESTER = (158, 148, 78)  # reaper: brass reel over a straw-worn frame
+IRRIGATOR = (108, 132, 148)  # weathered pipework and a sprinkler head
 CHARCOAL = (48, 44, 42)
+
+# The primitive tier: what bare hands get out of the island. Fiber is dry-grass
+# straw (deliberately paler than GRASS, which is the living block), twine the
+# same fiber twisted tighter and darker, briquette a shade above CHARCOAL so
+# the two never read as the same fuel in a hotbar.
+FIBER = (188, 174, 106)
+TWINE = (156, 136, 86)
+BRIQUETTE = (74, 62, 52)
+RICHSOIL = (77, 54, 33)  # tilled soil fed compost: darker and wetter than DIRT
 
 GOLD = (255, 214, 51)
 EMBER = (255, 140, 40)    # forge fire
@@ -332,6 +343,67 @@ def terrain():
     t.speckle(shade(LEAVES, 0.5), 7, seed=11)        # depth holes
     t.speckle(shade(LEAVES, 1.4), 8, seed=12)        # lit clusters
     t.speckle(shade(SAPLING, 1.1), 3, seed=13)
+
+    t = paint(9)                                     # tilled soil top: furrows
+    t.fill(shade(DIRT, 0.85), noise=0.12)
+    for x in range(T):                               # raked ridges, damp valleys
+        for y in range(T):
+            band = (y // 3) % 2
+            t.px(x, y, shade(DIRT, (1.15 if band else 0.68) +
+                             n2(x, y, 131) * 0.2))
+    t.speckle(shade(DIRT, 1.35), 6, seed=52)         # turned clods
+    t.speckle(shade(DIRT, 0.5), 5, seed=53)
+
+    t = paint(11)                                    # herb seed (crop item icon)
+    for sx, sy in ((5, 6), (8, 5), (10, 8), (6, 10), (9, 11)):
+        t.disc(sx, sy, 1, shade(SAPLING, 0.9))       # a scatter of seeds
+        t.px(sx, sy - 1, shade(SAPLING, 1.4))
+        t.px(sx + 1, sy + 1, shade(SAPLING, 0.55))
+
+    t = paint(12)                                    # ripe herb (crop item icon)
+    t.vline(8, 4, 13, shade(SAPLING, 0.85))          # stem
+    for y in (6, 8, 10):                             # leaf pairs
+        t.hline(y, 4, 7, shade(LEAVES, 1.15))
+        t.hline(y, 9, 12, shade(LEAVES, 1.0))
+    t.disc(8, 4, 2, (186, 142, 214))                 # flower crown
+    t.px(8, 4, (232, 206, 128))
+
+    t = paint(13)                                    # harvester top: reel + blades
+    plate(t, HARVESTER)
+    t.ring(8, 8, 5, shade(HARVESTER, 0.5))
+    for a in range(8):                               # sickle spokes
+        dx, dy = (1, 0, 1, -1, 0, 0, -1, 1)[a], (0, 1, 1, 0, -1, 1, -1, -1)[a]
+        t.px(8 + dx * 3, 8 + dy * 3, shade(HARVESTER, 1.4))
+        t.px(8 + dx * 4, 8 + dy * 4, shade(HARVESTER, 1.15))
+    t.disc(8, 8, 2, shade(HARVESTER, 0.7))
+
+    t = paint(14)                                    # harvester side: cutter bar
+    t.fill(HARVESTER, noise=0.10)
+    t.outline(shade(HARVESTER, 0.55))
+    t.hline(11, 1, 15, shade(HARVESTER, 0.45))       # bar
+    for x in range(2, 15, 2):                        # teeth
+        t.px(x, 12, shade(HARVESTER, 1.45))
+        t.px(x, 13, shade(HARVESTER, 1.15))
+    t.rect(4, 3, 11, 8, shade(HARVESTER, 0.75))      # hopper
+    t.hline(3, 4, 11, shade(HARVESTER, 1.25))
+    t.rivets(shade(HARVESTER, 1.3))
+
+    t = paint(15)                                    # irrigator top: sprinkler
+    plate(t, IRRIGATOR)
+    t.disc(8, 8, 3, shade(IRRIGATOR, 0.5))           # standpipe collar
+    t.disc(8, 8, 2, shade(WATER, 1.1))
+    for a in range(4):                               # four spray arms
+        dx, dy = ((1, 0), (0, 1), (-1, 0), (0, -1))[a]
+        for r in range(4, 7):
+            t.px(8 + dx * r, 8 + dy * r, shade(WATER, 1.0 + (r - 4) * 0.15))
+
+    t = paint(10)                                    # tilled soil side
+    t.fill(DIRT, noise=0.16)
+    t.speckle(shade(DIRT, 0.6), 8, seed=54)
+    for x in range(T):                               # the worked crust on top
+        depth = 2 + int(n2(x, 0, 132) * 2)
+        for y in range(depth):
+            t.px(x, y, shade(DIRT, 0.72 + n2(x, y, 133) * 0.25))
 
 
 def machines():
@@ -578,6 +650,16 @@ def machines():
     t.rect(3, 12, 12, 14, shade(PEDESTAL, 1.1))      # foot
     t.hline(14, 3, 12, shade(PEDESTAL, 0.5))
 
+
+    t = paint(45)                                    # irrigator side: pipe + jets
+    plate(t, IRRIGATOR)
+    t.vline(8, 2, 14, shade(IRRIGATOR, 0.45))        # standpipe
+    t.vline(7, 2, 14, shade(IRRIGATOR, 1.25))
+    for y in (5, 8, 11):                             # jets arcing out both ways
+        t.hline(y, 3, 7, shade(WATER, 1.15))
+        t.hline(y, 9, 13, shade(WATER, 0.95))
+        t.px(2, y + 1, shade(WATER, 1.35))
+        t.px(13, y + 1, shade(WATER, 1.35))
 
 def nodes_and_sources():
     t = paint(48)                                    # herb bush
@@ -865,6 +947,11 @@ def tool_icon(t, head, kind):
         t.rect(hx - 2, hy - 2, hx + 2, hy + 1, head)  # scoop
         t.hline(hy - 2, hx - 2, hx + 2, shade(head, 1.3))
         t.px(hx, hy + 2, shade(head, 0.8))
+    elif kind == "hoe":
+        t.hline(hy, hx - 4, hx + 1, head)             # blade, square to the haft
+        t.hline(hy + 1, hx - 4, hx, shade(head, 0.75))
+        t.px(hx - 4, hy - 1, shade(head, 1.3))
+        t.px(hx + 1, hy - 1, shade(head, 1.1))        # socket over the haft
     t.px(hx - 1, hy - 1, (255, 255, 255), 180)       # glint
 
 
@@ -962,6 +1049,8 @@ def parts():
     t.hline(8, 5, 10, shade(CRYSTAL, 1.2))
     t.vline(8, 5, 11, shade(CRYSTAL, 1.2))
     t.px(8, 8, shade(CRYSTAL, 1.6))
+
+    tool_icon(paint(116), COPPER, "hoe")              # copper hoe
 
 
 def smelting_tier():
@@ -1080,6 +1169,128 @@ def manual_tier():
         crank(t, accent)
 
 
+CRATE = (140, 102, 56)      # storage-crate timber
+
+
+def storage():
+    """Row 12: bulk storage (192-193).
+
+    Deliberately plain boards rather than the manual tier's `crude` housing --
+    a crate is not a machine you operate, and it should read as furniture at a
+    glance so a wall of them doesn't look like a wall of hand cranks.
+    """
+    t = paint(192)                                   # top: a slatted lid
+    t.fill(CRATE, noise=0.14)
+    t.outline(shade(CRATE, 0.5))
+    for y in (4, 8, 12):                             # three boards
+        t.hline(y, 1, 14, shade(CRATE, 0.62))
+    t.rect(6, 6, 9, 9, shade(CRATE, 1.15))           # a lighter centre panel
+
+    t = paint(193)                                   # side: boards + corner posts
+    t.fill(CRATE, noise=0.14)
+    t.outline(shade(CRATE, 0.5))
+    for y in (5, 10):
+        t.hline(y, 1, 14, shade(CRATE, 0.62))
+    t.vline(1, 1, 14, shade(CRATE, 1.25))            # corner posts catch the light
+    t.vline(14, 1, 14, shade(CRATE, 0.78))
+    t.hline(1, 1, 14, shade(CRATE, 1.3))             # top rail
+
+
+def primitive_tier():
+    """Row 7 tail: what bare hands get out of the island, and what it becomes.
+
+    Fiber (turf), Twine (three fibers twisted), Compost (the tree's surplus)
+    and the Bio Briquette pressed out of it. Four item icons, so they read at
+    hotbar size: one silhouette each, high contrast, no housing. Plus Rich
+    Soil's two block faces at 194/195, which is where compost ends up.
+    """
+    t = paint(117)                                   # plant fiber: a loose hank
+    straws = ((2, 3, 12, 5), (3, 6, 14, 7), (1, 9, 11, 10), (4, 12, 13, 13))
+    for i, (x0, y0, x1, y1) in enumerate(straws):
+        m = (1.2, 0.95, 1.1, 0.8)[i]
+        run = max(1, x1 - x0)
+        for k in range(run + 1):
+            t.px(x0 + k, y0 + (y1 - y0) * k // run, shade(FIBER, m))
+        t.px(x0 - 1, y0, shade(FIBER, 0.65))         # frayed ends
+        t.px(x1 + 1, y1, shade(FIBER, 1.35))
+    for x, y in ((6, 4), (9, 7), (5, 10), (10, 13)):  # wisps catch the light
+        t.px(x, y, shade(FIBER, 1.45))
+
+    # Twine is a narrow CORD, not two strands drawn apart: at 16px the twist
+    # has to be read from the diagonal seams running up a solid band, because
+    # two strands far enough apart to tell apart stop looking like one rope.
+    t = paint(118)                                   # twine: a corded rope
+    t.rect(5, 1, 10, 14, TWINE)                      # the cord's body
+    t.vline(5, 1, 14, shade(TWINE, 1.25))            # lit edge
+    t.vline(10, 1, 14, shade(TWINE, 0.65))           # shaded edge
+    for y in range(1, 15):                           # the twist, one seam per 3 rows
+        x = 5 + ((y * 2) % 6)
+        t.px(x, y, shade(TWINE, 0.45))
+        t.px(min(10, x + 1), y, shade(TWINE, 1.45))
+    t.px(7, 0, shade(TWINE, 0.55))                   # cut ends
+    t.px(8, 15, shade(TWINE, 0.55))
+
+    t = paint(119)                                   # compost: a dark crumbly heap
+    for y in range(7, 15):
+        half = min(7, y - 4)
+        t.hline(y, 8 - half, 7 + half, shade(COMPOST, 0.9 + (14 - y) * 0.04))
+    for x, y in ((5, 11), (10, 9), (7, 13), (11, 12), (4, 13)):
+        t.px(x, y, shade(COMPOST, 0.55))             # clods
+    for x, y in ((6, 9), (9, 12), (12, 13)):
+        t.px(x, y, shade(SAPLING, 0.8))              # unrotted green flecks
+    t.px(8, 7, shade(COMPOST, 1.4))
+
+    t = paint(120)                                   # bio briquette: a pressed block
+    t.rect(3, 5, 12, 13, shade(BRIQUETTE, 0.95))
+    t.hline(5, 3, 12, shade(BRIQUETTE, 1.3))         # lit top face
+    t.vline(3, 5, 13, shade(BRIQUETTE, 1.1))
+    t.vline(12, 5, 13, shade(BRIQUETTE, 0.7))
+    t.hline(13, 3, 12, shade(BRIQUETTE, 0.55))
+    for y in (8, 11):                                # the press's banding
+        t.hline(y, 4, 11, shade(BRIQUETTE, 0.72))
+    t.rect(6, 6, 7, 7, shade(BRIQUETTE, 1.45))       # tool mark
+
+    # Rich Soil (194/195). Reads as Tilled Soil one shade darker and wetter,
+    # with compost flecks -- it has to be tellable from tilled ground at a
+    # glance across a field, but must not read as a different MATERIAL.
+    t = paint(194)                                   # top: furrows + compost
+    t.fill(RICHSOIL, noise=0.16)
+    for y in (2, 6, 10, 14):                         # the hoe's furrows
+        t.hline(y, 0, 15, shade(RICHSOIL, 0.62))
+        t.hline(y - 1, 0, 15, shade(RICHSOIL, 1.22))  # the lit lip of each ridge
+    for x, y in ((3, 4), (9, 3), (6, 8), (12, 9), (2, 12), (10, 13), (13, 5)):
+        t.px(x, y, shade(COMPOST, 0.7))              # worked-in compost
+    for x, y in ((4, 7), (11, 12)):
+        t.px(x, y, shade(SAPLING, 0.55))             # a fleck not rotted down yet
+
+    t = paint(195)                                   # side: dirt with a dark crown
+    t.fill(DIRT, noise=0.14)
+    t.hline(0, 0, 15, shade(RICHSOIL, 0.75))         # the enriched layer on top
+    t.hline(1, 0, 15, shade(RICHSOIL, 0.95))
+    t.hline(2, 0, 15, shade(RICHSOIL, 1.1))
+    for x, y in ((2, 5), (7, 8), (12, 6), (5, 12), (10, 11)):
+        t.px(x, y, shade(DIRT, 0.68))                # pebbly speckle, as Dirt has
+
+    # Grafted Sapling (196). The plain sapling at tile 5 with a second shoot and
+    # a binding at the join -- it has to read as a sapling first and a DIFFERENT
+    # sapling second, or a player will plant the wrong one.
+    t = paint(196)
+    # The same opaque backing as tile 5. Both saplings are full cubes and the
+    # world pass alpha-CUTOUTS below 0.5, so an unpainted background here would
+    # discard to a floating silhouette while the plain sapling stayed a solid
+    # block -- two saplings that do not even render alike.
+    t.fill(shade(SAPLING, 0.68), noise=0.10, edge=0.2)
+    t.vline(7, 6, 14, shade(LOG, 1.05))              # the two bound stems
+    t.vline(9, 7, 14, shade(LOG, 0.8))
+    t.hline(11, 6, 10, shade(TWINE, 1.2))            # the graft binding
+    t.hline(12, 6, 10, shade(TWINE, 0.75))
+    for cx, cy, r in ((6, 4, 2), (10, 5, 2), (8, 7, 2)):
+        t.disc(cx, cy, r, shade(SAPLING, 1.0 + (6 - cy) * 0.06))
+    for x, y in ((5, 3), (11, 4), (8, 6)):
+        t.px(x, y, shade(SAPLING, 1.35))             # highlit leaf tips
+    t.px(7, 15, shade(LOG, 0.6))
+
+
 def iron_tier():
     """Row 11: iron, charcoal, and the tool/armor tier above copper (176-188)."""
     t = paint(176)                                   # iron nugget (sifted)
@@ -1172,6 +1383,8 @@ def main():
     smelting_tier()
     manual_tier()
     iron_tier()
+    storage()
+    primitive_tier()
 
     out = Path(__file__).resolve().parent.parent / "game" / "assets" / "atlas.png"
     write_png(out, W, H, buf)

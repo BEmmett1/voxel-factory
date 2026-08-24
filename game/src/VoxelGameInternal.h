@@ -57,9 +57,13 @@ namespace vg {
     // blockHardness(id) is the by-hand break time; the matching tool at the
     // block's tier divides it by the tool's miningSpeed (see breakSeconds).
     // Gated blocks (toolTier > 0) yield nothing without that tool (yieldsDrop).
-    // Early-grind gathering chances (hand tier):
-    inline constexpr float kPebbleChance = 0.25f; // pebble per grass/dirt sifted
-    inline constexpr float kStickChance  = 0.5f;  // stick per leaf broken
+    // Hand-tier gathering. Turf and topsoil give up their material ON SIGHT --
+    // Grass a Plant Fiber, Dirt a Pebble, both every time. They used to share
+    // one 25% pebble roll, which made the two blocks the same resource and put
+    // a coin flip on the FIRST thing a new game asks you to collect: two wood
+    // tools cost six pebbles, so ~24 blocks of dirt-punching before the game
+    // started. Leaves keep a roll because a leaf yields two different things.
+    inline constexpr float kStickChance  = 0.5f;  // stick per leaf that dies
 
     // ---- Drops (physical ground items) ----
     // Pickup is a cylinder: within kPickupRadius horizontally AND within
@@ -126,6 +130,12 @@ namespace vg {
         ItemId::PressItem};
 
     inline constexpr float kReach = 8.0f;             // how far you can target blocks
+    // Held RMB keeps placing. Two knobs, because one is not enough: the DELAY
+    // is what keeps an ordinary click (80-150 ms of button-down) from placing
+    // twice, and only past it does the repeat rate matter. Same shape as every
+    // key-repeat in every text field, for the same reason.
+    inline constexpr float kPlaceRepeatDelay   = 0.28f;
+    inline constexpr float kPlaceRepeatSeconds = 0.10f;
     inline constexpr int   kWorldChunks = 6;          // NxN chunks => 96x96 area
     inline constexpr float kIslandRadius = 34.0f;     // base coastline radius (noise-wobbled)
     inline constexpr int   kSurfaceY = 14;            // base island surface height
@@ -134,6 +144,23 @@ namespace vg {
     inline constexpr float kTickSeconds = 1.0f / 20.0f; // matches Application's tick rate
     inline constexpr int   kLoadPerAction = 8;        // recipe sets loaded per panel action
     inline constexpr int   kBeltStepTicks = 4;        // ticks between belt advances (~0.2s)
+
+    // ---- Buffer capacity (what makes a factory a network) ----
+    // Every Inventory in the game is an unbounded count-per-item array, which
+    // for the player's pack is a deliberate choice (hardcore death is the pack's
+    // pressure) but for a MACHINE meant nothing could ever back up: an output
+    // never filled, so a machine never jammed, and a belt never had to be routed
+    // anywhere in particular. These two caps are what give the logistics blocks
+    // a job -- a full input stops the belt feeding it, a full output stops the
+    // machine, and the line congests until somebody routes around it.
+    //
+    // Per ITEM TYPE, not per buffer, matching how Inventory counts. Tuned by
+    // play: too generous and nothing backs up (the old behaviour), too tight and
+    // the game is a chore.
+    inline constexpr int   kMachineInputCap  = 64;    // ingredients/fuel a machine holds
+    inline constexpr int   kMachineOutputCap = 32;    // finished goods before it jams
+    // A crate is the ANSWER to a full output, so it has to be worth building.
+    inline constexpr int   kChestCap         = 512;
 
     inline constexpr float kSourceSpawnSeconds = 7.0f; // time between a source's node spawns
     inline constexpr int   kPatchRadius = 4;          // how far a source spreads its nodes
@@ -160,7 +187,26 @@ namespace vg {
     inline constexpr float kRainSpan        = 24.0f;   // vertical wrap span
     inline constexpr int   kSkyTopY         = 64;      // sky-visibility scan ceiling
     inline constexpr float kRainDimMax      = 0.35f;   // max lit-color dimming
-    inline constexpr int   kDemoFuelWood    = 8;       // wood preloaded in demo generators
+    // The ruin: a derelict factory out past the sources, not a starter kit on
+    // the plateau. It is stocked to LIMP -- enough to still be running when you
+    // find it and to die while you watch, which is the whole lesson, and far
+    // too little to skip the tree, the axe and the Bloomery the way a plateau
+    // full of free wood and herb did.
+    inline constexpr int   kRuinFuelWood    = 2;       // wood left in the ruin's generators
+    inline constexpr int   kRuinHerb        = 4;       // herb left in its grinder
+    // Where it sits: out in the same band as the sources, which is where the
+    // resources are and therefore where a factory would have been built. The
+    // outer bound only saves wasted attempts -- what actually keeps the pad on
+    // land is the per-column land test, since the coastline wobbles by +-7 and
+    // a radius alone cannot tell a headland from a bay.
+    inline constexpr float kRuinMinRadius   = 22.0f;   // = kSourceMinRadius
+    inline constexpr float kRuinMaxRadius   = 30.0f;
+    // How much levelling the ruin's builders are assumed to have done. The
+    // hills noise has a ~11-block wavelength and the pad is 17 wide, so a
+    // footprint routinely spans the full hill range; too small a slack and no
+    // site is ever found.
+    inline constexpr int   kRuinLevelSlack  = 4;
+    inline constexpr int   kRuinHeadroom    = 6;       // cells cleared above its floor
     inline constexpr float kBucketFillSeconds = 8.0f;  // held-bucket fill time in rain
     // (Generator burn time / barrel fill cadence + cap are per-machine data
     // now: see kMachineTraits in Machine.h.)
@@ -222,7 +268,9 @@ namespace vg {
     inline constexpr int   kMaxEntityBones       = 32;     // must match uBones[] in entity.vert
 
     // ---- Boss & arena (the BossArena dimension). Tune freely. ----
-    inline constexpr const char* kBossModel = "assets/models/boss.bbmodel";
+    // Authored in Blockbench (the generated boss.bbmodel it replaced is still
+    // in tools/make_boss_model.py, which the Tempest below still comes from).
+    inline constexpr const char* kWardenModel = "assets/models/void_warden.bbmodel";
     inline constexpr int   kArenaRadius        = 12;    // voidstone disc radius (blocks)
     inline constexpr int   kArenaY             = 20;    // arena ground height
     inline constexpr float kBossHealth         = 30.0f; // ~15 sword hits
@@ -234,6 +282,11 @@ namespace vg {
     inline constexpr float kBossStrikeRange    = 2.1f;  // center distance for a hit
     inline constexpr float kBossDamage         = 1.5f;  // hearts per hit
     inline constexpr float kBossStrikeCooldown = 1.5f;  // seconds between hits
+    // The warden commits to a swing on contact and the blow lands THIS far
+    // into it -- when the axe reaches the ground in the model's attack clip
+    // (its last keyframe sits at ~0.92 s), so the animation is the telegraph.
+    // Step out from under it in time and the axe hits nothing.
+    inline constexpr float kBossSwingImpact    = 1.0f;  // seconds into the swing
     inline constexpr float kBossKnockback      = 9.0f;  // player shove per hit, blocks/s
     // Vertical pop per hit, rolled per strike so no two hits feel alike.
     // Expressed as HEIGHT IN BLOCKS and converted to a launch velocity at the
@@ -244,7 +297,10 @@ namespace vg {
     // damage), so a high roll costs the strike plus up to ~1.5 more hearts.
     inline constexpr float kBossKnockUpMinH    = 1.0f;  // blocks of height
     inline constexpr float kBossKnockUpMaxH    = 5.0f;
-    inline constexpr float kBossScale          = 2.0f;  // render + reach scale
+    // The model stands 3.58 blocks tall as authored, so this is what puts it
+    // inside the collision box below (3.58 * 0.64 ~= 2.3, and its arm span
+    // lands just inside kBossHalfW) -- keeping the fight's tuned distances.
+    inline constexpr float kBossScale          = 0.64f; // render scale
     inline constexpr float kBossHalfW          = 0.85f; // collision half width
     inline constexpr float kBossHeight         = 2.3f;
     inline constexpr float kVictorySeconds     = 3.0f;  // linger before the ride home
@@ -294,39 +350,97 @@ namespace vg {
     inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win
     inline constexpr float kRainVolume     = 0.5f;  // rain loop gain at intensity 1
 
+    // ---- Deny reasons ----
+    // How long a refusal's reason stays on screen (it fades over the last
+    // third). Long enough to read a short line after looking down from the
+    // crosshair; short enough that spamming a blocked click is not a wall of
+    // text. The reasons themselves live at their call sites, because the whole
+    // point is that the site that KNOWS why is the site that says so.
+    inline constexpr float kDenySeconds = 2.6f;
+
     inline constexpr float kTreeGrowSeconds  = 45.0f;  // sapling -> tree (space permitting)
+    inline constexpr float kTreeRetrySeconds = 2.0f;   // recheck cadence when the spot is blocked
     inline constexpr float kLeafDecaySeconds = 0.6f;   // cadence of orphaned-leaf decay passes
     inline constexpr float kLeafDecayChance  = 0.5f;   // per orphaned leaf per pass (staggers)
     inline constexpr int   kLeafReach        = 2;      // leaves survive within this of a log
 
-    // The tree shape as offsets from the sapling cell: a 3-log trunk, a 3x3
-    // leaf ring around the top log, a full 3x3 layer, and a plus-shaped cap.
+    // ---- Farming ----
+    // Seconds per growth stage. Four stages means THREE transitions, so seed
+    // to ripe is 3x this (60s), or a third of that in the rain. Slower than a
+    // tree per stage but with three of them, because a field is meant to be
+    // laid out and left, and its throughput is meant to come from AREA rather
+    // than from any one plant -- that is the whole reason farming exists next
+    // to the r=4 source patches.
+    inline constexpr float kCropStageSeconds = 20.0f;
+    // What compost buys. Multiplies WITH rain/irrigation rather than replacing
+    // it (see the comment at the site in CropSystem.cpp) -- water and nutrition
+    // are different axes, so a watered, fed field runs at 3x2 = 6x. Deliberately
+    // smaller than kRainGrowthMult: laying rich soil is permanent and free to
+    // run, while water costs a barrel, a belt and an Irrigator forever.
+    inline constexpr float kRichSoilMult = 2.0f;
+    // The Harvester's reach and cadence. Wider than a Miner's r=4 and quicker
+    // per take, because a Miner is rate-limited by a patch it cannot enlarge
+    // while a Harvester is limited by the field YOU laid -- so its numbers
+    // should reward the walking rather than throttle it.
+    inline constexpr int   kHarvestRadius    = 5;
+    inline constexpr float kHarvestSeconds   = 2.0f;
+    // What one Rain Water buys, and how far it reaches. Generous on both, on
+    // purpose: irrigation exists so a dry spell is a problem you can SOLVE, and
+    // a machine you have to keep feeding by the bucketful would just move the
+    // frustration rather than answer it.
+    inline constexpr float kIrrigateSeconds  = 30.0f;
+    inline constexpr int   kIrrigateRadius   = 5;
+
+    // The tree shape as offsets from the sapling cell: a trunk of logs, a leaf
+    // ring around the top one, a full square layer, and a plus-shaped cap.
     // Single source of truth for world-gen, sapling growth, and space checks.
+    //
+    // Two sizes, from one builder. Size 1 is the wild tree (3 logs, 22 leaves);
+    // size 2 is what a GRAFTED sapling grows -- taller, one ring wider, and
+    // worth roughly twice as much wood and leaf litter for the same 45 seconds.
+    // The SIZE is carried by the sapling BLOCK (BlockInfo::treeSize), which is
+    // what lets the sapling registry stay a plain pos -> float and the save
+    // format not change at all.
     struct TreeCell {
         glm::ivec3 offset;
         BlockId    block;
     };
 
-    inline const std::vector<TreeCell>& treeCells() {
-        static const std::vector<TreeCell> cells = [] {
+    inline constexpr int kMaxTreeSize = 2;
+
+    inline const std::vector<TreeCell>& treeCells(int size = 1) {
+        // trunk height, canopy half-width, and how many rows the full square
+        // layer occupies above the ring.
+        const auto build = [](int trunk, int reach, int layers) {
             std::vector<TreeCell> c;
-            for (int y = 0; y <= 2; ++y) c.push_back({{0, y, 0}, BlockId::Log});
-            for (int dz = -1; dz <= 1; ++dz) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    if (dx != 0 || dz != 0) c.push_back({{dx, 2, dz}, BlockId::Leaves});
-                    c.push_back({{dx, 3, dz}, BlockId::Leaves});
+            for (int y = 0; y < trunk; ++y) c.push_back({{0, y, 0}, BlockId::Log});
+            const int top = trunk - 1;
+            for (int dz = -reach; dz <= reach; ++dz) {
+                for (int dx = -reach; dx <= reach; ++dx) {
+                    // The ring skips the trunk cell it wraps; the layers above
+                    // are solid because there is no trunk left to skip.
+                    if (dx != 0 || dz != 0) c.push_back({{dx, top, dz}, BlockId::Leaves});
+                    for (int l = 1; l <= layers; ++l) {
+                        c.push_back({{dx, top + l, dz}, BlockId::Leaves});
+                    }
                 }
             }
-            const glm::ivec3 cap[5] = {{0, 4, 0}, {1, 4, 0}, {-1, 4, 0}, {0, 4, 1}, {0, 4, -1}};
+            const int capY = top + layers + 1;
+            const glm::ivec3 cap[5] = {{0, capY, 0}, {1, capY, 0}, {-1, capY, 0},
+                                       {0, capY, 1}, {0, capY, -1}};
             for (const glm::ivec3& o : cap) c.push_back({o, BlockId::Leaves});
             return c;
-        }();
-        return cells;
+        };
+        static const std::vector<TreeCell> small = build(3, 1, 1); // 3 logs, 22 leaves
+        static const std::vector<TreeCell> large = build(5, 2, 2); // 5 logs, 74 leaves
+        // A content pack can write any integer into treeSize, so clamp rather
+        // than index: an out-of-range size grows the ordinary tree.
+        return size >= 2 ? large : small;
     }
 
     // Stamp a grown tree whose trunk base is at `base` (the sapling cell).
-    inline void placeTree(World& world, const glm::ivec3& base) {
-        for (const TreeCell& c : treeCells()) {
+    inline void placeTree(World& world, const glm::ivec3& base, int size = 1) {
+        for (const TreeCell& c : treeCells(size)) {
             world.setBlock(base.x + c.offset.x, base.y + c.offset.y,
                            base.z + c.offset.z, c.block);
         }
