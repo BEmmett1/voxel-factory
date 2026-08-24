@@ -38,6 +38,25 @@ struct ShapeQuad {
     glm::vec3    normal {0.0f};
     std::uint8_t face = 0;
     bool         cull = false;
+    // Each corner as a vector FROM this quad's part pivot, and which part that
+    // is. See ShapePart -- the offset is baked instead of the pivot because a
+    // chunk vertex is world-space and cannot recover its own cell.
+    glm::vec3    partOff[4] {};
+    std::uint8_t part = 0;
+};
+
+// One movable group from the Blockbench outliner. Which parts actually move is
+// GAMEPLAY policy, not model data, so a part is addressed by NAME and the
+// registry of what animates lives in C++ rather than in the bake.
+//
+// Part 0 is the static root -- every model has one, including the ones with no
+// groups at all (the crops), so a quad always names a valid part. `parent` is
+// carried so animating a group can later take its subgroups with it without a
+// re-bake; nothing reads it yet.
+struct ShapePart {
+    const char* name = "static";
+    int         parent = -1;   // enclosing part, -1 for the root
+    glm::vec3   pivot {0.0f};  // cell-local (0..1) point it turns about
 };
 
 // A cell-local AABB (0..1), for collision and raycasts. For a ROTATED element
@@ -97,6 +116,7 @@ struct BlockShape {
     std::span<const ShapeAabb> boxes;   // empty => nothing to stand on or hit
     ShapeAabb                  bounds;  // union of `boxes`; broad phase + highlight
     ShapeAnim                  anim;
+    std::span<const ShapePart> parts;   // empty => the shape has only part 0
 };
 
 inline constexpr BlockShape kBlockShapes[] = {
@@ -106,42 +126,50 @@ inline constexpr BlockShape kBlockShapes[] = {
      .quads = kShapeQuadsBrewingCauldron,
      .boxes = kShapeBoxesBrewingCauldron,
      .bounds = kShapeBoundsBrewingCauldron,
-     .anim = kShapeAnimBrewingCauldron},
+     .anim = kShapeAnimBrewingCauldron,
+     .parts = kShapePartsBrewingCauldron},
     {.id = ShapeId::AlchemicalAlembic,
      .quads = kShapeQuadsAlchemicalAlembic,
      .boxes = kShapeBoxesAlchemicalAlembic,
      .bounds = kShapeBoundsAlchemicalAlembic,
-     .anim = kShapeAnimAlchemicalAlembic},
+     .anim = kShapeAnimAlchemicalAlembic,
+     .parts = kShapePartsAlchemicalAlembic},
     {.id = ShapeId::AugerMiningRig,
      .quads = kShapeQuadsAugerMiningRig,
      .boxes = kShapeBoxesAugerMiningRig,
      .bounds = kShapeBoundsAugerMiningRig,
-     .anim = kShapeAnimAugerMiningRig},
+     .anim = kShapeAnimAugerMiningRig,
+     .parts = kShapePartsAugerMiningRig},
     {.id = ShapeId::ArcaneInfuser,
      .quads = kShapeQuadsArcaneInfuser,
      .boxes = kShapeBoxesArcaneInfuser,
      .bounds = kShapeBoundsArcaneInfuser,
-     .anim = kShapeAnimArcaneInfuser},
+     .anim = kShapeAnimArcaneInfuser,
+     .parts = kShapePartsArcaneInfuser},
     {.id = ShapeId::HerbCrop0,
      .quads = kShapeQuadsHerbCrop0,
      .boxes = kShapeBoxesHerbCrop0,
      .bounds = kShapeBoundsHerbCrop0,
-     .anim = kShapeAnimHerbCrop0},
+     .anim = kShapeAnimHerbCrop0,
+     .parts = kShapePartsHerbCrop0},
     {.id = ShapeId::HerbCrop1,
      .quads = kShapeQuadsHerbCrop1,
      .boxes = kShapeBoxesHerbCrop1,
      .bounds = kShapeBoundsHerbCrop1,
-     .anim = kShapeAnimHerbCrop1},
+     .anim = kShapeAnimHerbCrop1,
+     .parts = kShapePartsHerbCrop1},
     {.id = ShapeId::HerbCrop2,
      .quads = kShapeQuadsHerbCrop2,
      .boxes = kShapeBoxesHerbCrop2,
      .bounds = kShapeBoundsHerbCrop2,
-     .anim = kShapeAnimHerbCrop2},
+     .anim = kShapeAnimHerbCrop2,
+     .parts = kShapePartsHerbCrop2},
     {.id = ShapeId::HerbCrop3,
      .quads = kShapeQuadsHerbCrop3,
      .boxes = kShapeBoxesHerbCrop3,
      .bounds = kShapeBoundsHerbCrop3,
-     .anim = kShapeAnimHerbCrop3},
+     .anim = kShapeAnimHerbCrop3,
+     .parts = kShapePartsHerbCrop3},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),

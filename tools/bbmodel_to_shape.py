@@ -35,6 +35,13 @@ crossed-plane crop is made of: they bake to 2 quads rather than 6-with-slivers,
 and collide as a thin slab so they can still be walked into and aimed at. Flat
 on two axes -- a line, a point -- is still degenerate and skipped.
 
+NAMED GROUPS become PARTS: each quad records which group it belongs to and its
+corners as vectors from that group's pivot, which is what lets the game turn a
+drill or rock a lid without a remesh (see uPartRot[] in voxel.vert). Both
+outliner layouts are read -- Blockbench 5.0's flat `groups` table and a model
+with no groups at all -- so every element lands on some part, part 0 being the
+static root.
+
 What it still rejects, loudly: non-cube (mesh) elements, geometry reaching
 outside its own cell, and textures past the first.
 """
@@ -213,7 +220,7 @@ class Quad:
     describe. The mesher just copies these.
     """
 
-    def __init__(self, pos, normal, face, uv, cull, blo, bhi, rotated):
+    def __init__(self, pos, normal, face, uv, cull, blo, bhi, rotated, part, off):
         self.pos = pos        # 4 corners in 0..1, CCW seen from outside
         self.normal = normal  # rotated face normal
         self.face = face      # index into FACE_ORDER -- which neighbour `cull` consults
@@ -222,6 +229,22 @@ class Quad:
         self.blo = blo        # owning box's AABB, for the interior-face cull
         self.bhi = bhi
         self.rotated = rotated
+        self.part = part      # index into the model's part table
+        self.off = off        # 4 corners as vectors FROM that part's pivot
+
+
+class Part:
+    """One named group from the outliner -- a thing that can move.
+
+    A part is addressed by NAME from the game side, because which parts actually
+    animate is gameplay policy, not model data. `parent` is kept so animating a
+    group can later carry its subgroups without a re-bake.
+    """
+
+    def __init__(self, name, parent, pivot):
+        self.name = name
+        self.parent = parent
+        self.pivot = pivot    # cell-local (0..1)
 
 
 class Model:
@@ -230,12 +253,64 @@ class Model:
         self.quads = []
         self.boxes = []       # cell-local AABBs, for collision/rays
         self.box_rotated = []  # parallel: was the box's element rotated?
+        self.parts = []       # Part rows; [0] is always the static root
         self.frames = 1
         self.frame_time = 0
         self.tex = None       # (w, h, rgba) cropped, frames stacked
         self.crop = None      # (x, y, w, h) in texture px, of one frame
         self.region = None    # (x, y) placement in the sheet
         self.raw_quads = 0    # before interior culling
+
+
+def load_parts(doc):
+    """Outliner -> (parts, element uuid -> part index).
+
+    Two outliner shapes have to work, and both are shipped in this repo:
+
+      * Blockbench 5.0 (every machine model here) strips the outliner to
+        {uuid, children} and moves name/origin/rotation into a flat `groups`
+        table. Without reading it, every group pivots about the model origin --
+        the same quirk BbModel.cpp:198 handles for creature bones.
+      * No groups at all (every herb_crop model): the outliner is a flat list of
+        bare element-uuid strings. Those elements belong to part 0.
+
+    Part 0 is the implicit static root, so a model with no groups still has a
+    valid part table and every quad still names a part.
+    """
+    props = {}
+    for g in doc.get("groups") or []:
+        if isinstance(g, dict) and isinstance(g.get("uuid"), str):
+            props[g["uuid"]] = g
+
+    def field(node, key):
+        """Read a group property inline (4.x) or from the `groups` table (5.0)."""
+        if key in node:
+            return node[key]
+        g = props.get(node.get("uuid"))
+        if isinstance(g, dict) and key in g:
+            return g[key]
+        return None
+
+    parts = [Part("static", -1, (0.0, 0.0, 0.0))]
+    by_element = {}
+
+    def walk(node, parent):
+        if isinstance(node, str):  # a leaf element uuid
+            by_element[node] = parent
+            return
+        if not isinstance(node, dict):
+            return
+        name = field(node, "name")
+        origin = field(node, "origin") or (8, 8, 8)
+        pivot = tuple(float(v) / MODEL_UNITS for v in origin)
+        index = len(parts)
+        parts.append(Part(str(name) if name else f"part{index}", parent, pivot))
+        for child in node.get("children") or []:
+            walk(child, index)
+
+    for node in doc.get("outliner") or []:
+        walk(node, 0)
+    return parts, by_element
 
 
 def load_model(path):
@@ -246,6 +321,7 @@ def load_model(path):
         print(f"  ! {name}: unfamiliar model_format '{fmt}' -- baking anyway")
 
     model = Model(name)
+    model.parts, part_of_element = load_parts(doc)
 
     res = doc.get("resolution", {})
     textures = doc.get("textures", [])
@@ -278,6 +354,13 @@ def load_model(path):
             continue
         if el.get("visible") is False:
             continue
+
+        # Which group owns this element, and the point that group turns about.
+        # The pivot is NOT put through `place`: element rotation is already baked
+        # into the corners, while the part rotation is a separate, later transform
+        # about the group's own origin.
+        part = part_of_element.get(el.get("uuid"), 0)
+        pivot = model.parts[part].pivot
 
         frm = [float(v) for v in el["from"]]
         to = [float(v) for v in el["to"]]
@@ -393,9 +476,22 @@ def load_model(path):
             # be hidden by a neighbour.
             wall = (rmat is None and
                     (hi[axis] >= MODEL_UNITS - 1e-4 if outward_hi else lo[axis] <= 1e-4))
-            model.quads.append(
-                Quad(pos, normal, fi, uv, wall, blo, bhi, rmat is not None))
 
+            # Each corner as a VECTOR from the part's pivot. Baking the offset
+            # rather than the pivot is what lets a part rotate in a world-space
+            # chunk mesh at all: p = pivot + M*(p - pivot) rearranges to
+            # p + (M*d - d), and d is translation-invariant, so the shader needs
+            # no pivot, no cell origin, and no unsafe floor(aPos).
+            off = [tuple(c[i] - pivot[i] for i in range(3)) for c in pos]
+
+            model.quads.append(
+                Quad(pos, normal, fi, uv, wall, blo, bhi, rmat is not None,
+                     part, off))
+
+    if len(model.parts) > 1:
+        print("  parts: " + ", ".join(pt.name for pt in model.parts[1:]))
+    else:
+        print("  no named groups: every quad is on the static part")
     if nrot:
         print(f"  {nrot} rotated element(s): geometry exact, collision uses "
               "their bounding boxes")
@@ -591,6 +687,15 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
     L.append("// `face` survives only to say which neighbour `cull` consults.")
     L.append("// Rotated faces are never flush with a cell wall, so they are")
     L.append("// never culled.")
+    L.append("//")
+    L.append("// `part` names a row in this shape's ShapePart table -- the")
+    L.append("// Blockbench group the face belongs to -- and `partOff` carries")
+    L.append("// its corners as vectors FROM that group's pivot. Rotating about")
+    L.append("// a pivot is p + (M*d - d) with d = p - pivot, and d is the same")
+    L.append("// in cell and world space, so a world-space chunk vertex can")
+    L.append("// turn without the shader ever knowing where its cell is.")
+    L.append("// Part 0 is the static root: it never moves, so its offsets are")
+    L.append("// never read.")
     L.append("")
     L.append("// clang-format off")
     L.append("")
@@ -601,6 +706,7 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
         ident = cpp_ident(m.name)
         L.append(f"// ---- {m.name} "
                  f"({len(m.boxes)} boxes, {len(m.quads)} quads, "
+                 f"{len(m.parts)} parts, "
                  f"{m.frames} frame{'s' if m.frames != 1 else ''}) ----")
         L.append(f"inline constexpr ShapeQuad kShapeQuads{ident}[] = {{")
         for q in m.quads:
@@ -611,10 +717,19 @@ def emit(models, sheet_w, sheet_h, out_path, argv):
                 f"{{{u0 + (u1 - u0) * s:.6f}f, {v0 + (v1 - v0) * t:.6f}f}}"
                 for s, t in CORNER_ST)
             n = q.normal
+            off = ", ".join(f"{{{o[0]:.6f}f, {o[1]:.6f}f, {o[2]:.6f}f}}"
+                            for o in q.off)
             L.append(
                 f"    {{ {{{pos}}}, {{{uvs}}},"
                 f" {{{n[0]:.6f}f, {n[1]:.6f}f, {n[2]:.6f}f}},"
-                f" {q.face}, {'true ' if q.cull else 'false'} }},")
+                f" {q.face}, {'true ' if q.cull else 'false'},"
+                f" {{{off}}}, {q.part} }},")
+        L.append("};")
+        L.append(f"inline constexpr ShapePart kShapeParts{ident}[] = {{")
+        for pt in m.parts:
+            L.append(f'    {{ "{pt.name}", {pt.parent},'
+                     f" {{{pt.pivot[0]:.6f}f, {pt.pivot[1]:.6f}f,"
+                     f" {pt.pivot[2]:.6f}f}} }},")
         L.append("};")
         L.append(f"inline constexpr ShapeAabb kShapeBoxes{ident}[] = {{")
         for lo, hi in m.boxes:
