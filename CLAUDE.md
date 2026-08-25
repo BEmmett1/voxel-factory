@@ -573,7 +573,10 @@ Textures:
   no longer occlude or keep rain out, and you collide with the model rather than
   the cell. Their atlas tiles stay for the item icon and the generated-atlas
   fallback. Adding the next one is: bake, append a `ShapeId` row + a
-  `kBlockShapes` row, then set `fullCube = false` and `shape` on the kBlocks row.
+  `kBlockShapes` row + a `kShapeNames` entry, then set `fullCube = false` and
+  `shape` on the kBlocks row. If any of it should MOVE, author that piece as its
+  own named group with a sensible pivot and add one `kPartAnims` row naming it;
+  a group nothing names is free and stays still.
   The bake packs ONE sheet, so rerun it over every model at once (the .inl's
   header comment carries the last full command line) — baking one model alone
   drops the others out of `shapes.png`.
@@ -599,19 +602,44 @@ Textures:
   re-meshes regardless. A dead machine parks on frame 0. Gating on *crafting*
   instead would NOT be free: that flips constantly and would thrash remeshes,
   so it needs the per-block uniform indirection moving parts will want anyway.
-  Only the plain mesh keeps the 9-float layout — it leaves attribute 4
-  disabled, which reads back as bank 0 too, so the ordinary world pays nothing.
-- Known gap: block parts don't MOVE (no spinning drill, no rocking lid) — the
-  textures animate, the geometry doesn't. The models already carry the rig
-  (named groups with correct pivots: `drill`, `core`, `emitter`, `contents`),
-  but `bbmodel_to_shape.py` reads only `elements` and discards `groups`, and
-  chunk-mesh positions are world-space, so a rotation cannot recover its pivot
-  (`floor(aPos)` is not safe — geometry touching a cell's top face lands in the
-  wrong cell). The fix is a baked per-vertex pivot + part index and a
-  `uPartRot[]` array — the `uBones[32]` pattern again. 29-77 KB of chunk mesh
-  per placed shaped block (the Infuser's 367 quads are the current ceiling,
-  ~50× a plain block) argues for keeping detailed shapes to machines rather
-  than anything placed in bulk.
+  Only the plain mesh keeps the 9-float layout — it leaves attributes 4-6
+  disabled, which read back as bank 0, offset (0,0,0) and part slot 0, all of
+  them inert, so the ordinary world pays nothing for either animation path.
+- **Block parts MOVE** (Aug 2026) — the Auger's `drill` spins, the Cauldron's
+  `contents` sway, the Infuser's `core` turns and its `emitter` throbs, on
+  models that already carried the rig. `bbmodel_to_shape.py` now reads the
+  `outliner`/`groups` it used to discard and emits a **part** per named group;
+  `voxel.vert` shifts each vertex by a per-part `uniform mat3 uPartRot[32]`.
+  **The pivot is never baked, because it never has to exist.** A chunk vertex is
+  world-space and cannot recover its own cell (`floor(aPos)` is unsafe —
+  geometry touching a cell's top face lands in the wrong one), but rotating
+  about a pivot rearranges to `p + (M*d - d)` with `d = p - pivot`, and `d` is a
+  VECTOR, identical in cell and world space. So the bake stores the offset and
+  the shader needs no pivot, no cell origin and no `floor()`. A **3x3** rather
+  than a 4x4 for the same reason translation is absent — which halves the
+  uniform cost (288 of GL 3.3's guaranteed 1024 vertex uniform components) and
+  leaves room for uniform SCALE, so `PartMotion::Pulse` needs no second
+  mechanism.
+  **Which parts move is C++, not model data**: `kPartAnims` in BlockShape.h
+  (kBlocks discipline) names a part by NAME, so re-authoring a model cannot
+  silently animate a different lump of it, and a typo is a `static_assert`.
+  Only an ANIMATED part costs a slot — the four models carry ~37 groups and
+  spend four — and `kPartSlots` resolves `(shape, part) -> slot` at compile
+  time so the mesher never does a string compare.
+  The power gate is ONE value: `appendShaped` takes an `animShape` that is
+  `ShapeId::FullCube` when unpowered, whose bank offset is zero and whose every
+  part slot is 0, so "texture parks on frame 0" and "parts stand still" are the
+  same decision and cannot disagree. Never a remesh — motion is one uniform
+  upload for the world.
+  Two things it deliberately does NOT do: a moving part does not move its
+  COLLISION (`boxes` is baked once; a spinning drill is scenery to physics), and
+  nested groups do not inherit a parent's motion (`ShapePart::parent` is baked
+  but unread, so that can be added later with no re-bake).
+  Budget: **45 KB (Auger) to 120 KB (Infuser)** of chunk mesh per placed shaped
+  block against ~1.3 KB for a plain block, so detailed shapes stay on machines
+  rather than anything placed in bulk. Those figures are ~1.5x what this file
+  used to say: the bake's size report had assumed a 9-float vertex since before
+  shaped vertices carried an animation bank, and parts took it to 14.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,
@@ -844,8 +872,8 @@ economic job rather than flavour):
   it scales with area, and a seed you might not get would put that behind luck.
 - **The crop model is crossed planes** (`tools/make_crop_models.py` →
   `models/herb_crop_*.bbmodel` → the usual bake). This is the first content
-  placed in BULK, so the quad budget is the real constraint: **4 quads and
-  0.8 KB of chunk mesh** against the Infuser's 367 and 77 KB. It needed one bake
+  placed in BULK, so the quad budget is the real constraint: **4 quads** against
+  the Infuser's 367 — 1.3 KB against 120 KB. It needed one bake
   change — the guard at `bbmodel_to_shape.py` counted ANY zero extent as
   degenerate, so both planes were skipped and the model died on "nothing to
   bake"; it now rejects only two-or-more flat axes and drops a flat box's four

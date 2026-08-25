@@ -43,21 +43,37 @@ namespace {
     // the block across face fi, consulted only for quads flush with a cell
     // wall -- the only ones a full-cube neighbor can legally hide.
     //
-    // Shaped vertices carry one extra float the cube path doesn't: `bank`,
-    // which is how the vertex shader finds this block's animation frame offset
-    // in uAnimV[]. It rides the vertex because a chunk's shaped mesh mixes
-    // shapes, and they animate at different rates -- or, unpowered, not at all.
+    // Shaped vertices carry extras the cube path doesn't. `bank` is how the
+    // vertex shader finds this block's animation frame offset in uAnimV[]; it
+    // rides the vertex because a chunk's shaped mesh mixes shapes, and they
+    // animate at different rates -- or, unpowered, not at all.
+    //
+    // `partOff` and the part slot are the same idea for MOVING parts: the
+    // offset from the part's pivot is baked (a world-space chunk vertex cannot
+    // find its own cell, so the pivot itself would be useless here), and the
+    // slot names the part's transform in uPartRot[].
+    //
+    // `animShape` carries the POWER GATE for both at once: the caller passes
+    // ShapeId::FullCube for an unpowered block, whose bank offset is zero and
+    // whose every part slot is 0, so a dead machine parks on frame 0 AND stands
+    // still. One value, one gate, no way for the two to disagree.
     template <typename NeighborFn>
     void appendShaped(std::vector<float>& out, const BlockShape& shape,
-                      const glm::vec3& base, float emissive, float bank,
+                      const glm::vec3& base, float emissive, ShapeId animShape,
                       NeighborFn neighbor) {
+        const float bank = static_cast<float>(animShape);
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
+
+            const float slot = static_cast<float>(partSlot(animShape, q.part));
 
             // Corners arrive baked and correctly wound; nothing to reconstruct.
             const auto push = [&](int k) {
                 pushVertex(out, base + q.pos[k], q.normal, q.uv[k], emissive);
                 out.push_back(bank);
+                out.insert(out.end(), {q.partOff[k].x, q.partOff[k].y,
+                                       q.partOff[k].z});
+                out.push_back(slot);
             };
             push(0); push(1); push(2);
             push(0); push(2); push(3);
@@ -119,17 +135,17 @@ namespace ChunkMesher {
                     // buffer (different sheet) and skip the unit-cube path.
                     const BlockShape& shape = blockShape(id);
                     if (!shape.quads.empty()) {
-                        // A dead machine sits still. Gating the animation on
-                        // power costs nothing extra because power is ALREADY a
-                        // mesh input: solvePowerAndMarkDirty dirties exactly
-                        // the chunks whose glow flipped, so a machine losing
-                        // power re-meshes for the glow regardless. Bank 0 is
-                        // ShapeId::FullCube, whose offset is permanently zero,
-                        // so an unpowered machine parks on frame 0.
-                        const float bank = energized
-                            ? static_cast<float>(blockInfo(id).shape)
-                            : 0.0f;
-                        appendShaped(shapedOut, shape, base, emissive, bank,
+                        // A dead machine sits still -- its texture parked on
+                        // frame 0 and its parts stopped. Gating on power costs
+                        // nothing extra because power is ALREADY a mesh input:
+                        // solvePowerAndMarkDirty dirties exactly the chunks
+                        // whose glow flipped, so a machine losing power
+                        // re-meshes for the glow regardless. FullCube is the
+                        // inert shape: bank offset zero, every part slot 0.
+                        const ShapeId animShape = energized
+                            ? blockInfo(id).shape
+                            : ShapeId::FullCube;
+                        appendShaped(shapedOut, shape, base, emissive, animShape,
                                      [&](int fi) { return neighborAt(lx, ly, lz, fi); });
                         continue;
                     }

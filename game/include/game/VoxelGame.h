@@ -63,6 +63,7 @@ private:
     void returnHome();               // back to m_homePose in the Overworld
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void updateShapeAnim();      // pick each shape's animation frame (a uniform, not a remesh)
+    void updatePartAnim();       // pose each moving block part (a uniform, not a remesh)
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
@@ -177,6 +178,10 @@ private:
     // scratch — which keeps the generated shape tables out of this header.
     float              m_animClock = 0.0f;
     std::vector<float> m_shapeAnimV;
+    // Moving block parts, one transform per slot, uploaded beside m_shapeAnimV
+    // and on the same terms: a part turning is a uniform, never a remesh.
+    // Sized to vg::kMaxShapeParts on first use, like m_shapeAnimV.
+    std::vector<glm::mat3> m_partRot;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
     engine::Mesh       m_highlightMesh;

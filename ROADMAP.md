@@ -89,8 +89,10 @@ tree knew about it. Worth naming as a process gap, not just a schedule slip.
       **every one of the seven commits**, `RECIPES.md` reproduced by
       `--dump-recipes`, `make_atlas.py` reproduces `atlas.png` byte-for-byte,
       and a real 399 KB v25 save loads → re-saves → reloads identically across
-      three generations. **Not** verified: nothing has been pushed, so CI has
-      never compiled any of it on Linux or macOS
+      three generations. The **not verified** half of this — nothing had been
+      pushed, so CI had never compiled any of it on Linux or macOS — was
+      discharged on Aug 24: the batch merged as PR #6 and all three platforms
+      went green on the merge commit, first try
 
 - [ ] **Bake the thin set together, in ONE run** (the bake packs one
       sheet): Conduit→**Tube** (hub box + an arm per connected neighbour),
@@ -113,16 +115,37 @@ tree knew about it. Worth naming as a process gap, not just a schedule slip.
 
 ### Week 3 (Aug 22–28) — parts move, then the manual tier stops being 13 boxes
 
-- [ ] **`uPartRot[]` — make block parts move.** The last structural gap in
-      block shapes: bake a per-vertex pivot + part index from the `groups` the
-      bake currently discards (the models already carry correct pivots), and
-      shift by a per-part rotation uniform — the `uBones[32]`/`uAnimV[]` pattern
-      a third time. Chunk positions are world-space, so the pivot MUST be baked;
-      `floor(aPos)` is not safe. Gate it on power like `uAnimV`, so it stays a
-      uniform upload and never a remesh
-- [ ] First moving parts, on models that already exist: the Auger's `drill`
-      spins, the Cauldron's `contents` rock, the Infuser's `core`/`emitter`
-      pulse. Zero new art
+- [x] **`uPartRot[]` — make block parts move** (Aug 24–25, four commits). The
+      last structural gap in block shapes is closed. The bake reads the `groups`
+      it had been discarding and emits parts; the shader shifts by a per-part
+      3x3 — the `uBones[32]`/`uAnimV[]` pattern a third time — gated on power
+      exactly like `uAnimV`, so it stays a uniform upload and never a remesh.
+      **The plan said "the pivot MUST be baked". It does not have to exist.**
+      Rotating about a pivot rearranges to `p + (M*d - d)` with `d = p - pivot`,
+      and `d` is a vector, identical in cell and world space — so the bake
+      stores the OFFSET and the shader needs no pivot, no cell origin and no
+      unsafe `floor(aPos)` at all. The trap the plan was warning about stops
+      existing rather than being carefully avoided.
+      Two more things the plan did not know. The uniform is a **3x3, not a
+      4x4**: no translation is needed, which both halves the cost (288 of the
+      1024 vertex uniform components GL 3.3 guarantees, against 512) and leaves
+      room for uniform SCALE, so a pulsing part needs no second mechanism. And
+      **parts are named, not numbered** — which lump of a model moves is
+      gameplay policy, so `kPartAnims` lives in C++ in the kBlocks discipline
+      and a typo'd part name is a compile error. Only an ANIMATED part costs a
+      slot: the four models carry ~37 groups between them and spend four
+- [x] First moving parts, on models that already exist: the Auger's `drill`
+      spins, the Cauldron's `contents` sway, the Infuser's `core` turns and its
+      `emitter` throbs. Zero new art, exactly as predicted — every one of those
+      groups was already in the models with correct pivots.
+      Proven by measurement rather than by squinting: a UV shift cannot move a
+      silhouette edge, only geometry can, so the test counts pixels crossing the
+      grass/machine boundary in a 50x32 box on the drill, camera untouched.
+      Switched OFF: 0,0,0,0 px per frame. Switched ON: 12,17,20,28. F3 reads
+      `REMESH 0.1 MS, X0 PER S` with the drill turning, which is the whole
+      design. (The first attempt at that control was junk — captured with the
+      game PAUSED, which freezes the animation clock and would have read zero
+      whatever the gate did.)
 - [ ] **Model the manual tier (13 blocks)** — the worst offenders and the first
       thing a new player meets. Author them near the CROP end of the budget, not
       the Infuser end; they are hand tools, so a low-quad silhouette is both
@@ -384,8 +407,9 @@ the pillar slips to post-launch.
     field ripen" is exactly the question a headless test should ask
   - **Right: the bake dropped flat boxes**, exactly as predicted, and loosening
     it to reject only two-or-more flat axes plus dropping a flat box's four
-    zero-area faces gave a crop **4 quads and 0.8 KB of chunk mesh** against the
-    Infuser's 367 and 77 KB. What the plan MISSED is that collision cannot
+    zero-area faces gave a crop **4 quads** against the Infuser's 367. (The KB
+    figures this line used to carry were understated by the bake's own report;
+    see Model coverage — a crop is 1.3 KB and the Infuser 120 KB.) What the plan MISSED is that collision cannot
     survive a plane: `boxes` feeds boxOverlapsWorld and the raycast, and a
     zero-thickness AABB overlaps nothing, so a crop would have been neither
     walk-into-able nor breakable. A flat element's collision box alone now gets
@@ -580,11 +604,17 @@ the pillar slips to post-launch.
   manual tier. The machinery to fix it all exists — bake, append a `ShapeId`
   row and a `kBlockShapes` row, set `fullCube = false` and `shape` on the
   kBlocks row — so this is authoring work, not engineering work.
-  The budget is the thing to design against: a detailed block costs **29-77 KB
-  of chunk mesh** (the Infuser's 367 quads are the ceiling, ~50× a plain
-  block) while a crop costs **4 quads and 0.8 KB**. Machines can afford the
-  top of that range because you place a handful; anything placed in bulk must
-  live near the bottom. Staged in value order:
+  The budget is the thing to design against, and **the numbers this entry used
+  to quote were all too low** (Aug 2026): the bake's size report had assumed a
+  9-float vertex since before shaped vertices carried an animation bank, and
+  moving parts took the real figure to 14. Measured, at 14 floats: **Auger 45 KB,
+  Cauldron 70 KB, Alembic 76 KB, Infuser 120 KB** of chunk mesh per placed
+  block, against **1.3 KB** for a plain block showing all six faces — so the
+  Infuser is ~95× a cube, not the ~50× recorded here before. A crop is 4 quads
+  and **1.3 KB**, which is the more useful comparison restated: a crop costs
+  about what one plain cube costs, and ~90× less than an Infuser. Machines can
+  afford the top of that range because you place a handful; anything placed in
+  bulk must live near the bottom. Staged in value order:
   - **Wire and Conduit — highest value, because their function IS being
     thin.** A cube-shaped wire is the one place the art actively contradicts
     the mechanic. Conduit is already scheduled as **belts become tubes**
@@ -617,10 +647,12 @@ the pillar slips to post-launch.
   Two constraints an implementer would otherwise rediscover the hard way. **The
   bake packs ONE sheet**, so every model must be re-baked together or the
   others drop out of `shapes.png` — the `.inl`'s header comment carries the
-  last full command line for exactly this reason. And **parts still don't
-  move** (see Known gaps), so any model whose appeal is motion — a spinning
-  Sifter, a rocking Anvil, a turning crank — should wait for the `uPartRot[]`
-  work rather than shipping a frozen pose of itself
+  last full command line for exactly this reason. And **parts now move**
+  (Aug 2026), so a model whose appeal is motion — a spinning Sifter, a rocking
+  Anvil, a turning crank — no longer has to ship a frozen pose of itself: author
+  the moving piece as its own named group with a sensible pivot, then add one
+  `kPartAnims` row. That is the whole of it; a group the table never names is
+  free and simply stays still
 - **Belts become tubes:** the first real customer of block shapes, now
   unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
@@ -834,18 +866,22 @@ Kept here so they don't get lost — none are architectural dead-ends:
   `isSolid` already made once when it came apart into `solid` + `fullCube`.
   Shipping collidable was the right call regardless: today's Sapling is a whole
   solid cube, so a shaped crop is already strictly better
-- Block shapes still ship one loose end: **parts don't move** — no spinning
-  drill, no rocking lid. The models already carry the rig (named groups with
-  correct pivots), but the bake reads only `elements` and discards `groups`,
-  and chunk-mesh positions are world-space so a rotation can't recover its
-  pivot. The fix is a baked per-vertex pivot + part index and a `uPartRot[]`
-  array — the `uBones[32]` pattern — and it is the same indirection a
-  crafting-driven animation would need, so those two land together.
-  A detailed block also costs ~45 KB of chunk mesh (~30× a
-  plain block), so shapes belong on machines, not on anything placed in bulk.
+- ~~Block shapes still ship one loose end: **parts don't move**~~ **done,
+  Aug 2026** — and the fix predicted here was half right. The baked per-vertex
+  part index and the `uPartRot[]` array are exactly the `uBones[32]` pattern as
+  described; the baked PIVOT turned out to be unnecessary, because the offset
+  from the pivot is translation-invariant and is all the shader needs. What
+  remains true is the sentence after it: this is still the indirection a
+  crafting-driven animation would want, so gating motion on *crafting* rather
+  than on power is now a small change rather than a new system.
+  A detailed block costs 45-120 KB of chunk mesh (~95× a plain block at the
+  ceiling — see Model coverage for why those figures moved), so shapes still
+  belong on machines, not on anything placed in bulk.
   Collision on a ROTATED element is its bounding box, not its exact geometry —
   a little generous to walk into, and fine until something is both rotated and
-  something you stand on
+  something you stand on. **A moving part does not move its collision at all**:
+  `boxes` is baked once and a spinning drill is scenery to physics, which is
+  right for a drill and would not be for, say, a closing door
 - macOS renders non-Retina: `SDL_WINDOW_HIGH_PIXEL_DENSITY` needs a UI
   point→pixel coordinate pass first (UI draws + hit-tests in one space). A
   Wayland desktop on fractional scaling is the same gap wearing a different

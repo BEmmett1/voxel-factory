@@ -23,6 +23,7 @@ namespace engine {
 
         void setMat4(const char* name, const glm::mat4& m) const;
         void setMat4Array(const char* name, const glm::mat4* m, int count) const;
+        void setMat3Array(const char* name, const glm::mat3* m, int count) const;
         void setVec3(const char* name, const glm::vec3& v) const;
         void setInt(const char* name, int v) const;
         void setFloat(const char* name, float v) const;

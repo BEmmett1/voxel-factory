@@ -14,6 +14,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -27,6 +28,13 @@ using namespace vg;
 static_assert(static_cast<int>(ShapeId::Count) <= kMaxShapeBanks,
               "uAnimV[] in voxel.vert needs one slot per ShapeId — "
               "raise vg::kMaxShapeBanks and the array size in the shader");
+
+// Same shape of hazard for uPartRot[]: the shader indexes it by the slot baked
+// into the vertex, so one animated part too many would read off the end of a
+// uniform array. Slot 0 is identity, hence the + 1.
+static_assert(static_cast<int>(std::size(kPartAnims)) + 1 <= kMaxShapeParts,
+              "uPartRot[] in voxel.vert needs a slot per animated part — "
+              "raise vg::kMaxShapeParts and the array size in the shader");
 
 namespace {
 
@@ -218,9 +226,11 @@ void VoxelGame::remeshDirtyChunks() {
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
-        // One float wider than the plain mesh: shaped vertices name their
-        // ShapeId so the shader can find their animation frame.
-        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1, 1},
+        // Five floats wider than the plain mesh: shaped vertices name their
+        // ShapeId so the shader can find their animation frame, and carry the
+        // offset from their part's pivot plus that part's slot so the part can
+        // turn. See ChunkMesher.h for why the offset is baked, not the pivot.
+        m_chunkShapeMeshes[coord].upload(m_shapeScratch, {3, 3, 2, 1, 1, 3, 1},
                                          GL_DYNAMIC_DRAW);
         chunk->clearDirty();
         ++chunks;
@@ -251,6 +261,39 @@ void VoxelGame::updateShapeAnim() {
         const float cycle = static_cast<float>(a.frames) * secs;
         const int frame = static_cast<int>(std::fmod(m_animClock, cycle) / secs);
         m_shapeAnimV[static_cast<std::size_t>(i)] = static_cast<float>(frame) * a.vStride;
+    }
+}
+
+// Pose every moving block part for this frame, as one 3x3 per uPartRot slot.
+// The same bargain as updateShapeAnim(): a turning drill is a uniform upload
+// for the whole world, never a remesh, so a room full of augers still reads
+// X0 PER S on F3. Slot 0 stays identity -- it is what an unpowered machine and
+// every static part are meshed with.
+//
+// Driven by the pause-aware m_animClock, so parts freeze with the simulation
+// rather than spinning on over a paused game.
+void VoxelGame::updatePartAnim() {
+    m_partRot.assign(kMaxShapeParts, glm::mat3(1.0f));
+    for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        const PartAnim& a = kPartAnims[i];
+        const float phase = glm::two_pi<float>() * a.rate * m_animClock;
+        glm::mat3 m(1.0f);
+        switch (a.motion) {
+        case PartMotion::Spin:
+            m = glm::mat3(glm::rotate(glm::mat4(1.0f), phase, a.axis));
+            break;
+        case PartMotion::Rock:
+            m = glm::mat3(glm::rotate(glm::mat4(1.0f),
+                                      glm::radians(a.amount) * std::sin(phase),
+                                      a.axis));
+            break;
+        case PartMotion::Pulse:
+            // Uniform scale about the part's pivot. voxel.frag normalizes, so
+            // the lighting survives it untouched.
+            m = glm::mat3(1.0f + a.amount * std::sin(phase));
+            break;
+        }
+        m_partRot[i + 1] = m; // row i owns slot i + 1; slot 0 is identity
     }
 }
 
@@ -308,6 +351,7 @@ void VoxelGame::onRender() {
     // Everything the ticks and the update dirtied this frame, in one sweep.
     remeshDirtyChunks();
     updateShapeAnim();
+    updatePartAnim();
     buildRainMesh();
 
     // Sky: fair-weather blue easing toward storm grey — or the arena's flat
@@ -345,6 +389,7 @@ void VoxelGame::onRender() {
         // mesh leaves that attribute disabled and so reads bank 0, whose
         // offset this array always holds at zero.
         m_shader.setFloatArray("uAnimV", m_shapeAnimV.data(), kMaxShapeBanks);
+        m_shader.setMat3Array("uPartRot", m_partRot.data(), kMaxShapeParts);
         for (auto& [coord, mesh] : m_chunkShapeMeshes) {
             mesh.draw();
         }

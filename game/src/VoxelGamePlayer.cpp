@@ -208,6 +208,20 @@ void VoxelGame::onUpdate(float dt) {
         m_inventory.add(ItemId::CompactorItem, 1);
         m_inventory.add(ItemId::MortarItem, 1);
         m_inventory.add(ItemId::HandPressItem, 1);
+        // The four MODELLED machines, which the kit could not reach at all --
+        // every other way to get one is a full Alchemy Circle grind or a walk
+        // to the ruin. They are the only blocks in the game with sub-cube
+        // geometry and moving parts, so they are the only ones where a
+        // rendering change is visible, and a dev key that cannot put one in
+        // front of you makes that change unverifiable by hand.
+        m_inventory.add(ItemId::CauldronItem, 1);
+        m_inventory.add(ItemId::InfuserItem, 1);
+        m_inventory.add(ItemId::AlembicItem, 1);
+        give(ItemId::MinerItem, 1, kHotbarSlots - 9);
+        // A generator too, or none of the above can be switched on: the shape
+        // animations and the energized glow are both gated on power.
+        give(ItemId::GeneratorItem, 1, kHotbarSlots - 10);
+
         // Logistics: crates and a spool of conduit, so a sorting line (machine
         // -> crate -> filtered belts) can be laid without first chopping the
         // wood for it. This is the tier F6 most needs to reach, because a jam
