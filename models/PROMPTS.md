@@ -1,251 +1,2096 @@
-# Model prompts for the blocks that are still painted cubes
+# One prompt per block
 
-Generator prompts for every block in the **Model coverage** backlog
-(ROADMAP.md). Paste **THE CONTRACT** below, then one block's brief under it.
-One model per prompt — the bake takes one file per shape.
+Every block below is a **single, complete, copy-paste prompt**. Nothing needs
+to be pasted with it and nothing needs filling in: the rules, the texture
+size, the element budget and the file name are already inside each one.
+Generate one block at a time.
 
-`AUTHORING.md` is the authority on the rules and on what to do with the file
-afterwards; this file only turns those rules into something a model generator
-will obey. Read the **Budget** section before anything else: the single thing a
-generator gets wrong every time is building detail out of boxes that should
-have been painted into the texture.
+`AUTHORING.md` is the authority on the pipeline; the short version of what to
+do with a finished file is at the bottom of this page.
 
-**Fifty-one blocks have models or should stay cubes; 45 are listed here.**
-Terrain (Grass, Dirt, Stone, Sand, Copper Ore, Log, Leaves, Voidstone) is
-deliberately absent — it is placed by the million and a cube is correct.
+**42 blocks.** Terrain -- Grass, Dirt, Stone, Sand, Copper Ore, Log, Leaves,
+Voidstone -- is deliberately absent: it is placed by the million and a cube is
+the right answer. Wire, Conduit, Rune Core, Pedestal, Sapling, the Cauldron,
+Alembic, Auger, Infuser and the four crop stages already have models.
 
----
+## Why the budgets are so tight
 
-## THE CONTRACT
+Cost is per **placed block** and scales with how many of the thing exist, so
+the budget is a property of the block rather than of the model. A quad costs
+336 bytes and a cube element is 5-6 quads, so **one element is about 2 KB** of
+chunk mesh against **1.3 KB for an entire plain block**.
 
-Paste this above every brief, unchanged.
+The conduit is the cautionary tale. It came back at 57 elements, which is
+61 KB for every conduit in the world -- roughly 47x a plain cube, for the
+block laid in the largest numbers of anything in the game. The same silhouette
+was available in about six elements with the rails and rivets painted on. That
+is why each prompt states a hard cap and says twice over that detail belongs
+in the texture.
 
-```
-Output a Blockbench "Java Block/Item" project (.bbmodel, model_format
-"java_block") with the texture EMBEDDED as base64 PNG inside the file.
+## Animation plays only while a block is POWERED
 
-HARD RULES - the importer rejects a file that breaks any of these:
-- CUBE elements only. No mesh/poly elements; an all-mesh model bakes to
-  nothing.
-- All geometry inside the 0..16 cell on every axis. More than 1 unit outside
-  is a hard error. Geometry may touch a wall but must not cross it.
-- At most ONE rotation axis per element, and only the Minecraft angles
-  (-45, -22.5, 0, 22.5, 45). A rotated element renders exactly but COLLIDES
-  as its bounding box, so keep rotations off anything the player stands on.
-- The texture must be EXACTLY as tall as the project's texture height. A
-  texture a whole multiple taller is read as an animation strip and wastes
-  that multiple of sheet space. Do not emit animation frames unless the brief
-  asks for them.
-- Alpha is BINARY. The renderer discards a texel below 50% alpha and draws
-  everything else fully opaque. Paint alpha 0 or alpha 255 only - no
-  anti-aliased or semi-transparent edges, no soft shadows in the alpha.
-  Transparency is how you cut a window or a gap, not how you fade anything.
-- Keep the project's texture size small: 16x16 or 32x32. 64x64 only if the
-  brief says so. Unused texture area is wasted room in a shared sheet.
-- Box UV is fine. Per-face UVs are fine. Either will bake.
-
-STYLE: chunky low-poly voxel-game blocks that read at 5-10 blocks' distance,
-flat shaded, pixel-art texture, no gradients, no text, no logos. Assume the
-block sits on grass in daylight next to other blocks 1 metre across.
-
-DETAIL BELONGS IN THE TEXTURE. Bolts, panel lines, grain, rust, rune
-engraving, dials and vents must be PAINTED, never modelled. Geometry is only
-for silhouette: the parts you would still recognise as a black shape against
-the sky. This is the rule generators break most, and it is the one that
-matters.
-
-BUDGET: the brief gives a hard maximum number of cube elements. Treat it as a
-limit, not a target - fewer is better. Going over it is a failure, not a
-flourish.
-```
-
----
-
-## Budget
-
-Cost is per **placed block**, and it scales with how many of the thing exist,
-so the budget is a property of the block rather than of the model. A shaped
-vertex is 14 floats, a quad is 6 vertices: **336 bytes per quad**, and a cube
-element is 5-6 quads once hidden faces are dropped, so **≈2 KB per element**.
-
-| | elements | quads | chunk mesh |
-|---|---:|---:|---:|
-| plain cube (the baseline) | 1 | 6 | 1.3 KB |
-| herb crop | 2 flat | 4 | 1.3 KB |
-| wire hub, straight run | 3 of 7 | 16 | 5.2 KB |
-| tree sapling | 9 | 53 | 17 KB |
-| Auger | 29 | 138 | 45 KB |
-| Cauldron | 40 | 213 | 70 KB |
-| **Conduit hub, straight run** | **~29 of 57** | **186** | **61 KB** |
-| Infuser | 67 | 367 | 120 KB |
-
-**The conduit is the cautionary tale.** It came back at 57 elements, of which
-120 quads are frame bars and rivets drawn on *every* conduit in the world —
-47× a plain cube for a block players place in hundreds. The same silhouette
-was available in about six elements with the rails painted on. When a brief
-below says "8 elements maximum", that number is the whole point of the brief.
-
-Rough guide: **place-in-hundreds ≤ 8 elements, place-a-few-dozen ≤ 20,
-place-one-or-two ≤ 45.**
-
----
-
-## Animation and moving parts
-
-Two effects exist, and both are **gated on POWER**. A block that is not a
-power node parks on frame 0 and stands still forever, so authoring either one
-for such a block is wasted work.
-
-**Power nodes** (animation and motion play when the network is satisfied):
+A block that is not a power node parks on frame 0 forever, so an animation
+strip on one is wasted sheet space. Only eleven blocks can animate at all:
 Generator, Grinder, Distiller, Transmuter, Composter, Forge, Press, Sifter,
-Glassblower, Compactor, Harvester.
-
-**Not power nodes** (never animate — Rain Barrel, Furnace and Bloomery run on
-fuel or weather, the twelve hand-cranked tools run on your arm, and the rest
-draw nothing): every other block in this file.
-
-- **Texture animation**: author the texture as N stacked frames, N× the
-  project's texture height, and say so. Only where a brief asks.
-- **Moving parts**: put the moving piece in its **own named outliner group**
-  with its origin at the point it should turn about. Naming it is all the
-  model does; a C++ table decides what actually moves, and a group nothing
-  names is free and stays still. Use the exact group name the brief gives.
+Glassblower, Compactor and Harvester. The prompts already account for this --
+three of them ask for an 8-frame strip (Generator, Forge, Transmuter, whose
+fire and runes should visibly move) and the other 39 forbid frames outright.
 
 ---
 
-# The blocks
+## A. Sources and nodes
 
-## A. Sources and nodes — the island's landmarks
+These scatter across the island's whole outer band and are what the player
+navigates by, so they are **bulk content on tiny budgets** - never
+machine-sized. The six Sources share one silhouette and differ by colour and
+crown: generate **Herb Source** first, then ask for each of the others as a
+recolour of it, or the set will not hold together.
 
-Sources glow and are what you navigate by; nodes are what grows around them.
-Both are scattered across the whole outer band, so both are bulk.
-**Never machine-sized.**
+### Herb Bush
 
-| block | brief |
-|---|---|
-| **Herb Bush** | A low leafy bush of 3-4 crossed flat planes, dark green with small pale leaves. Max **4 elements**, all flat planes. Cut the leaf silhouette with alpha 0. Texture 16x16. |
-| **Crystal Node** | 3-4 angular pale-violet crystal shards of different heights growing from the cell floor, tallest ~10 units. Max **4 elements**. Texture 16x16. |
-| **Essence Vent** | A small dark stone vent mouth on the ground with two short crooked spires. Max **4 elements**. Texture 16x16. |
-| **Resonant Node** | Like Crystal Node but the shards are banded two colours, teal and amber, reading as a fused hybrid. Max **5 elements**. Texture 16x16. |
-| **Herb Source** | A mossy standing stone, roughly 8x12x8, with a carved bowl on top holding glowing green light. Max **6 elements**. Texture 16x16. |
-| **Crystal Source** | The same standing stone, violet, with a crystal cluster set into the top instead of a bowl. Max **6 elements**. Texture 16x16. |
-| **Copper Source** | The same standing stone, weathered green-and-orange copper, with a metal band around it. Max **6 elements**. Texture 16x16. |
-| **Sand Source** | The same standing stone, pale gold, with sand spilling from a crack down one face. Max **6 elements**. Texture 16x16. |
-| **Essence Source** | The same standing stone, deep blue-black, with a hovering pale mote above the bowl. Max **6 elements**. Texture 16x16. |
-| **Resonant Source** | The same standing stone but visibly fused from two halves of different stone, teal on one side and amber on the other, seam down the middle, brightest of the six. Max **7 elements**. Texture 16x16. |
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
 
-The six sources should read as **one set**: same silhouette, different colour
-and crown. Generate the Herb Source first and ask for the others as recolours
-of it, so the family holds together.
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
 
-## B. Cheap wins — placed in bulk, tiny budgets
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
 
-| block | brief |
-|---|---|
-| **Scaffold** | An open cubic frame: four corner posts plus a top and bottom rail, hollow in the middle so you can see through it. Max **8 elements**, or 4 if the rails can be painted. Bare timber lashed with twine. Texture 16x16. |
-| **Tilled Soil** | A slab filling the cell's bottom 15 of 16 units, so worked ground sits a touch below grass, with four parallel furrows painted across the top. **1 element**. Texture 16x16. |
-| **Rich Soil** | Identical geometry to Tilled Soil, darker and crumblier, with flecks of compost painted in. **1 element**. Texture 16x16. |
-| **Grafted Sapling** | A young tree like the existing tree_sapling but sturdier: a thicker trunk and four short branches instead of two. Max **12 elements**. Texture 16x16. |
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
 
-## C. The hand-cranked tier — twelve tools your arm drives
+BUDGET: 4 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
 
-These are the first machines a new player meets, and rendering them as
-identical boxes teaches nothing about what each does. They are **hand tools on
-a bench, not machinery**: low, wooden, worn.
+MODEL: HERB BUSH
 
-**Every one of them has a crank or a handle**, because a cranked machine only
-advances while the player turns it — that is the tier's whole identity. Put
-the handle in its own outliner group named exactly **`crank`**, with the
-group's origin at the centre of its axle so it can be made to turn later.
+A low leafy herb bush growing from the ground. Build it from 3 or 4 FLAT
+crossed planes (an element with zero thickness on one axis), not from boxes.
+Dark green foliage with a few small pale flowers painted on. Cut the leaf
+silhouette out of the texture with alpha 0 so it reads as leaves rather than
+as flat cards.
 
-None are power nodes. **No animation frames.** Max **14 elements** each,
-texture 16x16 (32x32 only where noted).
+Save the project as herb_bush.bbmodel
+```
 
-| block | brief |
-|---|---|
-| **Sieve** | A square wooden frame holding a woven mesh, on short legs, with a side handle. Mesh painted with alpha-0 holes. Group: `crank`. |
-| **Mortar** | A heavy stone bowl on a low wooden stand with an upright pestle resting in it. The pestle is the handle. Group: `crank`. |
-| **Hand Press** | A screw press: a wooden bench, two upright posts, a threaded screw down the middle and a bar handle across the top. Group: `crank`. |
-| **Anvil** | A blackened iron anvil on a scarred wooden stump, hammer leaning against it. The hammer is the handle. Group: `crank`. |
-| **Blowpipe** | A small glassblower's bench: a stand holding a long thin pipe over a shallow bowl of coals, with a bellows lever at the side. Group: `crank`. |
-| **Tamper** | A wide flat stone base with a heavy weighted rammer standing on it and a T-shaped handle on top. Group: `crank`. |
-| **Compost Heap** | An open box of rough planks half full of dark compost, with a turning fork stuck upright in it. Group: `crank`. |
-| **Mixing Bowl** | A wide clay bowl on a tripod with a long stirring paddle laid across it. Group: `crank`. |
-| **Infusion Stand** | A slender wooden stand holding a glass phial over an unlit burner, with a small side wheel. Texture 32x32. Group: `crank`. |
-| **Still** | A squat copper pot with a curled arm running down to a small collecting jar, and a valve wheel on the side. Texture 32x32. Group: `crank`. |
-| **Hand Distiller** | Taller and thinner than the Still: a narrow copper column with two collecting rings and a wheel at the base. Texture 32x32. Group: `crank`. |
-| **Hand Transmuter** | A stone slab carved with a circle, a small crystal held above it on a bent arm, and a hand wheel at the front. Texture 32x32. Group: `crank`. |
+### Crystal Node
 
-## D. Fuel-fired — heat, not electricity
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
 
-Not power nodes. **No animation frames**, so paint the fire glow into the
-texture rather than trying to make it flicker.
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
 
-| block | brief |
-|---|---|
-| **Bloomery** | A waist-high chimney of clay and stone, narrowing toward the top, with a glowing arched opening at the front and a slag scar down one side. Max **16 elements**. Texture 32x32. |
-| **Furnace** | A squat stone-and-iron furnace: a heavy body, an iron-barred door glowing at the front, a short chimney at the back. Max **20 elements**. Texture 32x32. |
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
 
-## E. Powered machines — these may animate and may move
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
 
-All are power nodes, so both effects work. Max **28 elements** each unless
-noted, texture 32x32.
+BUDGET: 4 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
 
-Where a brief names a group, author that piece as its own outliner group with
-its origin at the axis it turns about.
+MODEL: CRYSTAL NODE
 
-| block | brief |
-|---|---|
-| **Generator** | An iron firebox on legs with a glowing grate at the front, a flywheel on one side and a stubby exhaust stack. Group: **`flywheel`**, origin at the wheel's centre. Texture as **8 stacked frames** so the grate can flicker. |
-| **Grinder** | A heavy iron hopper over a stone grinding wheel set in a frame, with a chute at the front. Group: **`wheel`**, origin at the wheel's axle. |
-| **Press** | A blocky iron press: a base plate, two thick uprights, and a broad ram head between them. Group: **`ram`**, origin at the TOP of the ram so it can drive down. |
-| **Forge** | An anvil-and-hearth on an iron frame with a glowing bed and a hood over it. Texture as **8 stacked frames** so the bed pulses. Max **32 elements**. |
-| **Sifter** | A boxy frame holding a slung sieve tray at a slight angle, with a hopper above it. Group: **`tray`**, origin at the tray's centre so it can shake. |
-| **Glassblower** | A small round furnace with a glowing port, a swing-arm holding a blowpipe over it, and a cooling rack at the side. Group: **`arm`**, origin at the arm's shoulder joint. |
-| **Compactor** | A squat, very heavy iron block with a recessed plate on top and thick guide posts at the corners. Group: **`plate`**, origin at the top of the plate. |
-| **Composter** | A slatted wooden drum lying on its side in an iron cradle, with a hatch on the drum and dark compost visible through the slats. Group: **`drum`**, origin at the drum's centre line so it can roll. |
-| **Distiller** | A tall copper column with three bulbs stacked up it, a coiled condenser running down the side into a collecting vessel. Max **32 elements**. |
-| **Transmuter** | A dark stone pedestal carved with rings, holding a floating crystal between three curved arms that do not touch it. Group: **`crystal`**, origin at the crystal's centre. Texture as **8 stacked frames**. Max **32 elements**. |
-| **Harvester** | A low wheeled frame with a horizontal cutting reel of thin blades at the front and a collecting box behind. Group: **`reel`**, origin at the reel's axle. |
+A cluster of 3 or 4 angular pale-violet crystal shards growing straight out
+of the cell floor at slightly different heights and angles, the tallest about
+10 units high. Facets painted as flat bands of lighter and darker violet.
 
-## F. Unpowered utility — no animation, no motion
+Save the project as crystal_node.bbmodel
+```
 
-| block | brief |
-|---|---|
-| **Rain Barrel** | An open-topped barrel of curved staves bound with two iron hoops, water visible near the top. Max **14 elements**. Texture 16x16. |
-| **Storage Crate** | A sturdy wooden crate with corner brackets and a lid, planks and iron corners painted rather than modelled. Max **8 elements** — this one gets placed in rows. Texture 16x16. |
-| **Irrigator** | A squat tank on a low frame with four short sprinkler arms pointing outward and down, and a water gauge on the front. Max **16 elements**. Texture 16x16. |
+### Essence Vent
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 4 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: ESSENCE VENT
+
+A small dark stone vent in the ground: a low rough rim around a black
+opening, with two short crooked spires leaning out of it. A faint blue glow
+painted around the mouth.
+
+Save the project as essence_vent.bbmodel
+```
+
+### Resonant Node
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 5 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: RESONANT NODE
+
+A cluster of angular crystal shards like a crystal node, but every shard is
+banded in TWO colours - teal at the base turning to amber at the tip in hard
+stripes - so it reads as two materials fused into one.
+
+Save the project as resonant_node.bbmodel
+```
+
+### Herb Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 6 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: HERB SOURCE
+
+A weathered mossy standing stone, roughly 8 wide by 12 tall by 8 deep,
+sitting on the ground. Its top is carved into a shallow bowl holding a pool of
+glowing green light. Moss and carved spiral runes painted on the sides. It
+should read as a small shrine, not as a machine.
+
+Save the project as herb_source.bbmodel
+```
+
+### Crystal Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 6 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: CRYSTAL SOURCE
+
+A weathered standing stone, roughly 8 wide by 12 tall by 8 deep, in pale
+grey-violet stone with carved runes painted on the sides. Instead of a bowl,
+its top holds a small cluster of glowing violet crystal.
+
+Save the project as crystal_source.bbmodel
+```
+
+### Copper Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 6 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: COPPER SOURCE
+
+A weathered standing stone, roughly 8 wide by 12 tall by 8 deep, in grey
+stone streaked with green verdigris and orange copper. A hammered metal band
+runs around its middle and its top holds a pool of glowing orange light.
+
+Save the project as copper_source.bbmodel
+```
+
+### Sand Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 6 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: SAND SOURCE
+
+A weathered standing stone, roughly 8 wide by 12 tall by 8 deep, in pale gold
+sandstone with carved runes. A crack runs down one face with sand spilling out
+of it, and its top holds a pool of glowing pale-gold light.
+
+Save the project as sand_source.bbmodel
+```
+
+### Essence Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 6 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: ESSENCE SOURCE
+
+A weathered standing stone, roughly 8 wide by 12 tall by 8 deep, in deep
+blue-black stone with carved runes. Its top holds a pool of glowing pale blue
+light with a single small mote floating just above it.
+
+Save the project as essence_source.bbmodel
+```
+
+### Resonant Source
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 7 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: RESONANT SOURCE
+
+A weathered standing stone, roughly 8 wide by 12 tall by 8 deep, visibly
+FUSED from two different stones: teal on one side, amber on the other, with a
+hard jagged seam running straight down the middle of every face. Its top holds
+a pool of light that is teal on one half and amber on the other. This is the
+rarest of the set and should be the brightest.
+
+Save the project as resonant_source.bbmodel
+```
+
+## B. Cheap wins
+
+Placed in bulk, so these carry the smallest budgets in the file. Tilled and
+Rich Soil are one element each - the whole model is a slab a pixel shy of full
+height and everything that tells them apart is paint.
+
+### Scaffold
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 8 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: SCAFFOLD
+
+An open cubic climbing frame: four corner posts of bare timber plus a rail
+around the top and another around the bottom, completely hollow in the middle
+so you can see straight through it. Lashings of twine painted at the joints.
+If the rails can be painted onto the posts convincingly, use 4 elements.
+
+Save the project as scaffold.bbmodel
+```
+
+### Tilled Soil
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 1 cube element MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: TILLED SOIL
+
+ONE box filling the cell from 0,0,0 to 16,15,16 - full width and depth, one
+unit shy of full height, so worked ground sits slightly below the grass around
+it. Dark brown crumbly earth, with four straight parallel furrows painted
+across the top face and a loose broken edge painted on the sides.
+
+Save the project as tilled_soil.bbmodel
+```
+
+### Rich Soil
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 1 cube element MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: RICH SOIL
+
+ONE box filling the cell from 0,0,0 to 16,15,16, exactly the same shape as
+tilled soil. Much darker, almost black-brown, visibly richer, with flecks of
+pale straw and compost painted through it and four parallel furrows across the
+top face.
+
+Save the project as rich_soil.bbmodel
+```
+
+### Grafted Sapling
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 12 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: GRAFTED SAPLING
+
+A young grafted tree: a straight trunk about 14 units tall and 3 units thick,
+four short branches angling out from it, and a small leaf cluster on each
+branch made from flat crossed planes. Sturdier and fuller than a wild sapling.
+A pale grafting band painted around the trunk near its base. Cut the leaf
+silhouettes with alpha 0.
+
+Save the project as grafted_sapling.bbmodel
+```
+
+## C. The hand-cranked tier
+
+Twelve tools the player's own arm drives, and the first machines a new player
+meets. They are **hand tools on a bench, not machinery**: low, wooden, worn,
+human-scale.
+
+Every one carries a handle or crank in a group named `crank`, because a
+cranked machine only advances while you turn it. That is the entire identity
+of the tier and it should be visible before you read a tooltip.
+
+None are power nodes, so **none may animate**.
+
+### Sieve
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: SIEVE
+
+A square wooden frame holding a woven mesh screen, standing on four short
+legs, with a handle on one side to shake it. Paint the mesh as a grid of
+alpha-0 holes so you can see through it. Sawdust and grain on the frame.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as sieve.bbmodel
+```
+
+### Mortar
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: MORTAR
+
+A heavy grey stone bowl sitting in a low wooden cradle, with an upright stone
+pestle resting inside it. The pestle is the handle. Ground powder painted
+around the rim.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as mortar.bbmodel
+```
+
+### Hand Press
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: HAND PRESS
+
+A screw press: a solid wooden bench, two upright posts, a threaded screw
+running down between them into a flat pressing plate, and a straight bar
+handle across the top of the screw.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as hand_press.bbmodel
+```
+
+### Anvil
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: ANVIL
+
+A blackened iron anvil with the classic horn and waist, sitting on a scarred
+wooden stump, with a hammer leaning against it. The hammer is the handle.
+Scale and hammer marks painted on the face.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as anvil.bbmodel
+```
+
+### Blowpipe
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: BLOWPIPE
+
+A small glassblower's bench: a low stand holding a long thin metal pipe
+horizontally over a shallow bowl of glowing coals, with a bellows lever
+sticking out of one side.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as blowpipe.bbmodel
+```
+
+### Tamper
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: TAMPER
+
+A wide flat stone base plate with a heavy weighted iron rammer standing
+upright on it and a T-shaped wooden handle across the top of the rammer.
+Squat and obviously heavy.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as tamper.bbmodel
+```
+
+### Compost Heap
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: COMPOST HEAP
+
+An open box of rough unplaned planks, half full of dark crumbling compost,
+with a turning fork stuck upright into the heap. Straw and peelings painted
+through the compost.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as compost_heap.bbmodel
+```
+
+### Mixing Bowl
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: MIXING BOWL
+
+A wide shallow clay bowl resting on a three-legged wooden tripod, with a long
+wooden stirring paddle laid across the rim. Greenish residue painted inside
+the bowl.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as mixing_bowl.bbmodel
+```
+
+### Infusion Stand
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: INFUSION STAND
+
+A slender wooden stand holding a small glass phial upright above an unlit
+brass burner, with a little turning wheel on the side of the frame. Delicate
+and apothecary-like.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as infusion_stand.bbmodel
+```
+
+### Still
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: STILL
+
+A squat round copper pot with a domed lid, a curled copper arm running from
+the lid down into a small collecting jar beside it, and a valve wheel on the
+pot's side. Verdigris and hammer marks painted on the copper.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as still.bbmodel
+```
+
+### Hand Distiller
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: HAND DISTILLER
+
+Taller and thinner than a still: a narrow upright copper column with two
+collecting rings partway up it, a spout near the base feeding a small jar, and
+a hand wheel at the bottom.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as hand_distiller.bbmodel
+```
+
+### Hand Transmuter
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: HAND TRANSMUTER
+
+A thick stone slab carved with a circle and runes, a small dull crystal held
+above its centre on a bent iron arm, and a hand wheel at the front of the
+slab.
+
+MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
+in its own outliner group named exactly "crank", with that group's
+origin at the centre of its axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as hand_transmuter.bbmodel
+```
+
+## D. Fuel-fired
+
+Heat rather than electricity. Not power nodes, so **no animation** - paint the
+fire glow into the texture instead of trying to make it flicker.
+
+### Bloomery
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 16 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: BLOOMERY
+
+A waist-high smelting chimney of packed clay and stone, wider at the base and
+narrowing toward the top, with an arched opening at the front glowing orange
+and a dark slag scar running down one side. Cracked clay and soot painted on.
+Primitive and hand-built, not manufactured.
+
+Save the project as bloomery.bbmodel
+```
+
+### Furnace
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 20 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: FURNACE
+
+A squat stone-and-iron furnace: a heavy rectangular body, an iron-barred door
+at the front with orange fire glowing between the bars, a short chimney rising
+from the back, and a riveted iron band around the body. Soot painted above the
+door.
+
+Save the project as furnace.bbmodel
+```
+
+## E. Powered machines
+
+All are power nodes, so animation and moving parts both work, and both play
+only while the network is satisfied. These carry the largest budgets here.
+
+### Generator
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- Each animation frame must be EXACTLY 32x32 pixels. Stack 8
+  frames vertically so the whole image is 32x256, forming a
+  looping animation strip.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: GENERATOR
+
+An iron firebox on stubby legs with a glowing grate across the front, a large
+flywheel mounted on one side, and a short exhaust stack on top. Rivets, soot
+and warning stripes painted on. Across the 8 frames the grate should flicker
+and brighten as if burning.
+
+MOVING PART: put the flywheel
+in its own outliner group named exactly "flywheel", with that group's
+origin at the centre of the wheel.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as generator.bbmodel
+```
+
+### Grinder
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: GRINDER
+
+A heavy iron frame holding a wide grinding wheel of grey stone on a horizontal
+axle, with a hopper above feeding into it and a chute at the front letting
+powder out.
+
+MOVING PART: put the grinding wheel
+in its own outliner group named exactly "wheel", with that group's
+origin at the centre of the wheel's axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as grinder.bbmodel
+```
+
+### Press
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: PRESS
+
+A blocky iron press: a thick base plate, two heavy uprights at the sides, and
+a broad flat ram head suspended between them above the plate. Hydraulic lines
+and pressure dials painted on the uprights.
+
+MOVING PART: put the ram head
+in its own outliner group named exactly "ram", with that group's
+origin at the TOP face of the ram, so it can drive downward.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as press.bbmodel
+```
+
+### Forge
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- Each animation frame must be EXACTLY 32x32 pixels. Stack 8
+  frames vertically so the whole image is 32x256, forming a
+  looping animation strip.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 32 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: FORGE
+
+An armourer's forge: a stone hearth on an iron frame with a glowing bed of
+coals, a metal hood above it, and a small anvil on a shelf at one side. Tongs
+and a hammer painted on the frame. Across the 8 frames the coal bed should
+pulse from dull red to bright orange.
+
+Save the project as forge.bbmodel
+```
+
+### Sifter
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: SIFTER
+
+A boxy iron frame holding a wide sieve tray slung at a slight angle, with a
+hopper above it and a collecting pan below. Springs painted where the tray
+meets the frame.
+
+MOVING PART: put the sieve tray
+in its own outliner group named exactly "tray", with that group's
+origin at the centre of the tray.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as sifter.bbmodel
+```
+
+### Glassblower
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: GLASSBLOWER
+
+A small round furnace with a glowing circular port at the front, a swinging
+arm above it holding a blowpipe out over the port, and a cooling rack at one
+side.
+
+MOVING PART: put the swing arm holding the blowpipe
+in its own outliner group named exactly "arm", with that group's
+origin at the arm's shoulder joint.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as glassblower.bbmodel
+```
+
+### Compactor
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: COMPACTOR
+
+A squat, obviously very heavy iron machine: a thick body with a recessed
+square pressing plate on top and four thick guide posts at the corners. Hazard
+stripes and dents painted on.
+
+MOVING PART: put the pressing plate
+in its own outliner group named exactly "plate", with that group's
+origin at the TOP face of the plate, so it can press down.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as compactor.bbmodel
+```
+
+### Composter
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: COMPOSTER
+
+A slatted wooden drum lying on its side in an iron cradle, with a hinged hatch
+on the drum's surface and dark compost visible through gaps between the slats.
+Iron hoops painted around the drum.
+
+MOVING PART: put the drum
+in its own outliner group named exactly "drum", with that group's
+origin at the centre line of the drum, so it can roll.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as composter.bbmodel
+```
+
+### Distiller
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 32 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: DISTILLER
+
+A tall copper distillation column with three bulbs stacked up it, a coiled
+condenser spiralling down one side into a collecting vessel at the base, and a
+pressure gauge painted on the lowest bulb.
+
+Save the project as distiller.bbmodel
+```
+
+### Transmuter
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- Each animation frame must be EXACTLY 32x32 pixels. Stack 8
+  frames vertically so the whole image is 32x256, forming a
+  looping animation strip.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 32 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: TRANSMUTER
+
+A dark stone pedestal carved with concentric rings, three curved iron arms
+rising from it, and a faceted crystal floating in the gap between their tips,
+touching nothing. Glowing runes painted on the pedestal. Across the 8 frames
+the runes should brighten and dim.
+
+MOVING PART: put the floating crystal
+in its own outliner group named exactly "crystal", with that group's
+origin at the centre of the crystal.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as transmuter.bbmodel
+```
+
+### Harvester
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 32x32 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 28 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: HARVESTER
+
+A low wheeled iron frame with a horizontal cutting reel of thin blades across
+the front and a collecting box behind it. Cut stalks and green stains painted
+on the blades.
+
+MOVING PART: put the cutting reel
+in its own outliner group named exactly "reel", with that group's
+origin at the centre of the reel's axle.
+Everything else can sit in the root group, and the exact group name
+is what our code looks for.
+
+Save the project as harvester.bbmodel
+```
+
+## F. Unpowered utility
+
+No power, so no animation and no motion. The Storage Crate gets the smallest
+budget of the three because it is the one that gets stacked in rows.
+
+### Rain Barrel
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: RAIN BARREL
+
+An open-topped wooden barrel made of curved staves bound with two iron hoops,
+with dark water visible near the top rim. Water stains and damp wood painted
+on the staves.
+
+Save the project as rain_barrel.bbmodel
+```
+
+### Storage Crate
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 8 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: STORAGE CRATE
+
+A sturdy wooden shipping crate with a lid. Model the box and its lid only -
+the planks, iron corner brackets, nails and rope handle must all be PAINTED,
+because these get stacked in rows and every element is paid for many times
+over.
+
+Save the project as storage_crate.bbmodel
+```
+
+### Irrigator
+
+```
+Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
+"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+
+HARD RULES - a file breaking any of these is rejected by our importer:
+- CUBE elements only. No mesh or poly elements of any kind.
+- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
+  never cross one.
+- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
+  22.5, 45. A rotated element collides as its bounding box, so do not rotate
+  anything the player would stand on.
+- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+  animation strip or multiple frames - a texture a whole multiple
+  taller is read as an animation and the extra frames are wasted.
+- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
+  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
+  semi-transparent glass, no soft shadows in the alpha channel. Transparency
+  cuts holes; it does not fade.
+- Box UV or per-face UV are both fine.
+
+STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
+gradients, no text, no logos. It sits on grass in daylight among other blocks
+one metre across, and must read at 5-10 blocks distance.
+
+DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
+grain, rust, dials, vents and engraving must be PAINTED. Model only what
+changes the silhouette - the shape you would still recognise as a black
+cut-out against the sky. This is the rule most often broken and the one that
+matters most.
+
+BUDGET: 16 cube elements MAXIMUM. This is a hard limit, not a target;
+fewer is better. Exceeding it makes the model unusable.
+
+MODEL: IRRIGATOR
+
+A squat metal water tank on a low frame, with four short sprinkler arms
+pointing outward and slightly downward from its sides, and a round water gauge
+on the front face.
+
+Save the project as irrigator.bbmodel
+```
 
 ---
 
-## After the model comes back
+## After a model comes back
 
-1. Save it into `models/` with a lower_snake_case stem — the stem becomes the
-   C++ identifier, so `rain_barrel.bbmodel` → `RainBarrel`.
-2. If the generator sent an animation strip you did not ask for:
+1. Save it into `models/` under the stem its prompt named.
+2. If it arrived as an animation strip you did not ask for:
    `python tools/normalize_shape_texture.py models/<file>.bbmodel`
-3. **Re-bake every model in one command.** The bake packs one sheet, so a
+3. **Re-bake every model in ONE command.** The bake packs a single sheet, so a
    partial run silently drops every model it was not given. The last full
    command line lives in the header comment of
    `game/include/game/generated/BlockShapes.inl`; append yours and update that
    comment in the same commit.
-4. Four C++ edits, all `static_assert`ed (AUTHORING.md step 15): a `ShapeId`
-   value, a `kBlockShapes` row, a `kShapeNames` entry, and `fullCube = false`
-   plus `.shape` on the block's `kBlocks` row.
-5. Check the bake's printed quad and KB figures against the budget above
-   before committing. If a model came back over budget, the fix is almost
-   always to delete elements and paint them instead.
+4. Four C++ edits, each `static_assert`ed so a mismatch is a compile error: a
+   `ShapeId` value, a `kBlockShapes` row, a `kShapeNames` entry, and
+   `fullCube = false` plus `.shape` on the block's `kBlocks` row.
+5. Check the bake's printed quad and KB figures against the budget. Over
+   budget is almost always fixed by deleting elements and painting them.
 
-Setting `fullCube = false` carries three consequences every time: the block
-stops occluding its neighbours, stops keeping rain out (`skyVisible`), and
-stops blocking grass spread. All three are right for anything you can see
-past, which is nearly every model here.
-
-A shaped block **may** keep `fullCube = true`, and `content::validate()`
-states the exact condition: its shape's collision bounds must fill the cell
-edge to edge. That is a claim about the union of the collision boxes, not
-about the drawn surface, so it is only safe when the model is genuinely
-watertight — any recess, chamfer or gap and neighbours will cull faces against
-a block you can see through, leaving holes in the world. Prefer
-`fullCube = false` and accept that rain falls past a furnace; it is cosmetic,
-and the alternative fails loudly in a way that is tedious to trace.
+`fullCube = false` costs three things every time: the block stops occluding
+its neighbours, stops keeping rain out, and stops blocking grass spread. All
+three are right for anything you can see past, which is nearly everything
+here. A shaped block may keep `fullCube = true`, but only if its collision
+bounds fill the cell edge to edge -- and that is a claim about collision
+boxes, not about the drawn surface, so any recess or gap will let neighbours
+cull faces against a block you can in fact see through.
