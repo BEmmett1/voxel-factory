@@ -23,4 +23,15 @@ struct Belt {
     // intended, visible failure (the stuck item and the filter icon are both
     // drawn).
     ItemId     filter = ItemId::None;
+
+    // Where this step's cargo came FROM, as an offset to that cell, or zero if
+    // it did not move. TRANSIENT: re-derived by every beltStep, never saved --
+    // which is the whole reason the flowing-cargo visual cost no save version.
+    //
+    // It is what lets cargo SLIDE rather than teleport between cells. The
+    // render lerps from `pos + cameFrom` to `pos` over the step that follows,
+    // so the picture is one step behind the simulation and therefore never
+    // wrong: predicting the next hop instead would snap back whenever a belt
+    // lost a claim to another belt feeding the same cell.
+    glm::ivec3 cameFrom{0};
 };

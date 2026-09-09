@@ -104,6 +104,10 @@ void VoxelGame::onUpdate(float dt) {
         // Animated block textures run off the same pause-aware clock, so a
         // paused cauldron stops bubbling along with the sim that fills it.
         m_animClock = std::fmod(m_animClock + dt, kAnimClockWrap);
+        // Cargo slides across its cell between belt steps. Clamped rather than
+        // wrapped: if the sim stalls, an item parks at its destination instead
+        // of running past it.
+        m_beltLerp = std::min(m_beltLerp + dt, kBeltStepTicks * kTickSeconds);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);
@@ -691,7 +695,7 @@ void VoxelGame::onUpdate(float dt) {
                 const ItemId want = (held == ItemId::Wrench) ? ItemId::None : held;
                 bit->second.filter = (bit->second.filter == want) ? ItemId::None : want;
                 audio().playAt("click", glm::vec3(tb) + glm::vec3(0.5f), kCraftVolume);
-                m_world->markDirtyAt(tb.x, tb.y, tb.z);
+                m_world->markDirtyAround(tb);
             }
         }
     }

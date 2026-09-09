@@ -90,8 +90,10 @@ bool rotateBelt(World& world, MachineSystem::BeltMap& belts, const glm::ivec3& p
     // wanted it cost five presses. Reversing costs one branch and caps the
     // worst case at two.
     it->second.facing = kCycle[(cur + (reverse ? 5 : 1)) % 6];
-    // No block changed, but the arrow UVs did: queue a remesh.
-    world.markDirtyAt(pos.x, pos.y, pos.z);
+    // No block changed, but the GEOMETRY did: a conduit's arms follow its
+    // facing, and re-aiming one can also take an arm off the neighbour that
+    // used to feed it. Hence the neighbourhood, not just this cell.
+    world.markDirtyAround(pos);
     return true;
 }
 

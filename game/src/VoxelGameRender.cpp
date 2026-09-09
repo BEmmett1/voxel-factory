@@ -204,6 +204,71 @@ void VoxelGame::buildRainMesh() {
     m_rainMesh.upload(m_rainScratch, {3}, GL_DYNAMIC_DRAW);
 }
 
+// Conduit cargo, as world geometry: one camera-facing quad per carried item,
+// through the ordinary voxel shader so it is DEPTH-TESTED like everything else.
+// It used to be a UiRenderer billboard drawn after the world, which meant an
+// item behind a wall drew straight through it, at any distance.
+//
+// Two things it gets for free by being here. Alpha cutout finally does the job
+// it shipped for: an item icon's transparent surround is discarded rather than
+// drawn as a black card. And the distance cull is the ground drops' own knob,
+// so cargo and dropped items disappear at the same range instead of one of
+// them being visible across the island.
+void VoxelGame::buildCargoMesh() {
+    m_cargoScratch.clear();
+    if (m_dimension != DimensionId::Overworld) return; // no belts in the arena
+
+    const glm::vec3 cam = camera().position;
+    const glm::vec3 right = camera().right();
+    const glm::vec3 up = camera().up();
+    // 0..1 across the belt step: how far this item has slid into its cell.
+    const float step = static_cast<float>(kBeltStepTicks) * kTickSeconds;
+    const float t = step > 0.0f ? glm::clamp(m_beltLerp / step, 0.0f, 1.0f) : 1.0f;
+
+    for (const auto& [pos, b] : m_belts) {
+        if (b.item == ItemId::None) continue;
+
+        // Ride ON the hub rather than inside it: the authored tube texture is
+        // opaque everywhere it is painted, so an item at the centre would be
+        // hidden by its own pipe. Drop kCargoLift to 0 the day the art gets
+        // windows and the item moves inside with nothing else to change.
+        const glm::vec3 centre = glm::vec3(pos) + glm::vec3(0.5f, 0.5f + kCargoLift, 0.5f);
+        // Slide in from the cell it came from. cameFrom is zero when the item
+        // did not move, which parks it dead centre -- a stalled line reads as
+        // stalled.
+        const glm::vec3 from = centre + glm::vec3(b.cameFrom);
+        const glm::vec3 p = glm::mix(from, centre, t);
+
+        const glm::vec3 toCam = cam - p;
+        const float d2 = glm::dot(toCam, toCam);
+        if (d2 > kDropRenderDist * kDropRenderDist) continue;
+
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(b.item), uv0, uv1);
+        const glm::vec3 n = glm::normalize(toCam);
+        const glm::vec3 rx = right * (kCargoSize * 0.5f);
+        const glm::vec3 ry = up * (kCargoSize * 0.5f);
+
+        // Corners CCW seen from the camera, with v flipped so the icon is not
+        // upside down (atlas v grows downward).
+        const glm::vec3 c[4] = {p - rx - ry, p + rx - ry, p + rx + ry, p - rx + ry};
+        const glm::vec2 t4[4] = {{uv0.x, uv1.y}, {uv1.x, uv1.y},
+                                 {uv1.x, uv0.y}, {uv0.x, uv0.y}};
+        const auto push = [&](int k) {
+            m_cargoScratch.insert(m_cargoScratch.end(),
+                                  {c[k].x, c[k].y, c[k].z, n.x, n.y, n.z,
+                                   t4[k].x, t4[k].y, kCargoEmissive});
+        };
+        push(0); push(1); push(2);
+        push(0); push(2); push(3);
+    }
+
+    if (!m_cargoScratch.empty()) {
+        m_cargoMesh.upload(m_cargoScratch, {3, 3, 2, 1}, GL_DYNAMIC_DRAW);
+    }
+}
+
+
 // Rebuild only the chunks whose contents changed. Runs once per frame (top of
 // onRender), so any number of tick/edit mutations in the frame collapse into
 // at most one rebuild per touched chunk.
@@ -353,6 +418,7 @@ void VoxelGame::onRender() {
     updateShapeAnim();
     updatePartAnim();
     buildRainMesh();
+    buildCargoMesh();
 
     // Sky: fair-weather blue easing toward storm grey — or the arena's flat
     // void purple-black. Rain dimming applies at home only.
@@ -394,6 +460,14 @@ void VoxelGame::onRender() {
             mesh.draw();
         }
         m_atlas.bind(0);
+    }
+
+    // Conduit cargo: billboards in WORLD space, so a wall hides them. Drawn
+    // after both chunk passes with the atlas bound -- item icons are atlas
+    // tiles, and their transparent surround is what the cutout discards.
+    if (!m_cargoScratch.empty() && !m_cargoMesh.empty()) {
+        m_shader.setMat4("uModel", glm::mat4(1.0f));
+        m_cargoMesh.draw();
     }
 
     // Target outline: flat wireframe cube around the aimed block.

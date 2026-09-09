@@ -576,6 +576,12 @@ std::vector<glm::ivec3> activeIrrigators(const MachineMap& machines) {
 }
 
 void beltStep(BeltMap& belts, MachineMap& machines) {
+    // Cargo motion is re-derived from scratch every step: clear it first, and
+    // only an item that actually MOVES below gets a direction. A belt whose
+    // cargo is stuck therefore renders parked in the middle of its cell, which
+    // is what a jam should look like.
+    for (auto& [pos, b] : belts) b.cameFrom = glm::ivec3(0);
+
     // 1. Belts deliver their item into a machine directly ahead (if it accepts).
     for (auto& [pos, b] : belts) {
         if (b.item == ItemId::None) continue;
@@ -608,6 +614,10 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
         // target's filter draw as icons.
         if (tb->second.filter != ItemId::None && tb->second.filter != carried) continue;
         tb->second.item = carried;
+        // Recorded on the RECEIVER, pointing back at where it came from: a
+        // corner turns, so the direction it arrived from is not the direction
+        // it will leave by.
+        tb->second.cameFrom = -b.facing;
         b.item = ItemId::None;
         claimed.insert(front);
     }
@@ -626,6 +636,7 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
             if (out.count(b.filter) > 0) {
                 out.remove(b.filter, 1);
                 b.item = b.filter;
+                b.cameFrom = -b.facing; // out of the machine behind
             }
             continue;
         }
@@ -634,6 +645,7 @@ void beltStep(BeltMap& belts, MachineMap& machines) {
             if (out.count(id) > 0) {
                 out.remove(id, 1);
                 b.item = id;
+                b.cameFrom = -b.facing;
                 break;
             }
         }

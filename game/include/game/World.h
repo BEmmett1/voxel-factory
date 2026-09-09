@@ -21,6 +21,15 @@ public:
     // when non-block state baked into the mesh changes: belt facing, power).
     void markDirtyAt(int wx, int wy, int wz);
 
+    // The same, for the cell AND its six neighbours. Needed wherever a change
+    // alters what the blocks AROUND it draw -- re-aiming a conduit moves its
+    // own arm and can take an arm off the neighbour that used to feed it. A
+    // block EDIT does not need this (setBlock already touches the adjacent
+    // chunk when the cell sits on a chunk face, and a same-chunk neighbour is
+    // remeshed with the rest of its chunk anyway); a state change with no
+    // setBlock behind it does.
+    void markDirtyAround(const glm::ivec3& pos);
+
     const ChunkMap& chunks() const { return m_chunks; }
 
     // World -> chunk/local coordinate split (handles negatives correctly).

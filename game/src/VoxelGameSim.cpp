@@ -411,6 +411,7 @@ void VoxelGame::onTick() {
     // Advance conduits on a slower cadence so items visibly travel.
     if (++m_beltTimer >= kBeltStepTicks) {
         m_beltTimer = 0;
+        m_beltLerp = 0.0f; // cargo starts sliding from its new cell's entrance
         MachineSystem::beltStep(m_belts, m_machines);
     }
 

@@ -150,6 +150,7 @@ private:
     // since nobody is standing there). See the definition for why.
     void rollLeafDrops(const glm::ivec3& p, bool chopped);
     void buildRainMesh();                           // per-frame falling streaks
+    void buildCargoMesh();                          // per-frame conduit cargo
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
     // Spawn a physical item into the active dimension (mining yields + the
@@ -184,6 +185,11 @@ private:
     std::vector<glm::mat3> m_partRot;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
+    // Conduit cargo, as world geometry rather than the UiRenderer billboard it
+    // used to be -- so an item behind a wall is hidden by the wall, which a
+    // screen-space icon could never be.
+    engine::Mesh       m_cargoMesh;
+    std::vector<float> m_cargoScratch;
     engine::Mesh       m_highlightMesh;
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;
@@ -229,6 +235,10 @@ private:
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
     CropSystem::CropMap                                m_crops;    // pos -> seconds into this stage
     int m_beltTimer = 0;           // ticks since the last belt step
+    // Seconds since that step, at RENDER rate, for sliding cargo between
+    // cells. The CreatureSystem::m_sinceTick pattern: the sim stays at 20 Hz
+    // and only the picture interpolates.
+    float m_beltLerp = 0.0f;
     int m_leafPity = 0;            // leaves lost since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
     std::uint32_t m_growthRng = 0xC2B2AE35u; // grass-spread cell sampling

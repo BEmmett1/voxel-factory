@@ -84,6 +84,18 @@ namespace vg {
     inline constexpr float kDropIconMin   = 14.0f;  // px floor, far away
     inline constexpr float kDropIconMax   = 100.0f; // px cap, up close
 
+    // ---- Conduit cargo --------------------------------------------------
+    // An item riding a tube. It is world geometry now, so these are BLOCKS,
+    // not pixels -- a billboard that shrinks with distance for free instead of
+    // by arithmetic, and one that a wall can hide.
+    inline constexpr float kCargoSize     = 0.42f; // quad edge, in blocks
+    // Lifted clear of the hub because the authored tube texture is opaque
+    // wherever it is painted: an item at the centre would be inside solid
+    // pipe. Set this to 0 when the art grows windows -- nothing else moves.
+    inline constexpr float kCargoLift     = 0.38f;
+    // Bright enough to read against a dark tube without washing the icon out.
+    inline constexpr float kCargoEmissive = 0.45f;
+
     // ---- Melee (the sword swings through the aim raycast) ----
     // (Per-hit damage is per WEAPON now: ItemInfo::weaponDamage in Item.cpp,
     // which is also what makes an item swing instead of mine.)

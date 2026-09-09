@@ -1778,22 +1778,25 @@ void VoxelGame::drawHud() {
         m_ui.rect(bx, by, bw * frac, bh, m.jammed ? kBarJammed : kBarWorking);
     }
 
-    // Items currently riding on conduits, drawn as floating icons -- and, on an
-    // empty filtered belt, a ghost of what it is waiting for. Without that
-    // second draw a filter would be invisible, and an invisible routing rule is
+    // The FILTER ghost on an empty conduit: what this belt is waiting for.
+    // Without it a filter would be invisible, and an invisible routing rule is
     // the exact problem filters were added to solve.
+    //
+    // Cargo itself left this loop -- it is world geometry now (buildCargoMesh),
+    // so it slides between cells and a wall hides it. The ghost stays a
+    // screen-space icon on purpose: it is an ANNOTATION, not a thing in the
+    // world, it has to be legible through the tube it labels, and the world
+    // pass does cutout rather than blending so it could not be drawn tinted.
     for (const auto& [pos, b] : m_belts) {
-        const bool ghost = b.item == ItemId::None;
-        const ItemId shown = ghost ? b.filter : b.item;
-        if (shown == ItemId::None) continue;
+        if (b.item != ItemId::None || b.filter == ItemId::None) continue;
         glm::vec2 sp;
         if (!projectToScreen(glm::vec3(pos) + glm::vec3(0.5f, 0.85f, 0.5f), sp)) continue;
         const float dist = glm::length(camera().position - (glm::vec3(pos) + glm::vec3(0.5f)));
-        const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f) * (ghost ? 0.8f : 1.0f);
+        if (dist > kDropRenderDist) continue; // match the cargo it stands in for
+        const float s = glm::clamp(150.0f / dist, 10.0f, 40.0f) * 0.8f;
         glm::vec2 uv0, uv1;
-        Atlas::uvForTile(iconTile(shown), uv0, uv1);
-        m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1,
-                  ghost ? kFilterGhost : glm::vec4(1.0f));
+        Atlas::uvForTile(iconTile(b.filter), uv0, uv1);
+        m_ui.icon(m_atlas, sp.x - s * 0.5f, sp.y - s * 0.5f, s, s, uv0, uv1, kFilterGhost);
     }
 
     // Ground items: billboarded icons (same convention as belt cargo) with a
@@ -1892,6 +1895,35 @@ void VoxelGame::drawHud() {
                       : machineTraits(m.type).handCranked ? "RMB OPEN - THEN CRANK IT"
                                                           : "RMB OPEN",
                       m.jammed ? kBarJammed : glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+        }
+
+        // Look-at conduit. The tube reports its own flow and filter in words,
+        // which is the other half of what the retired top-face arrow used to
+        // do -- the glowing OUT arm shows the direction at a glance, and this
+        // names it, along with the routing rule an arrow could never show.
+        const auto bit = m_belts.find(m_targetBlock);
+        if (bit != m_belts.end()) {
+            const Belt& b = bit->second;
+            const glm::ivec3& f = b.facing;
+            const char* dir = f.x > 0 ? "EAST" : f.x < 0 ? "WEST"
+                            : f.z > 0 ? "SOUTH" : f.z < 0 ? "NORTH"
+                            : f.y > 0 ? "UP" : "DOWN";
+            const float pw = 380.0f, ph = 78.0f;
+            const float pxp = (static_cast<float>(w) - pw) * 0.5f;
+            const float pyp = y - ph - 14.0f;
+            m_ui.rect(pxp, pyp, pw, ph, glm::vec4(0.07f, 0.07f, 0.09f, 0.92f));
+            m_ui.text(pxp + 12, pyp + 8, 16.0f, blockName(BlockId::Belt),
+                      glm::vec4(1.0f, 1.0f, 0.7f, 1.0f));
+            m_ui.text(pxp + 12, pyp + 32, 13.0f, std::string("FLOW: ") + dir,
+                      glm::vec4(0.85f, 0.85f, 0.9f, 1.0f));
+            // "ANY" rather than an empty line: an unfiltered belt is a
+            // deliberate state, not a missing one.
+            m_ui.text(pxp + 12, pyp + ph - 22.0f, 12.0f,
+                      b.filter == ItemId::None
+                          ? std::string("FILTER: ANY")
+                          : std::string("FILTER: ") + itemName(b.filter),
+                      b.filter == ItemId::None ? glm::vec4(0.7f, 0.7f, 0.75f, 1.0f)
+                                               : glm::vec4(0.85f, 0.9f, 0.85f, 1.0f));
         }
     }
 

@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/BlockShape.h"
 #include "game/ContentPack.h"
 #include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
@@ -15,6 +16,7 @@
 #include "game/Recipes.h"
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
+#include "game/TubeShape.h"
 #include "game/World.h"
 #include "VoxelGameInternal.h" // vg::kOrgName / kAppName
 
@@ -183,6 +185,10 @@ int runSelfTest() {
     // or read in the wrong order.
     belts[glm::ivec3{2, 3, 3}] =
         Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb, ItemId::Crystal};
+    // Cargo MOTION is render state, re-derived by the next beltStep. Set it
+    // here so the load side can prove it is not written: persisting it would
+    // have forced a save version for a purely visual field.
+    belts[glm::ivec3{2, 3, 3}].cameFrom = glm::ivec3{0, 0, 1};
 
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources;
     sources[glm::ivec3{4, 2, 4}] = 3.5f;
@@ -308,6 +314,9 @@ int runSelfTest() {
     SELFTEST_CHECK(b2.facing == glm::ivec3(-1, 0, 0));
     SELFTEST_CHECK(b2.item == ItemId::GroundHerb);
     SELFTEST_CHECK(b2.filter == ItemId::Crystal); // v23
+    // Transient, so it must come back cleared rather than round-tripped --
+    // this is the assertion that says the flowing-cargo visual cost no bump.
+    SELFTEST_CHECK(b2.cameFrom == glm::ivec3(0));
 
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
@@ -1264,6 +1273,170 @@ int runSelfTest() {
         MachineSystem::beltStep(hb, hm);
         SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone); // still occupied this step
         SELFTEST_CHECK(hb[a].item == ItemId::IronIngot);
+    }
+
+    // ---- Tubes: a conduit's shape is a property of its CELL ----------------
+    // The arms are parts of one baked hub, shown per neighbour, so these masks
+    // ARE the geometry. A rule that lived inside the mesher could only be
+    // checked by looking at the screen; this is why TubeShape is free
+    // functions over the registries instead.
+    {
+        using TubeShape::conduitArms;
+        using TubeShape::wireArms;
+        const auto air = [] {
+            TubeShape::Neighbours n;
+            n.fill(BlockId::Air);
+            return n;
+        };
+        // Face indices, from BlockShape.h's kShapeFaceDirs.
+        constexpr int kEast = 0, kWest = 1, kUp = 2, kDown = 3;
+        constexpr int kSouth = 4, kNorth = 5;
+        const auto bit = [](int f) { return static_cast<std::uint8_t>(1u << f); };
+
+        SELFTEST_CHECK(TubeShape::faceIndex({1, 0, 0}) == kEast);
+        SELFTEST_CHECK(TubeShape::faceIndex({0, 0, -1}) == kNorth);
+        SELFTEST_CHECK(TubeShape::faceIndex({1, 1, 0}) == -1); // not a cardinal
+
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> tb;
+        const glm::ivec3 c{200, 20, 200};
+
+        // A lone conduit still states its direction: the OUT arm is drawn into
+        // open air, because it is what replaced the top-face arrow.
+        Belt east;
+        east.facing = {1, 0, 0};
+        tb[c] = east;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == bit(kEast));
+
+        // A straight run: the belt behind aims at us, so we grow an arm back
+        // toward it -- two arms, one continuous pipe.
+        tb[c - glm::ivec3(1, 0, 0)] = east; // behind, pointing our way
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == (bit(kEast) | bit(kWest)));
+
+        // A belt alongside that does NOT aim at us shares no arm: nothing
+        // passes between two parallel lanes, and the picture should say so.
+        tb[c + glm::ivec3(0, 0, 1)] = east;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == (bit(kEast) | bit(kWest)));
+
+        // ...but turn that neighbour to face us and it becomes a junction.
+        Belt intoUs;
+        intoUs.facing = {0, 0, -1}; // from +Z back toward us
+        tb[c + glm::ivec3(0, 0, 1)] = intoUs;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) ==
+                       (bit(kEast) | bit(kWest) | bit(kSouth)));
+
+        // A corner: cargo arrives from -Z and leaves east. Two arms on
+        // perpendicular faces, which is what makes a corner look like one.
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> cb;
+        Belt fromNorth;
+        fromNorth.facing = {0, 0, 1}; // sits at -Z, pushes toward +Z
+        cb[c - glm::ivec3(0, 0, 1)] = fromNorth;
+        SELFTEST_CHECK(conduitArms(c, east, cb, air()) == (bit(kEast) | bit(kNorth)));
+
+        // A machine BEHIND earns an arm, because beltStep pulls out of it.
+        TubeShape::Neighbours nb = air();
+        nb[kWest] = BlockId::Furnace;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> mb;
+        SELFTEST_CHECK(conduitArms(c, east, mb, nb) == (bit(kEast) | bit(kWest)));
+
+        // A machine anywhere else is not on this belt's path at all: it neither
+        // feeds it nor takes from it, so no arm.
+        TubeShape::Neighbours side = air();
+        side[kUp] = BlockId::Furnace;
+        SELFTEST_CHECK(conduitArms(c, east, mb, side) == bit(kEast));
+
+        // Wire connects to exactly what the power solver floods into -- the
+        // same predicate, so the picture can never lie about the network.
+        TubeShape::Neighbours wn = air();
+        wn[kEast] = BlockId::Wire;
+        wn[kWest] = BlockId::Generator;
+        wn[kUp] = BlockId::Grinder;      // demand > 0
+        wn[kDown] = BlockId::Stone;      // not a node
+        wn[kNorth] = BlockId::RainBarrel; // a machine, but demand 0
+        SELFTEST_CHECK(wireArms(wn) == (bit(kEast) | bit(kWest) | bit(kUp)));
+        SELFTEST_CHECK(wireArms(air()) == 0);
+    }
+
+    // ---- ...and every arm really does point where its name says ------------
+    // kConnectParts binds a part NAME to a face. The static_assert proves the
+    // name exists; only geometry can prove it is the right lump. A mirrored or
+    // re-authored model would otherwise connect correctly and point backwards.
+    {
+        for (const ConnectPart& cp : kConnectParts) {
+            const BlockShape& sh = blockShape(cp.shape);
+            const int part = partIndex(cp.shape, cp.part);
+            SELFTEST_CHECK(part >= 0);
+
+            glm::vec3 lo(2.0f), hi(-1.0f);
+            int quads = 0;
+            for (const ShapeQuad& q : sh.quads) {
+                if (q.part != static_cast<std::uint8_t>(part)) continue;
+                ++quads;
+                for (const glm::vec3& v : q.pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            }
+            SELFTEST_CHECK(quads > 0); // an arm nothing draws is a dead row
+
+            // The arm must actually reach the wall it names, and must not
+            // sprawl to the opposite one.
+            const glm::ivec3 d = kShapeFaceDirs[cp.face];
+            const int axis = d.x ? 0 : (d.y ? 1 : 2);
+            const int sign = d.x + d.y + d.z;
+            SELFTEST_CHECK(sign > 0 ? (hi[axis] > 0.98f) : (lo[axis] < 0.02f));
+            SELFTEST_CHECK(sign > 0 ? (lo[axis] > 0.02f) : (hi[axis] < 0.98f));
+        }
+    }
+
+    // ---- Cargo slides, and only when it actually moved --------------------
+    // The visual is one belt step behind the simulation, which is what makes
+    // it always right: predicting the next hop would snap back whenever a belt
+    // lost a claim to another belt feeding the same cell.
+    {
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> fb;
+        const glm::ivec3 a{300, 20, 300};
+        const glm::ivec3 bpos = a + glm::ivec3(1, 0, 0);
+        fb[a].facing = {1, 0, 0};
+        fb[a].item = ItemId::Stone;
+        fb[bpos].facing = {1, 0, 0};
+
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[bpos].item == ItemId::Stone);
+        // Recorded on the RECEIVER and pointing back the way it came, so the
+        // render lerps from the cell behind into this one.
+        SELFTEST_CHECK(fb[bpos].cameFrom == glm::ivec3(-1, 0, 0));
+        SELFTEST_CHECK(fb[a].item == ItemId::None);
+
+        // Nothing ahead: the item sits still and the record clears, so a
+        // stalled line parks its cargo instead of replaying the last slide.
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[bpos].item == ItemId::Stone);
+        SELFTEST_CHECK(fb[bpos].cameFrom == glm::ivec3(0));
+
+        // A pull out of a machine behind is motion too, and from the same
+        // direction the arm points.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm2;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> pb;
+        const glm::ivec3 mp2{310, 20, 310};
+        pm2[mp2].type = BlockId::Furnace;
+        pm2[mp2].output.add(ItemId::CopperIngot, 1);
+        const glm::ivec3 out2 = mp2 + glm::ivec3(0, 0, 1);
+        pb[out2].facing = {0, 0, 1};
+        MachineSystem::beltStep(pb, pm2);
+        SELFTEST_CHECK(pb[out2].item == ItemId::CopperIngot);
+        SELFTEST_CHECK(pb[out2].cameFrom == glm::ivec3(0, 0, -1));
+
+        // A corner turns: the direction cargo ARRIVED from is not the
+        // direction it will leave by, which is why the record lives on the
+        // receiver rather than being derived from its own facing.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> cb2;
+        const glm::ivec3 feed{320, 20, 320};
+        const glm::ivec3 corner = feed + glm::ivec3(0, 0, 1);
+        cb2[feed].facing = {0, 0, 1};
+        cb2[feed].item = ItemId::Stone;
+        cb2[corner].facing = {1, 0, 0}; // turns east
+        MachineSystem::beltStep(cb2, cm);
+        SELFTEST_CHECK(cb2[corner].item == ItemId::Stone);
+        SELFTEST_CHECK(cb2[corner].cameFrom == glm::ivec3(0, 0, -1));
     }
 
     // ---- The master switch: off means FROZEN, not broken -------------------
