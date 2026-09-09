@@ -119,9 +119,9 @@ namespace {
          .shape = ShapeId::DarkStoneVent},
         // Sources glow and grow their node nearby; mining one drops its
         // placeable item (relocatable).
-        // Three of the six have models so far; Sand, Essence and Resonant stay
-        // cubes until their recolours are authored, which is why the set looks
-        // inconsistent rather than deliberate.
+        // Five of the six have models; only the Resonant Source is still a
+        // cube, which is fitting for the moment -- it is the one you fuse
+        // rather than find.
         {.id = B::SourceHerb, .key = "core:source_herb",
          .name = "Herb Source", .fullCube = false, .color = {0.30f, 0.95f, 0.30f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::HerbBush,
@@ -138,13 +138,15 @@ namespace {
          .drop = {I::CopperSourceItem, 1}, .tiles = {56, 56, 56}, .hardness = 0.5f,
          .shape = ShapeId::VerdigrisStandingStone},
         {.id = B::SourceSand, .key = "core:source_sand",
-         .name = "Sand Source", .color = {1.00f, 0.92f, 0.55f},
+         .name = "Sand Source", .fullCube = false, .color = {1.00f, 0.92f, 0.55f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::SandNode,
-         .drop = {I::SandSourceItem, 1}, .tiles = {57, 57, 57}, .hardness = 0.5f},
+         .drop = {I::SandSourceItem, 1}, .tiles = {57, 57, 57}, .hardness = 0.5f,
+         .shape = ShapeId::SandSource},
         {.id = B::SourceEssence, .key = "core:source_essence",
-         .name = "Essence Source", .color = {0.85f, 0.35f, 1.00f},
+         .name = "Essence Source", .fullCube = false, .color = {0.85f, 0.35f, 1.00f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::EssenceVent,
-         .drop = {I::EssenceSourceItem, 1}, .tiles = {59, 59, 59}, .hardness = 0.5f},
+         .drop = {I::EssenceSourceItem, 1}, .tiles = {59, 59, 59}, .hardness = 0.5f,
+         .shape = ShapeId::EssenceSource},
         {.id = B::Scaffold, .key = "core:scaffold",
          .name = "Scaffold", .color = {0.68f, 0.62f, 0.48f},
          .drop = {I::ScaffoldItem, 1}, .tiles = {4, 4, 4}, .hardness = 0.6f},
