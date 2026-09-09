@@ -119,9 +119,9 @@ namespace {
          .shape = ShapeId::DarkStoneVent},
         // Sources glow and grow their node nearby; mining one drops its
         // placeable item (relocatable).
-        // Two of the six have models so far; the other four stay cubes until
-        // their recolours are authored, which is why this looks inconsistent
-        // rather than deliberate.
+        // Three of the six have models so far; Sand, Essence and Resonant stay
+        // cubes until their recolours are authored, which is why the set looks
+        // inconsistent rather than deliberate.
         {.id = B::SourceHerb, .key = "core:source_herb",
          .name = "Herb Source", .fullCube = false, .color = {0.30f, 0.95f, 0.30f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::HerbBush,
@@ -133,9 +133,10 @@ namespace {
          .drop = {I::CrystalSourceItem, 1}, .tiles = {55, 55, 55}, .hardness = 0.5f,
          .shape = ShapeId::RunedStandingStone},
         {.id = B::SourceCopper, .key = "core:source_copper",
-         .name = "Copper Source", .color = {1.00f, 0.55f, 0.25f},
+         .name = "Copper Source", .fullCube = false, .color = {1.00f, 0.55f, 0.25f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::CopperOre,
-         .drop = {I::CopperSourceItem, 1}, .tiles = {56, 56, 56}, .hardness = 0.5f},
+         .drop = {I::CopperSourceItem, 1}, .tiles = {56, 56, 56}, .hardness = 0.5f,
+         .shape = ShapeId::VerdigrisStandingStone},
         {.id = B::SourceSand, .key = "core:source_sand",
          .name = "Sand Source", .color = {1.00f, 0.92f, 0.55f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::SandNode,

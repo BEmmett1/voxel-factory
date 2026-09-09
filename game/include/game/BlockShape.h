@@ -116,6 +116,7 @@ enum class ShapeId : std::uint8_t {
     BicolourCrystalNode,
     MossyShrineStandingStone,
     RunedStandingStone,
+    VerdigrisStandingStone,
     Count
 };
 
@@ -253,6 +254,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsRunedStandingStone,
      .anim = kShapeAnimRunedStandingStone,
      .parts = kShapePartsRunedStandingStone},
+    {.id = ShapeId::VerdigrisStandingStone,
+     .quads = kShapeQuadsVerdigrisStandingStone,
+     .boxes = kShapeBoxesVerdigrisStandingStone,
+     .bounds = kShapeBoundsVerdigrisStandingStone,
+     .anim = kShapeAnimVerdigrisStandingStone,
+     .parts = kShapePartsVerdigrisStandingStone},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -465,6 +472,7 @@ inline constexpr const char* kShapeNames[] = {
     "tree_sapling",
     "herb_bush", "violet_crystal_cluster", "dark_stone_vent",
     "bicolour_crystal_node", "mossy_shrine_standing_stone", "runed_standing_stone",
+    "verdigris_standing_stone",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
