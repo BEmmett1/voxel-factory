@@ -22,6 +22,7 @@ add_executable(voxel-factory
     src/PlayerController.cpp
     src/CreatureSystem.cpp
     src/MachineSystem.cpp
+    src/TubeShape.cpp
     src/AlchemyCircle.cpp
     src/DropSystem.cpp
     src/CropSystem.cpp

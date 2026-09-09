@@ -100,6 +100,14 @@ enum class ShapeId : std::uint8_t {
     HerbCrop1,
     HerbCrop2,
     HerbCrop3,
+    // Connected shapes: the six arms are PARTS, drawn per cell (kConnectParts).
+    ConduitHub,
+    WireHub,
+    // The Alchemy Circle -- the most-looked-at thing in the game, since you lay
+    // a pattern by hand and then stand there watching it.
+    RuneCore,
+    MossyRunePedestal,
+    TreeSapling,
     Count
 };
 
@@ -171,6 +179,36 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsHerbCrop3,
      .anim = kShapeAnimHerbCrop3,
      .parts = kShapePartsHerbCrop3},
+    {.id = ShapeId::ConduitHub,
+     .quads = kShapeQuadsConduitHub,
+     .boxes = kShapeBoxesConduitHub,
+     .bounds = kShapeBoundsConduitHub,
+     .anim = kShapeAnimConduitHub,
+     .parts = kShapePartsConduitHub},
+    {.id = ShapeId::WireHub,
+     .quads = kShapeQuadsWireHub,
+     .boxes = kShapeBoxesWireHub,
+     .bounds = kShapeBoundsWireHub,
+     .anim = kShapeAnimWireHub,
+     .parts = kShapePartsWireHub},
+    {.id = ShapeId::RuneCore,
+     .quads = kShapeQuadsRuneCore,
+     .boxes = kShapeBoxesRuneCore,
+     .bounds = kShapeBoundsRuneCore,
+     .anim = kShapeAnimRuneCore,
+     .parts = kShapePartsRuneCore},
+    {.id = ShapeId::MossyRunePedestal,
+     .quads = kShapeQuadsMossyRunePedestal,
+     .boxes = kShapeBoxesMossyRunePedestal,
+     .bounds = kShapeBoundsMossyRunePedestal,
+     .anim = kShapeAnimMossyRunePedestal,
+     .parts = kShapePartsMossyRunePedestal},
+    {.id = ShapeId::TreeSapling,
+     .quads = kShapeQuadsTreeSapling,
+     .boxes = kShapeBoxesTreeSapling,
+     .bounds = kShapeBoundsTreeSapling,
+     .anim = kShapeAnimTreeSapling,
+     .parts = kShapePartsTreeSapling},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -283,6 +321,92 @@ inline constexpr int partSlot(ShapeId shape, std::size_t part) {
     return kPartSlots[static_cast<std::size_t>(shape)][part];
 }
 
+// ---- Connection parts -----------------------------------------------------
+// A tube is not one shape: what it looks like depends on what is NEXT to it.
+// Rather than bake a model per arrangement (64 of them for six faces), the six
+// arms are named PARTS of one model and the mesher shows each only when that
+// neighbour connects. So the art can never disagree with itself -- the arm IS
+// the hub's arm -- and a straight run, a corner and a junction are all the same
+// baked shape.
+//
+// This is the kPartAnims discipline a second time, and for the same reason: a
+// part is addressed by NAME, so re-authoring a model cannot silently connect a
+// different lump of it, and a typo is a compile error rather than an arm that
+// quietly never appears.
+
+// The canonical face order, shared with the mesher's kFaces so the two cannot
+// drift apart -- kConnectParts::face and ShapeQuad::face both index this.
+inline constexpr glm::ivec3 kShapeFaceDirs[6] = {
+    {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
+};
+inline constexpr int kFaceCount = 6;
+
+struct ConnectPart {
+    ShapeId      shape;
+    const char*  part;  // a ShapePart name from the bake
+    std::uint8_t face;  // index into kShapeFaceDirs
+};
+
+// Blockbench names its axes the way Minecraft does: north is -Z, south is +Z.
+// Both models below follow it, and the selftest proves each arm's geometry
+// really does reach the wall its name claims -- a mirrored model would
+// otherwise connect correctly and point the wrong way.
+inline constexpr ConnectPart kConnectParts[] = {
+    {ShapeId::ConduitHub, "arm_east", 0},
+    {ShapeId::ConduitHub, "arm_west", 1},
+    {ShapeId::ConduitHub, "arm_up", 2},
+    {ShapeId::ConduitHub, "arm_down", 3},
+    {ShapeId::ConduitHub, "arm_south", 4},
+    {ShapeId::ConduitHub, "arm_north", 5},
+    {ShapeId::WireHub, "arm_east", 0},
+    {ShapeId::WireHub, "arm_west", 1},
+    {ShapeId::WireHub, "arm_up", 2},
+    {ShapeId::WireHub, "arm_down", 3},
+    {ShapeId::WireHub, "arm_south", 4},
+    {ShapeId::WireHub, "arm_north", 5},
+};
+
+static_assert([] {
+    for (const ConnectPart& c : kConnectParts) {
+        if (partIndex(c.shape, c.part) < 0) return false;
+        if (c.face >= kFaceCount) return false;
+    }
+    return true;
+}(), "a kConnectParts row names a part its shape does not have, or a bad face");
+
+// (ShapeId, part) -> the face that part needs, or -1 for "always drawn".
+// Resolved at compile time so the mesher never does a string compare, exactly
+// like kPartSlots.
+inline constexpr auto kPartFaces = [] {
+    std::array<std::array<std::int8_t, kMaxPartsPerShape>,
+               static_cast<std::size_t>(ShapeId::Count)> table {};
+    for (auto& row : table) row.fill(-1);
+    for (const ConnectPart& c : kConnectParts) {
+        const std::size_t shape = static_cast<std::size_t>(c.shape);
+        const std::size_t part = static_cast<std::size_t>(partIndex(c.shape, c.part));
+        table[shape][part] = static_cast<std::int8_t>(c.face);
+    }
+    return table;
+}();
+
+// Which face a part hangs off, or -1 if it is always drawn.
+inline constexpr int partFace(ShapeId shape, std::size_t part) {
+    if (part >= kMaxPartsPerShape) return -1;
+    return kPartFaces[static_cast<std::size_t>(shape)][part];
+}
+
+// Does this shape have connection parts at all? Everything else takes the
+// mesher's plain path with no mask work, so machines pay nothing for this.
+inline constexpr bool shapeConnects(ShapeId shape) {
+    for (const ConnectPart& c : kConnectParts) {
+        if (c.shape == shape) return true;
+    }
+    return false;
+}
+
+// Every face's bit set: what a shape with no connection parts is drawn with.
+inline constexpr std::uint8_t kAllFaces = 0x3F;
+
 // ---- Shape names, for the content pack format -----------------------------
 // A shape is baked from a Blockbench model, so a pack cannot author one -- but
 // it must be able to SAY which existing shape a block uses, and "3" is exactly
@@ -293,6 +417,8 @@ inline constexpr const char* kShapeNames[] = {
     "full_cube", "empty", "brewing_cauldron",
     "alchemical_alembic", "auger_mining_rig", "arcane_infuser",
     "herb_crop_0", "herb_crop_1", "herb_crop_2", "herb_crop_3",
+    "conduit_hub", "wire_hub", "rune_core", "mossy_rune_pedestal",
+    "tree_sapling",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

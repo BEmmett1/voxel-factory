@@ -6,9 +6,19 @@
 #include "game/BlockShape.h"
 #include "game/Atlas.h"
 
+#include "game/TubeShape.h"
+#include "game/PowerSystem.h"
+
+#include <algorithm>
 #include <array>
+#include <cstdint>
 
 namespace {
+
+    // How brightly a conduit's outgoing arm glows. Enough to read the flow
+    // direction of an EMPTY tube at a glance, well under the 0.7 an energized
+    // power block carries so the two cues never compete.
+    constexpr float kConduitFlowGlow = 0.30f;
 
     struct Face {
         glm::ivec3 offset;              // neighbor to test for occlusion
@@ -18,18 +28,24 @@ namespace {
 
     // The six cube faces. Corners walk the perimeter of each unit square so the
     // two triangles (0,1,2) and (0,2,3) tile it without gaps.
+    //
+    // The offsets are taken from BlockShape.h's kShapeFaceDirs rather than
+    // written out again, because a face INDEX is now shared vocabulary --
+    // ShapeQuad::face and kConnectParts::face both mean a slot in this order,
+    // so a divergence here would connect the right arm to the wrong side with
+    // nothing to catch it.
     const std::array<Face, 6> kFaces = {{
-        {{1, 0, 0}, {1, 0, 0},
+        {kShapeFaceDirs[0], {1, 0, 0},
          {glm::vec3{1, 0, 0}, {1, 1, 0}, {1, 1, 1}, {1, 0, 1}}},
-        {{-1, 0, 0}, {-1, 0, 0},
+        {kShapeFaceDirs[1], {-1, 0, 0},
          {glm::vec3{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 0}}},
-        {{0, 1, 0}, {0, 1, 0},
+        {kShapeFaceDirs[2], {0, 1, 0},
          {glm::vec3{0, 1, 0}, {0, 1, 1}, {1, 1, 1}, {1, 1, 0}}},
-        {{0, -1, 0}, {0, -1, 0},
+        {kShapeFaceDirs[3], {0, -1, 0},
          {glm::vec3{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 1}}},
-        {{0, 0, 1}, {0, 0, 1},
+        {kShapeFaceDirs[4], {0, 0, 1},
          {glm::vec3{0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}}},
-        {{0, 0, -1}, {0, 0, -1},
+        {kShapeFaceDirs[5], {0, 0, -1},
          {glm::vec3{0, 0, 0}, {0, 1, 0}, {1, 1, 0}, {1, 0, 0}}},
     }};
 
@@ -57,19 +73,38 @@ namespace {
     // ShapeId::FullCube for an unpowered block, whose bank offset is zero and
     // whose every part slot is 0, so a dead machine parks on frame 0 AND stands
     // still. One value, one gate, no way for the two to disagree.
+    // `armMask` and `glowFace` serve the CONNECTED shapes (BlockShape.h's
+    // kConnectParts): a quad belonging to a part that hangs off face f is
+    // emitted only when bit f is set, which is how one baked hub draws a
+    // straight run, a corner and a four-way junction. Anything without
+    // connection parts passes kAllFaces and never notices.
+    //
+    // `glowFace` is the conduit's flow direction. It replaced the top-face
+    // arrow the cube used to wear, and it costs nothing: emissive is already a
+    // per-vertex float, so lighting one arm is a value change, not a pass.
     template <typename NeighborFn>
     void appendShaped(std::vector<float>& out, const BlockShape& shape,
                       const glm::vec3& base, float emissive, ShapeId animShape,
-                      NeighborFn neighbor) {
+                      NeighborFn neighbor,
+                      std::uint8_t armMask = kAllFaces, int glowFace = -1) {
         const float bank = static_cast<float>(animShape);
         for (const ShapeQuad& q : shape.quads) {
             if (q.cull && isFullCube(neighbor(q.face))) continue;
+
+            // Which face this quad's part hangs off, if any. Read from the
+            // REAL shape, never animShape -- that is FullCube when the block is
+            // unpowered, and an unpowered conduit must still show its arms.
+            const int face = partFace(shape.id, q.part);
+            if (face >= 0 && !(armMask & (1u << face))) continue;
+            const float quadEmissive = (face >= 0 && face == glowFace)
+                ? std::max(emissive, kConduitFlowGlow)
+                : emissive;
 
             const float slot = static_cast<float>(partSlot(animShape, q.part));
 
             // Corners arrive baked and correctly wound; nothing to reconstruct.
             const auto push = [&](int k) {
-                pushVertex(out, base + q.pos[k], q.normal, q.uv[k], emissive);
+                pushVertex(out, base + q.pos[k], q.normal, q.uv[k], quadEmissive);
                 out.push_back(bank);
                 out.insert(out.end(), {q.partOff[k].x, q.partOff[k].y,
                                        q.partOff[k].z});
@@ -145,8 +180,35 @@ namespace ChunkMesher {
                         const ShapeId animShape = energized
                             ? blockInfo(id).shape
                             : ShapeId::FullCube;
+
+                        // A connected shape (Conduit, Wire) grows an arm per
+                        // face, so its geometry depends on its neighbours and
+                        // not on its BlockId alone. Everything else takes
+                        // kAllFaces and pays nothing: shapeConnects is a
+                        // constexpr scan of a 12-row table, and the whole
+                        // branch is skipped for the four machine models.
+                        std::uint8_t armMask = kAllFaces;
+                        int glowFace = -1;
+                        if (shapeConnects(shape.id)) {
+                            TubeShape::Neighbours nb;
+                            for (int fi = 0; fi < 6; ++fi) {
+                                nb[static_cast<std::size_t>(fi)] =
+                                    neighborAt(lx, ly, lz, fi);
+                            }
+                            if (id == BlockId::Wire) {
+                                armMask = TubeShape::wireArms(nb);
+                            } else {
+                                const auto bit = belts.find(w);
+                                const Belt self = bit != belts.end() ? bit->second
+                                                                     : Belt{};
+                                armMask = TubeShape::conduitArms(w, self, belts, nb);
+                                glowFace = TubeShape::faceIndex(self.facing);
+                            }
+                        }
+
                         appendShaped(shapedOut, shape, base, emissive, animShape,
-                                     [&](int fi) { return neighborAt(lx, ly, lz, fi); });
+                                     [&](int fi) { return neighborAt(lx, ly, lz, fi); },
+                                     armMask, glowFace);
                         continue;
                     }
 
@@ -184,46 +246,6 @@ namespace ChunkMesher {
                             faceUv[1] = {uvMax.x, uvMin.y};
                             faceUv[2] = {uvMax.x, uvMax.y};
                             faceUv[3] = {uvMin.x, uvMax.y};
-                        }
-
-                        // Belt direction arrows. Horizontal belts show the
-                        // arrow on the top face, rotated to the facing (each
-                        // corner's UV is its offset from the block center in
-                        // right/forward axes). Vertical belts show it on all
-                        // four side faces, pointing up or down the block.
-                        if (id == BlockId::Belt) {
-                            const auto bit = belts.find(w);
-                            if (bit != belts.end()) {
-                                const glm::ivec3& bf = bit->second.facing;
-                                glm::vec2 aMin, aMax;
-                                Atlas::uvForTile(Atlas::BeltArrowTile, aMin, aMax);
-                                if (bf.y == 0 && f.normal.y > 0.5f) {
-                                    const glm::vec2 fwd(static_cast<float>(bf.x),
-                                                        static_cast<float>(bf.z));
-                                    const glm::vec2 right(-fwd.y, fwd.x);
-                                    for (int k = 0; k < 4; ++k) {
-                                        const glm::vec2 p(f.corners[k].x - 0.5f,
-                                                          f.corners[k].z - 0.5f);
-                                        const float u = 0.5f + glm::dot(p, right);
-                                        const float v = 0.5f + glm::dot(p, fwd);
-                                        faceUv[k] = {glm::mix(aMin.x, aMax.x, u),
-                                                     glm::mix(aMin.y, aMax.y, v)};
-                                    }
-                                } else if (bf.y != 0 && f.normal.y == 0.0f) {
-                                    // Side face: u along the face's horizontal
-                                    // axis, v along y scaled by the facing sign.
-                                    const bool xVaries = (f.normal.x == 0.0f);
-                                    for (int k = 0; k < 4; ++k) {
-                                        const float h = xVaries ? f.corners[k].x
-                                                                : f.corners[k].z;
-                                        const float u = h;
-                                        const float v = 0.5f +
-                                            (f.corners[k].y - 0.5f) * static_cast<float>(bf.y);
-                                        faceUv[k] = {glm::mix(aMin.x, aMax.x, u),
-                                                     glm::mix(aMin.y, aMax.y, v)};
-                                    }
-                                }
-                            }
                         }
 
                         const glm::vec3 c0 = base + f.corners[0];

@@ -42,12 +42,21 @@ namespace {
         {.id = B::Generator, .key = "core:generator",
          .name = "Generator", .color = {0.86f, 0.45f, 0.12f},
          .machine = true, .drop = {I::GeneratorItem, 1}, .tiles = {16, 17, 17}, .hardness = 0.5f},
+        // Wire and Conduit are the two blocks whose whole FUNCTION is being
+        // thin, so a painted cube was the one place the art contradicted the
+        // mechanic. Both are hubs with six arms drawn per neighbour
+        // (kConnectParts); fullCube = false is what lets you see between them,
+        // and costs the usual three things: they no longer occlude, no longer
+        // keep rain out, and no longer stop grass spreading -- all correct for
+        // something you can see daylight through.
         {.id = B::Wire, .key = "core:wire",
-         .name = "Wire", .color = {0.82f, 0.72f, 0.20f},
-         .drop = {I::WireItem, 1}, .tiles = {18, 18, 18}, .hardness = 0.5f},
+         .name = "Wire", .fullCube = false, .color = {0.82f, 0.72f, 0.20f},
+         .drop = {I::WireItem, 1}, .tiles = {18, 18, 18}, .hardness = 0.5f,
+         .shape = ShapeId::WireHub},
         {.id = B::Belt, .key = "core:belt",
-         .name = "Conduit", .color = {0.22f, 0.22f, 0.26f},
-         .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f},
+         .name = "Conduit", .fullCube = false, .color = {0.22f, 0.22f, 0.26f},
+         .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f,
+         .shape = ShapeId::ConduitHub},
         {.id = B::Grinder, .key = "core:grinder",
          .name = "Grinder", .color = {0.45f, 0.45f, 0.48f},
          .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f},
@@ -130,9 +139,10 @@ namespace {
         // rolled at the mining site, not in this table. A log splits into two
         // wood (fuel AND structure).
         {.id = B::Sapling, .key = "core:sapling",
-         .name = "Sapling", .color = {0.45f, 0.72f, 0.28f},
+         .name = "Sapling", .fullCube = false, .color = {0.45f, 0.72f, 0.28f},
          .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f,
-         .needsSoil = SoilKind::Soil, .treeSize = 1},
+         .needsSoil = SoilKind::Soil, .treeSize = 1,
+         .shape = ShapeId::TreeSapling},
         {.id = B::Log, .key = "core:log",
          .name = "Log", .color = {0.45f, 0.33f, 0.18f},
          .drop = {I::Wood, 2}, .tiles = {6, 7, 6},
@@ -182,13 +192,14 @@ namespace {
         // Core glows faintly so a built circle reads as alive at night. Uses
         // spare machine atlas tiles (41/42 core, 43/44 pedestal).
         {.id = B::RuneCore, .key = "core:rune_core",
-         .name = "Rune Core", .color = {0.34f, 0.28f, 0.46f},
+         .name = "Rune Core", .fullCube = false, .color = {0.34f, 0.28f, 0.46f},
          .emissive = 0.25f, .machine = true, .drop = {I::RuneCoreItem, 1},
-         .tiles = {41, 42, 42}, .hardness = 0.5f},
+         .tiles = {41, 42, 42}, .hardness = 0.5f,
+         .shape = ShapeId::RuneCore},
         {.id = B::Pedestal, .key = "core:pedestal",
-         .name = "Pedestal", .color = {0.58f, 0.56f, 0.62f},
+         .name = "Pedestal", .fullCube = false, .color = {0.58f, 0.56f, 0.62f},
          .machine = true, .drop = {I::PedestalItem, 1}, .tiles = {43, 44, 44},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::MossyRunePedestal},
         // ---- The recipe overhaul: four powered machines (atlas row 8) ----
         // The Furnace glows: it is the only machine whose "on" state is a
         // fire, and a lit furnace should read across the factory floor at
