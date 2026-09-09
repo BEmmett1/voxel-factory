@@ -232,6 +232,10 @@ void VoxelGame::onUpdate(float dt) {
         // is the one thing you cannot set up by hand in a fresh world.
         give(ItemId::StorageCrateItem, 4, kHotbarSlots - 4);
         give(ItemId::Conduit, 32, kHotbarSlots - 5);
+        // Wire is only craftable on the Circle, so without this the kit could
+        // build a factory it could not WIRE -- and, since wire became a shaped
+        // block that grows arms toward its network, could not look at either.
+        m_inventory.add(ItemId::WireItem, 32);
         // The Wrench gates BOTH conduit verbs (re-aim and set filter), so a kit
         // without one leaves half the logistics tier untestable.
         m_inventory.add(ItemId::Wrench, 1);
