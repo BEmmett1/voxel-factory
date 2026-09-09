@@ -92,13 +92,19 @@ namespace {
          .hardness = 0.5f, .shape = ShapeId::AugerMiningRig},
         // Resource nodes -> raw materials. Mineral/metal nodes gate behind a
         // pickaxe; the herb (a plant) and sand (loose) break by hand.
+        // Nodes and sources read as OBJECTS sitting on the world rather than
+        // as terrain, which a painted cube could never do -- and the sources
+        // are the island's landmarks, the thing you navigate by on the way out
+        // past the plateau.
         {.id = B::HerbBush, .key = "core:herb_bush",
-         .name = "Herb Bush", .color = {0.20f, 0.55f, 0.22f},
-         .node = true, .drop = {I::Herb, 1}, .tiles = {48, 48, 48}, .hardness = 0.4f},
+         .name = "Herb Bush", .fullCube = false, .color = {0.20f, 0.55f, 0.22f},
+         .node = true, .drop = {I::Herb, 1}, .tiles = {48, 48, 48}, .hardness = 0.4f,
+         .shape = ShapeId::HerbBush},
         {.id = B::CrystalNode, .key = "core:crystal_node",
-         .name = "Crystal Node", .color = {0.55f, 0.45f, 0.85f},
+         .name = "Crystal Node", .fullCube = false, .color = {0.55f, 0.45f, 0.85f},
          .node = true, .drop = {I::Crystal, 1}, .tiles = {49, 49, 49},
-         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone},
+         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone,
+         .shape = ShapeId::VioletCrystalCluster},
         {.id = B::CopperOre, .key = "core:copper_ore",
          .name = "Copper Ore", .color = {0.70f, 0.45f, 0.30f},
          .node = true, .drop = {I::CopperOre, 1}, .tiles = {50, 50, 50},
@@ -107,19 +113,25 @@ namespace {
          .name = "Sand", .color = {0.85f, 0.78f, 0.55f},
          .node = true, .drop = {I::Sand, 1}, .tiles = {51, 51, 51}, .hardness = 0.6f, .tool = T::Shovel},
         {.id = B::EssenceVent, .key = "core:essence_vent",
-         .name = "Essence Vent", .color = {0.60f, 0.28f, 0.72f},
+         .name = "Essence Vent", .fullCube = false, .color = {0.60f, 0.28f, 0.72f},
          .node = true, .drop = {I::Essence, 1}, .tiles = {53, 53, 53},
-         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone},
+         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone,
+         .shape = ShapeId::DarkStoneVent},
         // Sources glow and grow their node nearby; mining one drops its
         // placeable item (relocatable).
+        // Two of the six have models so far; the other four stay cubes until
+        // their recolours are authored, which is why this looks inconsistent
+        // rather than deliberate.
         {.id = B::SourceHerb, .key = "core:source_herb",
-         .name = "Herb Source", .color = {0.30f, 0.95f, 0.30f},
+         .name = "Herb Source", .fullCube = false, .color = {0.30f, 0.95f, 0.30f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::HerbBush,
-         .drop = {I::HerbSourceItem, 1}, .tiles = {54, 54, 54}, .hardness = 0.5f},
+         .drop = {I::HerbSourceItem, 1}, .tiles = {54, 54, 54}, .hardness = 0.5f,
+         .shape = ShapeId::MossyShrineStandingStone},
         {.id = B::SourceCrystal, .key = "core:source_crystal",
-         .name = "Crystal Source", .color = {0.75f, 0.55f, 1.00f},
+         .name = "Crystal Source", .fullCube = false, .color = {0.75f, 0.55f, 1.00f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::CrystalNode,
-         .drop = {I::CrystalSourceItem, 1}, .tiles = {55, 55, 55}, .hardness = 0.5f},
+         .drop = {I::CrystalSourceItem, 1}, .tiles = {55, 55, 55}, .hardness = 0.5f,
+         .shape = ShapeId::RunedStandingStone},
         {.id = B::SourceCopper, .key = "core:source_copper",
          .name = "Copper Source", .color = {1.00f, 0.55f, 0.25f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::CopperOre,
@@ -163,11 +175,12 @@ namespace {
         // updateSources, drops a relocatable item, glows) with no new sim
         // code; the node is harvested like any other.
         {.id = B::ResonantNode, .key = "core:resonant_node",
-         .name = "Resonant Node", .color = {0.95f, 0.55f, 0.95f},
+         .name = "Resonant Node", .fullCube = false, .color = {0.95f, 0.55f, 0.95f},
          .node = true, .drop = {I::Resonance, 1}, .tiles = {61, 61, 61},
          // Gated at IRON: the game's premium raw is what gives the tier above
          // copper something to be for.
-         .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron},
+         .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron,
+         .shape = ShapeId::BicolourCrystalNode},
         {.id = B::ResonantSource, .key = "core:resonant_source",
          .name = "Resonant Source", .color = {1.00f, 0.60f, 1.00f},
          .emissive = 0.7f, .source = true, .spawnsNode = B::ResonantNode,
