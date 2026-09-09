@@ -593,11 +593,23 @@ void VoxelGame::onUpdate(float dt) {
                 } else if (itemInfo(held).placeable && m_inventory.has(held) &&
                            !cellOverlapsPlayer(p)) {
                     // A conduit carries items the way the player is facing --
-                    // straight up/down when looking steeply. (Player policy,
-                    // so decided here; WorldEdit just stores it.)
+                    // straight up/down only when looking STEEPLY. (Player
+                    // policy, so decided here; WorldEdit just stores it.)
+                    //
+                    // kVerticalLook used to be 0.7, which is a 44-degree
+                    // glance -- shallower than the angle you naturally hold to
+                    // put a block at your own feet (about 55-60). So laying a
+                    // line along the ground silently gave every segment a
+                    // DOWNWARD facing, and a line of conduits that all point
+                    // into the dirt moves nothing. The bug was always there;
+                    // it was invisible while a conduit was a cube, because a
+                    // cube abuts its neighbour whichever way it faces. A tube
+                    // draws an arm only where something connects, so the same
+                    // mis-facing now reads as a row of disconnected stubs --
+                    // the art telling the truth about a wrong the arrow hid.
                     const glm::vec3 f = camera().front();
                     glm::ivec3 facing;
-                    if (std::abs(f.y) > 0.7f) {
+                    if (std::abs(f.y) > kVerticalLook) {
                         facing = {0, f.y > 0 ? 1 : -1, 0};
                     } else if (std::abs(f.x) > std::abs(f.z)) {
                         facing = {f.x > 0 ? 1 : -1, 0, 0};
@@ -614,6 +626,18 @@ void VoxelGame::onUpdate(float dt) {
                     if (itemInfo(held).placesBlock == BlockId::Belt &&
                         m_machines.find(aim.block) != m_machines.end()) {
                         facing = aim.normal;
+                    }
+                    // ...and a conduit added to the END of a run continues it,
+                    // rather than asking the camera again. Only when the new
+                    // cell lies ON that conduit's axis, so clicking a run's
+                    // SIDE still branches the way you are looking -- inheriting
+                    // there would make a branch impossible to aim.
+                    if (itemInfo(held).placesBlock == BlockId::Belt) {
+                        const auto ab = m_belts.find(aim.block);
+                        if (ab != m_belts.end() &&
+                            glm::abs(aim.normal) == glm::abs(ab->second.facing)) {
+                            facing = ab->second.facing;
+                        }
                     }
 
                     // WorldEdit refuses world-side (cell taken, plants need the

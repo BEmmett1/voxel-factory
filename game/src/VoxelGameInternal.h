@@ -96,6 +96,12 @@ namespace vg {
     // Bright enough to read against a dark tube without washing the icon out.
     inline constexpr float kCargoEmissive = 0.45f;
 
+    // How steeply you must look for a placed conduit to run VERTICALLY rather
+    // than along the ground: |front.y| past this, i.e. about 72 degrees. It
+    // has to sit clear of the angle you hold to place a block at your feet
+    // (55-60 degrees), or laying a floor run silently aims every segment down.
+    inline constexpr float kVerticalLook = 0.95f;
+
     // ---- Melee (the sword swings through the aim raycast) ----
     // (Per-hit damage is per WEAPON now: ItemInfo::weaponDamage in Item.cpp,
     // which is also what makes an item swing instead of mine.)
