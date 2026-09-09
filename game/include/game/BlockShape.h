@@ -119,6 +119,8 @@ enum class ShapeId : std::uint8_t {
     VerdigrisStandingStone,
     SandSource,
     EssenceSource,
+    ResonantSource,
+    TimberScaffoldFrame,
     Count
 };
 
@@ -274,6 +276,18 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsEssenceSource,
      .anim = kShapeAnimEssenceSource,
      .parts = kShapePartsEssenceSource},
+    {.id = ShapeId::ResonantSource,
+     .quads = kShapeQuadsResonantSource,
+     .boxes = kShapeBoxesResonantSource,
+     .bounds = kShapeBoundsResonantSource,
+     .anim = kShapeAnimResonantSource,
+     .parts = kShapePartsResonantSource},
+    {.id = ShapeId::TimberScaffoldFrame,
+     .quads = kShapeQuadsTimberScaffoldFrame,
+     .boxes = kShapeBoxesTimberScaffoldFrame,
+     .bounds = kShapeBoundsTimberScaffoldFrame,
+     .anim = kShapeAnimTimberScaffoldFrame,
+     .parts = kShapePartsTimberScaffoldFrame},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -487,7 +501,8 @@ inline constexpr const char* kShapeNames[] = {
     "herb_bush", "violet_crystal_cluster", "dark_stone_vent",
     "bicolour_crystal_node", "mossy_shrine_standing_stone", "runed_standing_stone",
     "verdigris_standing_stone",
-    "sand_source", "essence_source",
+    "sand_source", "essence_source", "resonant_source",
+    "timber_scaffold_frame",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

@@ -119,9 +119,9 @@ namespace {
          .shape = ShapeId::DarkStoneVent},
         // Sources glow and grow their node nearby; mining one drops its
         // placeable item (relocatable).
-        // Five of the six have models; only the Resonant Source is still a
-        // cube, which is fitting for the moment -- it is the one you fuse
-        // rather than find.
+        // All six sources are modelled now. They share a silhouette and differ
+        // by stone, crown and colour, which is what lets them work as the
+        // landmarks you steer by from across the island.
         {.id = B::SourceHerb, .key = "core:source_herb",
          .name = "Herb Source", .fullCube = false, .color = {0.30f, 0.95f, 0.30f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::HerbBush,
@@ -147,9 +147,13 @@ namespace {
          .emissive = 0.6f, .source = true, .spawnsNode = B::EssenceVent,
          .drop = {I::EssenceSourceItem, 1}, .tiles = {59, 59, 59}, .hardness = 0.5f,
          .shape = ShapeId::EssenceSource},
+        // An open timber frame: the one block whose whole point is that you
+        // can see and climb THROUGH it, so a solid cube was telling the
+        // opposite of the truth.
         {.id = B::Scaffold, .key = "core:scaffold",
-         .name = "Scaffold", .color = {0.68f, 0.62f, 0.48f},
-         .drop = {I::ScaffoldItem, 1}, .tiles = {4, 4, 4}, .hardness = 0.6f},
+         .name = "Scaffold", .fullCube = false, .color = {0.68f, 0.62f, 0.48f},
+         .drop = {I::ScaffoldItem, 1}, .tiles = {4, 4, 4}, .hardness = 0.6f,
+         .shape = ShapeId::TimberScaffoldFrame},
         // Forestry. Leaves drop nothing here: the chance sapling drop is
         // rolled at the mining site, not in this table. A log splits into two
         // wood (fuel AND structure).
@@ -185,9 +189,10 @@ namespace {
          .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron,
          .shape = ShapeId::BicolourCrystalNode},
         {.id = B::ResonantSource, .key = "core:resonant_source",
-         .name = "Resonant Source", .color = {1.00f, 0.60f, 1.00f},
+         .name = "Resonant Source", .fullCube = false, .color = {1.00f, 0.60f, 1.00f},
          .emissive = 0.7f, .source = true, .spawnsNode = B::ResonantNode,
-         .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}, .hardness = 0.5f},
+         .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}, .hardness = 0.5f,
+         .shape = ShapeId::ResonantSource},
         // Composter machine: composts plant matter into renewable Dirt. Uses
         // spare machine atlas tiles (35 top, 36 side).
         {.id = B::Composter, .key = "core:composter",
