@@ -688,6 +688,88 @@ int runSelfTest() {
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
     }
 
+    // ---- A circle runs only once STARTED, and only what it was started on ---
+    // The bug this pins: laying a Press by hand passes through "two ingots on
+    // one pedestal", which satisfies circle/wire ("at least one ingot"), and a
+    // circle that ran whatever the ring spelled crafted wire out from under
+    // you. Starting locks the recipe; the lock then keeps a belt-fed circle on
+    // THAT recipe while its pattern refills.
+    {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        PowerState dead; // a Lesser circle runs unpowered
+        const glm::ivec3 core{40, 20, 40};
+        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
+        cm[core].type = BlockId::RuneCore;
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; sl += 2) {
+            const glm::ivec3 p = AlchemyCircle::slotPos(core, sl);
+            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
+            cm[p].type = BlockId::Pedestal;
+        }
+        auto layOn = [&](int slot, ItemId id, int n) {
+            cm[AlchemyCircle::slotPos(core, slot)].input.add(id, n);
+        };
+        std::uint32_t rc = 0;
+        std::vector<MachineSystem::CircleCompletion> done;
+        auto run = [&](int ticks) {
+            for (int i = 0; i < ticks; ++i) {
+                MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops, &done);
+            }
+        };
+
+        // Half-laid: a pattern the ring spells (Wire), never started.
+        layOn(0, ItemId::CopperIngot, 2);
+        run(400); // far past a Lesser wire craft
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+        SELFTEST_CHECK(cm[AlchemyCircle::slotPos(core, 0)].input.count(ItemId::CopperIngot) == 2);
+        SELFTEST_CHECK(cm[core].progress == 0.0f);
+
+        // Finish laying the Press, start it on exactly that.
+        layOn(2, ItemId::Stone, 2);
+        layOn(4, ItemId::CopperIngot, 2);
+        layOn(6, ItemId::Stone, 2);
+        const auto ring = AlchemyCircle::ringContents(cw, cm, core);
+        const auto match = AlchemyCircle::findMatch(ring, cm[core].input,
+                                                    AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(match && match.recipe->output.id == ItemId::PressItem);
+        cm[core].selectedRecipe = static_cast<int>(match.recipe - circleRecipes().data());
+        const int pressTicks = static_cast<int>(
+            AlchemyCircle::craftSeconds(*match.recipe, AlchemyCircle::Tier::Lesser, false) /
+            vg::kTickSeconds) + 2;
+        run(pressTicks);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 1);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+
+        // The finish was REPORTED, with each ingredient on the pedestal it sat on.
+        SELFTEST_CHECK(done.size() == 1);
+        if (done.size() == 1) {
+            SELFTEST_CHECK(done[0].core == core && done[0].made == ItemId::PressItem);
+            SELFTEST_CHECK(!done[0].greater);
+            SELFTEST_CHECK(done[0].consumed[0] == ItemId::CopperIngot &&
+                           done[0].consumed[2] == ItemId::Stone &&
+                           done[0].consumed[4] == ItemId::CopperIngot &&
+                           done[0].consumed[6] == ItemId::Stone);
+            SELFTEST_CHECK(done[0].consumed[1] == ItemId::None);
+        }
+
+        // Still started: a lone ingot now spells Wire, and it must NOT run --
+        // this is a belt mid-refill, and the circle waits for its Press.
+        layOn(0, ItemId::CopperIngot, 1);
+        run(400);
+        SELFTEST_CHECK(cm[core].selectedRecipe >= 0);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 1);
+
+        // ...and the refilled pattern runs again with no second START.
+        layOn(0, ItemId::CopperIngot, 1);
+        layOn(2, ItemId::Stone, 2);
+        layOn(4, ItemId::CopperIngot, 2);
+        layOn(6, ItemId::Stone, 2);
+        run(pressTicks);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 2);
+        SELFTEST_CHECK(done.size() == 2);
+    }
+
     // ---- The content set is coherent --------------------------------------
     // Recipe keys, circle-pattern shadowing and the tech-tree reachability
     // closure all moved into content::validate() (ContentValidate.h), because

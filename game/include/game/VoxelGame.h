@@ -17,6 +17,8 @@
 #include "game/Drop.h"
 #include "game/Dimension.h"
 #include "game/HashIVec3.h"
+#include "game/MachineSystem.h"
+#include "game/ParticleSystem.h"
 #include "game/PlayerController.h"
 #include "game/Weather.h"
 #include "game/PowerSystem.h"
@@ -27,6 +29,7 @@
 #include <climits>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -151,7 +154,11 @@ private:
     // since nobody is standing there). See the definition for why.
     void rollLeafDrops(const glm::ivec3& p, bool chopped);
     void buildRainMesh();                           // per-frame falling streaks
-    void buildCargoMesh();                          // per-frame conduit cargo
+    void buildCargoMesh();                          // per-frame cargo + circle contents
+    // The Alchemy Circle's ritual effect: motes while a started circle crafts,
+    // and the finish (converge, flash, sparks, column, result pop) for every
+    // completion the last ticks reported. Per frame, on the pause-aware dt.
+    void updateRitualEffects(float dt);
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
     // Spawn a physical item into the active dimension (mining yields + the
@@ -191,6 +198,17 @@ private:
     // screen-space icon could never be.
     engine::Mesh       m_cargoMesh;
     std::vector<float> m_cargoScratch;
+    // Ritual effects. None of it is saved or read by the sim: tickPowered
+    // REPORTS finished rituals into m_circlesDone and the frame spends them.
+    ParticleSystem     m_particles;
+    std::vector<MachineSystem::CircleCompletion> m_circlesDone;
+    struct RitualPop {
+        glm::vec3 pos{0.0f};
+        ItemId    item = ItemId::None;
+        float     age = 0.0f;
+    };
+    std::vector<RitualPop> m_ritualPops; // result icons hanging over a core
+    std::minstd_rand   m_fxRng{0x5eedu}; // visual jitter only; never the sim's RNG
     engine::Mesh       m_highlightMesh;
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;

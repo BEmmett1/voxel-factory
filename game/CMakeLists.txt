@@ -26,12 +26,14 @@ add_executable(voxel-factory
     src/AlchemyCircle.cpp
     src/DropSystem.cpp
     src/CropSystem.cpp
+    src/ParticleSystem.cpp
     src/VoxelGame.cpp
     src/VoxelGameWorldGen.cpp
     src/VoxelGameSim.cpp
     src/VoxelGamePlayer.cpp
     src/VoxelGameRender.cpp
     src/VoxelGameUi.cpp
+    src/VoxelGameEffects.cpp
 )
 
 target_include_directories(voxel-factory PRIVATE include)

@@ -8,6 +8,7 @@
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
 #include "game/ChunkMesher.h"
+#include "game/AlchemyCircle.h"
 #include "game/Atlas.h"
 #include "game/BlockShape.h"
 
@@ -15,6 +16,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <ctime>
@@ -216,6 +218,11 @@ void VoxelGame::buildRainMesh() {
 // drawn as a black card. And the distance cull is the ground drops' own knob,
 // so cargo and dropped items disappear at the same range instead of one of
 // them being visible across the island.
+//
+// Alchemy Circle contents ride the same buffer and the same draw: whatever a
+// Pedestal holds floats over it as a small fanned stack, and the Rune Core's
+// centre catalyst floats over the core, so a laid pattern reads from across
+// the room without opening the panel.
 void VoxelGame::buildCargoMesh() {
     m_cargoScratch.clear();
     if (m_dimension != DimensionId::Overworld) return; // no belts in the arena
@@ -223,6 +230,32 @@ void VoxelGame::buildCargoMesh() {
     const glm::vec3 cam = camera().position;
     const glm::vec3 right = camera().right();
     const glm::vec3 up = camera().up();
+
+    // One camera-facing icon quad centred on `p`, `size` blocks on a side.
+    const auto pushIcon = [&](const glm::vec3& p, ItemId item, float size, float emissive) {
+        const glm::vec3 toCam = cam - p;
+        if (glm::dot(toCam, toCam) > kDropRenderDist * kDropRenderDist) return;
+
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(item), uv0, uv1);
+        const glm::vec3 n = glm::normalize(toCam);
+        const glm::vec3 rx = right * (size * 0.5f);
+        const glm::vec3 ry = up * (size * 0.5f);
+
+        // Corners CCW seen from the camera, with v flipped so the icon is not
+        // upside down (atlas v grows downward).
+        const glm::vec3 c[4] = {p - rx - ry, p + rx - ry, p + rx + ry, p - rx + ry};
+        const glm::vec2 t4[4] = {{uv0.x, uv1.y}, {uv1.x, uv1.y},
+                                 {uv1.x, uv0.y}, {uv0.x, uv0.y}};
+        const auto push = [&](int k) {
+            m_cargoScratch.insert(m_cargoScratch.end(),
+                                  {c[k].x, c[k].y, c[k].z, n.x, n.y, n.z,
+                                   t4[k].x, t4[k].y, emissive});
+        };
+        push(0); push(1); push(2);
+        push(0); push(2); push(3);
+    };
+
     // 0..1 across the belt step: how far this item has slid into its cell.
     const float step = static_cast<float>(kBeltStepTicks) * kTickSeconds;
     const float t = step > 0.0f ? glm::clamp(m_beltLerp / step, 0.0f, 1.0f) : 1.0f;
@@ -239,30 +272,78 @@ void VoxelGame::buildCargoMesh() {
         // did not move, which parks it dead centre -- a stalled line reads as
         // stalled.
         const glm::vec3 from = centre + glm::vec3(b.cameFrom);
-        const glm::vec3 p = glm::mix(from, centre, t);
+        pushIcon(glm::mix(from, centre, t), b.item, kCargoSize, kCargoEmissive);
+    }
 
-        const glm::vec3 toCam = cam - p;
-        const float d2 = glm::dot(toCam, toCam);
-        if (d2 > kDropRenderDist * kDropRenderDist) continue;
+    // How far along each running ritual is, keyed by every cell of its circle,
+    // so the items it is about to consume can rise and brighten with it.
+    std::unordered_map<glm::ivec3, float, IVec3Hash> ritualFrac;
+    for (const auto& [pos, m] : m_machines) {
+        if (machineTraits(m.type).kind != MachineKind::RuneCore) continue;
+        if (!m.crafting || m.jammed || m.selectedRecipe < 0 || m.craftTime <= 0.0f) continue;
+        const float frac = glm::clamp(m.progress / m.craftTime, 0.0f, 1.0f);
+        ritualFrac[pos] = frac;
+        for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
+            ritualFrac[AlchemyCircle::slotPos(pos, s)] = frac;
+        }
+    }
 
-        glm::vec2 uv0, uv1;
-        Atlas::uvForTile(iconTile(b.item), uv0, uv1);
-        const glm::vec3 n = glm::normalize(toCam);
-        const glm::vec3 rx = right * (kCargoSize * 0.5f);
-        const glm::vec3 ry = up * (kCargoSize * 0.5f);
+    // Circle contents. A pedestal holds one item TYPE, so its first non-empty
+    // entry is the whole story; the core's input is its centre catalyst.
+    for (const auto& [pos, m] : m_machines) {
+        const MachineKind kind = machineTraits(m.type).kind;
+        if (kind != MachineKind::Pedestal && kind != MachineKind::RuneCore) continue;
+        ItemId item = ItemId::None;
+        int count = 0;
+        for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
+            const int c = m.input.count(static_cast<ItemId>(i));
+            if (c > 0) { item = static_cast<ItemId>(i); count = c; break; }
+        }
+        if (item == ItemId::None) continue;
 
-        // Corners CCW seen from the camera, with v flipped so the icon is not
-        // upside down (atlas v grows downward).
-        const glm::vec3 c[4] = {p - rx - ry, p + rx - ry, p + rx + ry, p - rx + ry};
-        const glm::vec2 t4[4] = {{uv0.x, uv1.y}, {uv1.x, uv1.y},
-                                 {uv1.x, uv0.y}, {uv0.x, uv0.y}};
-        const auto push = [&](int k) {
-            m_cargoScratch.insert(m_cargoScratch.end(),
-                                  {c[k].x, c[k].y, c[k].z, n.x, n.y, n.z,
-                                   t4[k].x, t4[k].y, kCargoEmissive});
-        };
-        push(0); push(1); push(2);
-        push(0); push(2); push(3);
+        const BlockId block = m_world->getBlock(pos.x, pos.y, pos.z);
+        const float top = blockBounds(block).hi.y;
+        // Each cell bobs on its own phase so a laid ring shimmers rather than
+        // marching in step. The clock is pause-aware: a paused game holds still.
+        const float phase = static_cast<float>((pos.x * 7 + pos.z * 13) & 15) * 0.4f;
+        const float bob = kCircleItemBob * std::sin(m_animClock * kCircleItemBobRate + phase);
+        // A running ritual lifts what it will consume, eased so the rise is
+        // slow at first and gathers toward the finish.
+        const auto rf = ritualFrac.find(pos);
+        const float frac = rf == ritualFrac.end() ? 0.0f : rf->second;
+        const float lift = kRitualItemLift * frac * frac;
+        const float emissive = glm::mix(kCircleItemEmissive, kRitualItemEmissive, frac);
+        const glm::vec3 base = glm::vec3(pos) +
+                               glm::vec3(0.5f, top + kCircleItemLift + lift + bob, 0.5f);
+
+        // A fanned stack: one icon per item up to kCircleItemStack, each a
+        // little up, a little right, and a hair nearer the camera than the one
+        // behind it, so two ingots read as two from outside the panel and the
+        // depth test never has to break a tie between coplanar cards.
+        const int shown = std::min(count, kCircleItemStack);
+        const glm::vec3 toCam = glm::normalize(cam - base);
+        for (int k = 0; k < shown; ++k) {
+            const float f = static_cast<float>(k) - static_cast<float>(shown - 1) * 0.5f;
+            const glm::vec3 p = base + right * (f * kCircleItemFan) +
+                                up * (f * kCircleItemFan * 0.6f) +
+                                toCam * (static_cast<float>(k) * 0.01f);
+            pushIcon(p, item, kCircleItemSize, emissive);
+        }
+    }
+
+    // A finished ritual's result, popping up over the core: it overshoots to
+    // full size, hangs while it drifts upward, then shrinks away. Cutout icons
+    // cannot fade, so shrinking IS the fade.
+    for (const RitualPop& pop : m_ritualPops) {
+        const float age = glm::clamp(pop.age / kRitualPopSeconds, 0.0f, 1.0f);
+        float scale;
+        if (age < 0.12f)      scale = 1.35f * (age / 0.12f);
+        else if (age < 0.25f) scale = glm::mix(1.35f, 1.0f, (age - 0.12f) / 0.13f);
+        else if (age < 0.8f)  scale = 1.0f;
+        else                  scale = (1.0f - age) / 0.2f;
+        if (scale <= 0.01f) continue;
+        pushIcon(pop.pos + glm::vec3(0.0f, 0.15f + 0.45f * age, 0.0f), pop.item,
+                 kRitualPopSize * scale, 1.0f);
     }
 
     if (!m_cargoScratch.empty()) {
@@ -498,6 +579,10 @@ void VoxelGame::onRender() {
 
     // Creatures: skinned Blockbench models, depth-tested with the world.
     m_creatures.render(camera(), rainDim, m_dimension);
+
+    // Particles LAST of the world passes: additive and depth-read-only, so
+    // everything that should hide them must already be in the depth buffer.
+    m_particles.render(camera());
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Main menu shell (launch): the empty world above is just a sky backdrop —

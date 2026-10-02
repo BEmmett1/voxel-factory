@@ -96,6 +96,39 @@ namespace vg {
     // Bright enough to read against a dark tube without washing the icon out.
     inline constexpr float kCargoEmissive = 0.45f;
 
+    // What an Alchemy Circle's pedestals (and the core's catalyst) hold,
+    // floating over each block. Same camera-facing icons as tube cargo.
+    inline constexpr float kCircleItemSize     = 0.40f; // quad edge, in blocks
+    inline constexpr float kCircleItemLift     = 0.30f; // centre above the block's top
+    inline constexpr float kCircleItemBob      = 0.05f; // bob amplitude, blocks
+    inline constexpr float kCircleItemBobRate  = 2.2f;  // radians per second
+    inline constexpr int   kCircleItemStack    = 3;     // icons drawn per pile, at most
+    inline constexpr float kCircleItemFan      = 0.16f; // spread between stacked icons
+    inline constexpr float kCircleItemEmissive = 0.35f;
+
+    // ---- Alchemy ritual effect (VoxelGameEffects.cpp) ----
+    // Presentation only: none of this touches the sim or the save. Quick and
+    // punchy by design -- the finish is over in about a second.
+    // Tier colours, matching the circle panel's LESSER / GREATER header.
+    inline const glm::vec3 kRitualLesserColor{0.35f, 0.80f, 1.00f};
+    inline const glm::vec3 kRitualGreaterColor{0.70f, 0.45f, 1.00f};
+    // While a started circle crafts, its pedestal items rise and brighten...
+    inline constexpr float kRitualItemLift     = 0.35f; // extra lift at full progress
+    inline constexpr float kRitualItemEmissive = 0.9f;  // emissive at full progress
+    // ...and stream motes into the core, faster as progress fills.
+    inline constexpr float kRitualMoteRate     = 5.0f;  // motes/s per pedestal, at start
+    inline constexpr float kRitualMoteRateEnd  = 22.0f; // ...and just before the finish
+    // The finish: the ingredients rush in, a flash, a ring of sparks, a column
+    // of light, and the result popping up over the core.
+    inline constexpr int   kRitualConverge     = 10;    // motes per consumed pedestal
+    inline constexpr int   kRitualSparks       = 64;    // the outward burst
+    inline constexpr int   kRitualShockwave    = 56;    // the ring racing along the ground
+    inline constexpr int   kRitualColumn       = 40;    // the rising column
+    inline constexpr float kRitualPopSeconds   = 1.2f;  // result icon hangs this long
+    inline constexpr float kRitualPopSize      = 0.55f; // result icon edge, blocks
+    inline constexpr float kRitualVolume       = 0.8f;  // "ritual" one-shot (positional)
+    inline constexpr float kRitualFxDist       = 40.0f; // no effect beyond this range
+
     // How steeply you must look for a placed conduit to run VERTICALLY rather
     // than along the ground: |front.y| past this, i.e. about 72 degrees. It
     // has to sit clear of the angle you hold to place a block at your feet

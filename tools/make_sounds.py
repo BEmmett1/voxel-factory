@@ -230,6 +230,28 @@ def hit():
     write_wav("hit", b)
 
 
+def ritual():
+    """An Alchemy Circle finishing: a short airy rush IN (the ingredients
+    converging), then a bright bell chord with a shimmer on top (the burst).
+    Quick and punchy -- the whole thing is over in about a second."""
+    b = silence(1.1)
+    n_rush = int(0.22 * RATE)
+    k = 1.0 - math.exp(-2.0 * math.pi * 3000 / RATE)
+    state = 0.0
+    for i in range(n_rush):
+        env = (i / n_rush) ** 2  # swells into the hit
+        state += k * (rng.uniform(-1.0, 1.0) - state)
+        b[i] += 0.55 * env * state
+    hit_at = 0.22
+    add_sine(b, 110, amp=0.9, decay=0.10, delay=hit_at, freq_end=70)  # thump
+    for f, a in ((523.25, 0.55), (659.25, 0.45), (783.99, 0.45), (1046.5, 0.35)):
+        add_sine(b, f, amp=a, decay=0.35, delay=hit_at, attack=0.003)
+    add_sine(b, 2093.0, amp=0.18, decay=0.20, delay=hit_at + 0.04, attack=0.003)
+    add_sine(b, 2637.0, amp=0.14, decay=0.18, delay=hit_at + 0.08, attack=0.003)
+    fade_out(b, 0.08)
+    write_wav("ritual", b)
+
+
 OUT_DIR = Path(__file__).resolve().parent.parent / "game" / "assets" / "sounds"
 
 
@@ -248,6 +270,7 @@ def main():
     heal()
     swing()
     hit()
+    ritual()
 
 
 if __name__ == "__main__":

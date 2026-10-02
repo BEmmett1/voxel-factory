@@ -113,6 +113,9 @@ void VoxelGame::onUpdate(float dt) {
         // wrapped: if the sim stalls, an item parks at its destination instead
         // of running past it.
         m_beltLerp = std::min(m_beltLerp + dt, kBeltStepTicks * kTickSeconds);
+        // Ritual motes and bursts on the same clock: a paused game freezes a
+        // spark mid-air rather than letting it finish without you.
+        updateRitualEffects(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);

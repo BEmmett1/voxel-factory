@@ -172,11 +172,13 @@ namespace {
     // There is deliberately NO blueprint list. The circle is laid BY HAND, one
     // drag per pedestal -- a recipe you PERFORM rather than a row you click --
     // so the panel shows the ring, what it currently spells, and nothing that
-    // would arrange it for you. The only action row left is TAKE OUTPUTS, which
-    // every machine panel has, so the panel's height no longer grows with the
-    // recipe table at all and only the inventory grid needs windowing.
+    // would arrange it for you. Two action rows: START/STOP -- a circle runs
+    // only once started, see tickRuneCore for why -- and TAKE OUTPUTS, which
+    // every machine panel has. Neither grows with the recipe table, so only
+    // the inventory grid needs windowing.
     namespace circleMetrics {
-        inline constexpr float RowH    = 22.0f;  // the lone TAKE OUTPUTS row
+        inline constexpr float RowH    = 22.0f;  // START/STOP, then TAKE OUTPUTS
+        inline constexpr int   Rows    = 2;
         inline constexpr float HeaderH = 44.0f;
         inline constexpr float RingH   = 196.0f;
         inline constexpr float StatusH = 22.0f;
@@ -189,7 +191,7 @@ namespace {
         // Everything except the inventory grid -- the one part that still
         // grows with content, and so the one part that scrolls.
         inline float fixedHeight() {
-            return HeaderH + RingH + StatusH + RowH + BarH + LabelH +
+            return HeaderH + RingH + StatusH + Rows * RowH + BarH + LabelH +
                    PanelLayout::StripH + LabelH + TooltipH + FooterH + Pad;
         }
 
@@ -207,8 +209,8 @@ namespace {
         float px = 0, py = 0, panelW = 660.0f, panelH = 0;
         float ringCx = 0, ringCy = 0;   // centre of the radial widget
         float ringR = 80.0f;            // orbit radius of the eight cells
-        float statusY = 0;              // "WILL MAKE ..." line
-        float rowY = 0;                 // the TAKE OUTPUTS row
+        float statusY = 0;              // "READY: ..." / "MAKING ..." line
+        float rowY = 0;                 // first action row (START/STOP)
         float barY = 0;
         float outLabelY = 0, outY = 0;  // the core's output strip
         float invLabelY = 0, invY = 0;
@@ -228,7 +230,7 @@ namespace {
         L.ringCy = L.py + HeaderH + RingH * 0.5f;
         L.statusY = L.py + HeaderH + RingH;
         L.rowY = L.statusY + StatusH;
-        L.barY = L.rowY + CircleLayout::RowH + 2.0f;
+        L.barY = L.rowY + circleMetrics::Rows * CircleLayout::RowH + 2.0f;
         L.outLabelY = L.barY + BarH;
         L.outY = L.outLabelY + LabelH;
         L.invLabelY = L.outY + PanelLayout::StripH;
@@ -1123,6 +1125,11 @@ void VoxelGame::drawCircleUi() {
     const bool energized =
         m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
     const auto ring = AlchemyCircle::ringContents(*m_world, m_machines, m_machineUiPos);
+    // What the ring spells right now, and -- once started -- whether it still
+    // spells the recipe it was started on. The two differ exactly when belts
+    // are mid-refill, which is the case the lock exists for.
+    const bool started = core.selectedRecipe >= 0 &&
+                         core.selectedRecipe < static_cast<int>(circleRecipes().size());
     const AlchemyCircle::Match match =
         AlchemyCircle::findMatch(ring, core.input, tier, energized, core.selectedRecipe);
 
@@ -1178,27 +1185,49 @@ void VoxelGame::drawCircleUi() {
                      coreItems.front().second);
     }
 
-    // What the necklace currently spells.
+    // What the necklace currently spells, and whether it has been started.
     std::string status;
     glm::vec4 statusCol = kTextDim;
+    const auto secondsFor = [&](const CircleRecipe& r) {
+        return "  ( " + std::to_string(static_cast<int>(
+                   AlchemyCircle::craftSeconds(r, tier, energized))) + "S )";
+    };
     if (tier == AlchemyCircle::Tier::None) {
         status = "NEEDS THE FOUR CARDINAL PEDESTALS ( RADIUS 2 )";
         statusCol = glm::vec4(0.95f, 0.55f, 0.4f, 1.0f);
-    } else if (match) {
-        status = std::string("WILL MAKE ") + itemName(match.recipe->output.id) +
-                 "  ( " + std::to_string(static_cast<int>(
-                     AlchemyCircle::craftSeconds(*match.recipe, tier, energized))) + "S )";
+    } else if (started && match) {
+        status = std::string("MAKING ") + itemName(match.recipe->output.id) +
+                 secondsFor(*match.recipe);
         statusCol = glm::vec4(0.55f, 0.95f, 0.6f, 1.0f);
+    } else if (started) {
+        const CircleRecipe& r =
+            circleRecipes()[static_cast<std::size_t>(core.selectedRecipe)];
+        status = std::string("STARTED: ") + itemName(r.output.id) +
+                 " -- WAITING FOR ITS PATTERN";
+        statusCol = glm::vec4(0.95f, 0.8f, 0.45f, 1.0f);
+    } else if (const AlchemyCircle::Match ready =
+                   AlchemyCircle::findMatch(ring, core.input, tier, energized)) {
+        status = std::string("READY: ") + itemName(ready.recipe->output.id) +
+                 secondsFor(*ready.recipe) + " -- PRESS START";
+        statusCol = glm::vec4(0.65f, 0.85f, 0.95f, 1.0f);
     } else {
         status = "NO PATTERN -- LAY INGREDIENTS ON THE PEDESTALS";
     }
     m_ui.text(L.px + 16, L.statusY, 13.0f, status, statusCol);
 
-    // The one action row. Laying the pattern is the player's job, so this is
-    // all that is left to click.
-    m_ui.rect(L.px + 6, L.rowY, L.panelW - 12, CircleLayout::RowH - 2, kRowSelBg);
-    m_ui.text(L.px + 16, L.rowY + 4, 13.0f, "  TAKE OUTPUTS",
-              rowColor(true, outItems.empty()));
+    // The action rows. Laying the pattern is the player's job; starting it and
+    // collecting what it made are all that is left to click.
+    const int sel = std::clamp(m_machineUiSel, 0, circleMetrics::Rows - 1);
+    for (int i = 0; i < circleMetrics::Rows; ++i) {
+        const float y = L.rowY + static_cast<float>(i) * CircleLayout::RowH;
+        if (i == sel) {
+            m_ui.rect(L.px + 6, y, L.panelW - 12, CircleLayout::RowH - 2, kRowSelBg);
+        }
+        const bool dim = i == 0 ? tier == AlchemyCircle::Tier::None : outItems.empty();
+        const char* label = i == 1 ? "TAKE OUTPUTS" : started ? "STOP" : "START";
+        m_ui.text(L.px + 16, y + 4, 13.0f, std::string("  ") + label,
+                  rowColor(i == sel, dim));
+    }
 
     // Progress + the core's output strip.
     m_ui.rect(L.px + 16, L.barY, L.panelW - 32, 10, glm::vec4(0.0f, 0.0f, 0.0f, 0.8f));
@@ -1229,7 +1258,7 @@ void VoxelGame::drawCircleUi() {
     }
 
     m_ui.text(L.px + 16, L.footerY, 12.0f,
-              "DRAG ONTO THE RING: LMB STACK / RMB ONE   ENTER TAKE OUTPUTS   ESC CLOSE",
+              "DRAG ONTO THE RING: LMB STACK / RMB ONE   W/S + ENTER: ROWS   ESC CLOSE",
               kTextFooter);
 
     if (m_drag.active()) {
@@ -1249,7 +1278,6 @@ void VoxelGame::updateCircleUi() {
     if (mit == m_machines.end()) { cancelDrag(); closeMachineUi(); return; }
     Machine& core = mit->second;
 
-    m_machineUiSel = 0; // the panel has exactly one row: TAKE OUTPUTS
     const auto allItems = itemsOf(m_inventory);
     const InvWindow iv = invWindow(static_cast<int>(allItems.size()),
                                    circleMetrics::invRowsThatFit(window().height()),
@@ -1261,12 +1289,9 @@ void VoxelGame::updateCircleUi() {
     // The grid is the only list left here, so the wheel always belongs to it.
     scrollInvGrid(input(), m_invScroll, iv, L.px + 16.0f, L.invY, mx, my);
 
-    const bool overRow = mx >= L.px && mx <= L.px + L.panelW && my >= L.rowY &&
-                         my < L.rowY + CircleLayout::RowH;
-    struct { bool enter, clickedRows; } nav{
-        input().wasKeyPressed(SDL_SCANCODE_RETURN) ||
-            input().wasKeyPressed(SDL_SCANCODE_KP_ENTER),
-        input().wasMousePressed(SDL_BUTTON_LEFT) && overRow};
+    const MenuNav nav = menuNav(input(), m_machineUiSel, circleMetrics::Rows, L.px,
+                                L.panelW, L.rowY, CircleLayout::RowH);
+    if (nav.changed) audio().play("click", kUiVolume);
 
     const bool lmb = input().wasMousePressed(SDL_BUTTON_LEFT);
     const bool rmb = input().wasMousePressed(SDL_BUTTON_RIGHT);
@@ -1289,6 +1314,8 @@ void VoxelGame::updateCircleUi() {
                     pit->second.input.remove(id, take);
                     m_drag = {Drag::Source::PedestalIn, id, take, cell};
                     clickConsumed = true;
+                    core.selectedRecipe = -1; // a hand edit to the ring stops it
+                    core.progress = 0.0f;
                 }
             }
         } else if (cell == -1) {
@@ -1299,6 +1326,8 @@ void VoxelGame::updateCircleUi() {
                 core.input.remove(id, take);
                 m_drag = {Drag::Source::MachineIn, id, take};
                 clickConsumed = true;
+                core.selectedRecipe = -1;
+                core.progress = 0.0f;
             }
         } else if ((ci = hitCell(mx, my, L.px + 16.0f, L.invY,
                                  static_cast<int>(invItems.size()),
@@ -1336,10 +1365,12 @@ void VoxelGame::updateCircleUi() {
                     buf.add(m_drag.id, m_drag.count);
                     m_drag = Drag{};
                     placed = true;
-                    // Hand-laid: match whatever the necklace spells. (Nothing
-                    // locks a circle any more; this clears a pre-existing lock
-                    // loaded from a save written when blueprints existed.)
+                    // A hand edit to the ring stops a started circle: you are
+                    // laying something new, and it waits for START again.
+                    // Belts topping a pattern up never come through here,
+                    // which is what lets a started circle run fed.
                     core.selectedRecipe = -1;
+                    core.progress = 0.0f;
                 }
             }
         } else if (cell == -1 && MachineSystem::machineAccepts(core, m_drag.id)) {
@@ -1347,6 +1378,7 @@ void VoxelGame::updateCircleUi() {
             m_drag = Drag{};
             placed = true;
             core.selectedRecipe = -1;
+            core.progress = 0.0f;
         } else if (overInv && m_drag.source != Drag::Source::PlayerInv) {
             m_inventory.add(m_drag.id, m_drag.count);
             m_drag = Drag{};
@@ -1358,8 +1390,47 @@ void VoxelGame::updateCircleUi() {
         clickConsumed = true;
     }
 
-    // --- Row activation: empty the core's output into the pack. ---
-    if (!m_drag.active() && (nav.enter || (nav.clickedRows && !clickConsumed))) {
+    // Which row, if any, was activated: a click acts on the row under the
+    // cursor, Enter on the highlighted one.
+    const int activated = m_drag.active()                  ? -1
+                        : nav.clickedRows && !clickConsumed ? nav.hoverRow
+                        : nav.enter                         ? m_machineUiSel
+                                                            : -1;
+
+    // --- Row 0: START / STOP. Starting locks the circle to what the ring
+    // spells right now; that lock is the whole of "started" (tickRuneCore). ---
+    if (activated == 0) {
+        if (core.selectedRecipe >= 0) {
+            core.selectedRecipe = -1;
+            core.progress = 0.0f;
+            audio().play("click", kUiVolume);
+        } else {
+            const AlchemyCircle::Tier tier =
+                AlchemyCircle::tierAt(*m_world, m_machines, m_machineUiPos);
+            const bool energized =
+                m_power.energized(m_machineUiPos.x, m_machineUiPos.y, m_machineUiPos.z);
+            const auto ring =
+                AlchemyCircle::ringContents(*m_world, m_machines, m_machineUiPos);
+            const AlchemyCircle::Match match =
+                AlchemyCircle::findMatch(ring, core.input, tier, energized);
+            if (tier == AlchemyCircle::Tier::None) {
+                deny("THE CIRCLE NEEDS ITS FOUR CARDINAL PEDESTALS");
+            } else if (match) {
+                core.selectedRecipe =
+                    static_cast<int>(match.recipe - circleRecipes().data());
+                core.progress = 0.0f;
+                audio().play("craft", kCraftVolume);
+            } else if (AlchemyCircle::findMatch(ring, core.input, tier, true)) {
+                // Laid right, but an eight-slot pattern only runs powered.
+                deny("THAT PATTERN NEEDS A POWERED GREATER CIRCLE");
+            } else {
+                deny("NO PATTERN ON THE PEDESTALS TO START");
+            }
+        }
+    }
+
+    // --- Row 1: empty the core's output into the pack. ---
+    if (activated == 1) {
         for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
             const ItemId id = static_cast<ItemId>(i);
             const int c = core.output.count(id);

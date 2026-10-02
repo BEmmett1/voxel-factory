@@ -279,15 +279,31 @@ namespace {
         m.craftTime = kIrrigateSeconds;
     }
 
-    // The Rune Core reads the ring of Pedestals around it and runs whichever
-    // CircleRecipe the necklace spells. A Lesser (4-pedestal) circle ignores
-    // power entirely and runs slowly -- that unpowered path is what lets a
-    // circle build your first Generator. Power only buys speed and the
+    // The Rune Core reads the ring of Pedestals around it and runs the
+    // CircleRecipe the player STARTED it on. A Lesser (4-pedestal) circle
+    // ignores power entirely and runs slowly -- that unpowered path is what
+    // lets a circle build your first Generator. Power only buys speed and the
     // eight-slot patterns.
+    static_assert(std::tuple_size<decltype(CircleCompletion::consumed)>::value ==
+                      AlchemyCircle::kRingSlots,
+                  "CircleCompletion::consumed needs one entry per ring slot");
     void tickRuneCore(World& world, MachineMap& machines, const glm::ivec3& pos,
-                      Machine& core, bool energized) {
+                      Machine& core, bool energized,
+                      std::vector<CircleCompletion>* circlesDone) {
         const AlchemyCircle::Tier tier = AlchemyCircle::tierAt(world, machines, pos);
         if (tier == AlchemyCircle::Tier::None) {
+            core.progress = 0.0f;
+            return;
+        }
+        // Nothing runs until it is started, and "started" IS the lock. Matching
+        // is "holds at least this many", so every half-laid pattern on the way
+        // to the one you meant is itself a pattern: two ingots on one pedestal
+        // on the road to a Press spell Wire. A circle that ran whatever the
+        // ring currently said would craft the road. The lock then stays, so a
+        // started circle keeps making THAT recipe whenever belts complete its
+        // pattern again -- and can never drift into a pattern it passes
+        // through while they refill it. A hand edit to the ring clears it.
+        if (core.selectedRecipe < 0) {
             core.progress = 0.0f;
             return;
         }
@@ -313,6 +329,23 @@ namespace {
         core.craftTime = AlchemyCircle::craftSeconds(*match.recipe, tier, energized);
         core.progress += kTickSeconds;
         if (core.progress >= core.craftTime) {
+            if (circlesDone) {
+                // Which pedestal gave what, read BEFORE consume empties them:
+                // the ritual effect draws each ingredient flying in from
+                // where it actually sat.
+                CircleCompletion done{pos, match.recipe->output.id,
+                                      tier == AlchemyCircle::Tier::Greater, {}};
+                const auto& pattern = match.recipe->ring;
+                const int n = static_cast<int>(pattern.size());
+                const int stride = n == 4 ? 2 : 1;
+                for (int i = 0; i < n; ++i) {
+                    const int slot =
+                        (((i + match.rotation) % n) * stride) % AlchemyCircle::kRingSlots;
+                    done.consumed[static_cast<std::size_t>(slot)] =
+                        pattern[static_cast<std::size_t>(i)].id;
+                }
+                circlesDone->push_back(done);
+            }
             AlchemyCircle::consume(world, machines, pos, match, core.input);
             core.output.add(match.recipe->output.id, match.recipe->output.count);
             core.progress = 0.0f;
@@ -435,7 +468,8 @@ bool tickSelfPowered(const World& world, MachineMap& machines,
 
 void tickPowered(World& world, MachineMap& machines, const PowerState& power,
                  std::uint32_t seed, std::uint32_t& rngCounter,
-                 CropSystem::CropMap& crops) {
+                 CropSystem::CropMap& crops,
+                 std::vector<CircleCompletion>* circlesDone) {
     for (auto& [pos, m] : machines) {
         const MachineTraits& traits = machineTraits(m.type);
         // Generators and collectors ran in tickSelfPowered (their state does
@@ -456,7 +490,8 @@ void tickPowered(World& world, MachineMap& machines, const PowerState& power,
         // deliberately allowed to work on a dead network (slowly), so the
         // Circle can bootstrap the Generator that would power it.
         if (traits.kind == MachineKind::RuneCore) {
-            tickRuneCore(world, machines, pos, m, power.energized(pos.x, pos.y, pos.z));
+            tickRuneCore(world, machines, pos, m, power.energized(pos.x, pos.y, pos.z),
+                         circlesDone);
             continue;
         }
         if (traits.kind == MachineKind::Pedestal) continue; // a passive holder

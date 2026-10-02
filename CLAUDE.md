@@ -103,8 +103,9 @@ interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 `VoxelGameWorldGen.cpp` (island + the ruin), `VoxelGameSim.cpp` (the 20 Hz
 tick: machines/belts/power/growth/weather + registries),
 `VoxelGamePlayer.cpp` (per-frame input, walking physics, mine/place),
-`VoxelGameRender.cpp` (atlas, meshes, onRender), and `VoxelGameUi.cpp` (HUD +
-all panels). `VoxelGameInternal.h` (namespace `vg`) holds every gameplay
+`VoxelGameRender.cpp` (atlas, meshes, onRender), `VoxelGameUi.cpp` (HUD +
+all panels), and `VoxelGameEffects.cpp` (the Alchemy Circle's ritual effect —
+pure presentation). `VoxelGameInternal.h` (namespace `vg`) holds every gameplay
 tuning constant and the helpers shared across those files; single-use helpers
 stay in their file's anonymous namespace.
 
@@ -1181,17 +1182,56 @@ The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world
   `openMachineUi` walks the ring offsets backwards from a pedestal to find its
   core. There is deliberately **no blueprint list**: a pattern is laid BY
   HAND, one drag per pedestal — a recipe you perform rather than a row you
-  click — so the panel's only action row is TAKE OUTPUTS and its height no
-  longer grows with the recipe table. Nothing locks a circle (`selectedRecipe`
-  stays −1 and every drop into a pedestal clears a lock left by an older
-  save); the necklace on the ground is the whole statement of intent.
+  click — so the panel has two action rows, START/STOP and TAKE OUTPUTS, and
+  its height does not grow with the recipe table.
+- **A circle runs only once STARTED** (Sep 2026, user request). "Holds at least
+  this many" means every half-laid pattern on the way to the one you meant is
+  itself a pattern — two ingots on one pedestal, on the road to a Press, spell
+  `circle/wire` — and a circle that ran whatever the ring currently said
+  crafted the road out from under you. START locks `selectedRecipe` to what the
+  ring spells at that moment, and **the lock IS "started"**: `tickRuneCore`
+  does nothing while it is −1. The lock was already saved as a recipe KEY
+  (left over from the blueprint era), so this cost no save change. It then
+  STAYS, so a started circle keeps making that recipe whenever belts complete
+  its pattern again and can never drift into a pattern it passes through while
+  they refill it — which is what keeps the Circle automatable. Any hand edit to
+  the ring (a drag onto or off a pedestal or the catalyst cell) clears it, as
+  does STOP. The status line reads READY / MAKING / STARTED -- WAITING FOR ITS
+  PATTERN. A belt-fed circle in a pre-Sep-2026 save sits idle until START is
+  pressed once. `--selftest` pins the Press-vs-Wire case and the refill, and
+  was checked to FAIL with the gate removed.
+- **What the ring holds is visible from the world**: `buildCargoMesh` draws each
+  pedestal's item (and the core's catalyst) as a bobbing camera-facing icon over
+  the block, a fanned stack of up to `kCircleItemStack`, in the same buffer and
+  draw as tube cargo.
+- **The ritual effect** (`VoxelGameEffects.cpp`, the first user of
+  **`ParticleSystem`**). `tickPowered` takes an optional
+  `std::vector<CircleCompletion>*` and REPORTS each finished ritual (core,
+  product, tier, which slot gave which ingredient — read before `consume`
+  empties them) rather than the renderer inferring it from buffer counts, which
+  a belt draining the output the same tick would hide. While a started circle
+  crafts, its items rise and brighten and motes stream into the core, faster as
+  progress fills; at the finish the ingredients rush in, then a flash, a spark
+  burst, a ground shockwave ring, a column of light, the product popping up over
+  the core, and the generated `ritual` sound. Coloured by tier (Lesser cyan,
+  Greater violet — the panel header's colours). Tuned for DAYLIGHT: additive
+  light on a bright sky only reads once it saturates. Knobs in
+  `// ---- Alchemy ritual effect ----`.
+- **`ParticleSystem`** (ParticleSystem.h/.cpp, `shaders/particle.*`) knows
+  nothing about circles: a fixed 2048 pool (recycled round-robin, never grows),
+  camera-facing quads built on the CPU, drawn **additively with depth test on
+  and depth writes off** — order-independent, so no sort (the cutout
+  precedent), and a wall still hides a spark. Advanced on the pause-aware dt,
+  never saved, never read by the sim, and a shader failure just disables it.
+  Drawn LAST of the world passes so everything that should hide it is already
+  in the depth buffer. Ready for generator smoke, mining debris and boss hits.
 - **The hand menu is now a survival tier**: 13 rows (tool ramp, Stone, Ingot,
   Glass, Vial, Bucket, Scaffold + the circle's own two parts, which MUST stay
   hand-craftable or the tree deadlocks). 26 recipes moved to the Circle.
 - Append-only blocks/items and generic machine save records mean **no save
   version bump**. `--selftest` covers tier detection, arrangement disambiguation,
-  rotation invariance, the Greater power gate, `consume`, and the
-  registry-vs-world disagreement case.
+  rotation invariance, the Greater power gate, `consume`, the
+  registry-vs-world disagreement case, and START (above).
 
 The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **Recipes are keyed.** `Machine::selectedRecipe` used to be a saved INDEX

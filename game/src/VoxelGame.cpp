@@ -69,6 +69,7 @@ void VoxelGame::onStart() {
     }
     m_shader.use();
     m_shader.setInt("uAtlas", 0); // atlas lives on texture unit 0
+    m_particles.init(dir + "shaders/"); // effects only: a failure is logged, not fatal
 
     buildAtlas();
     buildShapeSheet();
@@ -154,6 +155,10 @@ void VoxelGame::startPlaying() {
     m_power = PowerSystem::solve(*m_world, m_machines, &m_hungryGenerators);
     recomputeArmor(); // seed mitigation from a loaded save's equipped armor
     updateHums(); // a loaded save's energized machines hum from frame one
+    // Effects belong to the world they were fired in, never to the next one.
+    m_circlesDone.clear();
+    m_ritualPops.clear();
+    m_particles.clear();
     // Fresh each launch; not part of the save. A few blocks from spawn, snapped
     // to ground inside the system.
     m_creatures.spawn(SpeciesId::TestCreature, DimensionId::Overworld, overworld(),
