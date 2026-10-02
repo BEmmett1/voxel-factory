@@ -28,6 +28,10 @@ namespace engine {
         void setFullscreen(bool on);  // SDL3 borderless-desktop fullscreen
         void setVsync(bool on);       // swap interval 1/0 (context is current)
 
+        // Read the BACK buffer (call after drawing, before swap) and write it
+        // as an opaque PNG. False on failure; SDL_GetError() says why.
+        bool saveScreenshot(const std::string& path) const;
+
         SDL_Window* handle() const { return m_window; }
 
     private:

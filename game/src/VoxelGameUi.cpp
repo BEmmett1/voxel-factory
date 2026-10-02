@@ -2589,7 +2589,8 @@ void VoxelGame::drawHelp() {
         {move + " MOVE   " + k(Action::Jump) + " JUMP   " + k(Action::Sprint) + " SPRINT", 1},
         {"LMB MINE   RMB PLACE   1-0 OR WHEEL SELECT", 1},
         {k(Action::Inventory) + " INVENTORY: DRAG ITEMS ONTO THE HOTBAR TO ASSIGN THEM", 1},
-        {"RMB WITH DRAUGHT > DRINK ( HEAL )   HARD FALLS HURT", 1},
+        {"RMB WITH DRAUGHT > DRINK ( HEAL )   HARD FALLS HURT   " +
+             k(Action::Screenshot) + " SCREENSHOT", 1},
         {k(Action::CraftMenu) + " CRAFT MENU   RMB OPEN MACHINE   " +
              k(Action::QuickSave) + " SAVE   ESC QUIT ( AUTO SAVES )", 1},
         {"", 1},

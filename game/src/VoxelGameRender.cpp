@@ -17,6 +17,8 @@
 #include <glm/gtc/constants.hpp>
 #include <cmath>
 #include <cstdint>
+#include <ctime>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -505,6 +507,7 @@ void VoxelGame::onRender() {
         else if (m_slotPickerOpen) drawSlotPicker();
         else drawMainMenu();
         if (m_debugOpen) drawDebugOverlay();
+        if (m_screenshotPending) takeScreenshot();
         return;
     }
 
@@ -536,4 +539,43 @@ void VoxelGame::onRender() {
         else drawPauseMenu();
     }
     if (m_debugOpen) drawDebugOverlay();
+    // Last, so the image is the whole frame -- HUD and overlays included.
+    if (m_screenshotPending) takeScreenshot();
+}
+
+void VoxelGame::takeScreenshot() {
+    m_screenshotPending = false;
+    if (m_prefDir.empty()) {
+        deny("SCREENSHOT FAILED: NO SAVE FOLDER");
+        return;
+    }
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(m_prefDir) / "screenshots";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &local);
+
+    // Two presses inside one second get -2, -3, ... rather than overwriting.
+    fs::path path = dir / (std::string("screenshot-") + stamp + ".png");
+    for (int n = 2; fs::exists(path, ec); ++n) {
+        path = dir / (std::string("screenshot-") + stamp + "-" + std::to_string(n) + ".png");
+    }
+
+    if (!window().saveScreenshot(path.string())) {
+        SDL_Log("Screenshot failed (%s): %s", path.string().c_str(), SDL_GetError());
+        deny("SCREENSHOT FAILED");
+        return;
+    }
+    SDL_Log("Screenshot saved: %s", path.string().c_str());
+    window().setTitle("Voxel Factory  —  SCREENSHOT SAVED");
+    audio().play("click", kUiVolume);
 }

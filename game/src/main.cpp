@@ -448,6 +448,19 @@ int runSelfTest() {
     SELFTEST_CHECK(u.volume == 0.8f);                          // bad value -> default
     SELFTEST_CHECK(u.key(Action::Jump) == SDL_SCANCODE_SPACE); // reserved -> default
     SELFTEST_CHECK(!u.vsync);
+    // A cfg from before an action existed has no line for it -> its default.
+    SELFTEST_CHECK(u.key(Action::Screenshot) == SDL_SCANCODE_F2);
+
+    // ...unless that old cfg already gave the new default away: the player's
+    // own bind wins (first in enum order) and the newcomer loads unbound.
+    {
+        std::ofstream old(cfg, std::ios::trunc);
+        old << "BIND_HELP=" << static_cast<int>(SDL_SCANCODE_F2) << "\n";
+    }
+    Settings oldCfg;
+    SELFTEST_CHECK(SettingsIO::load(cfg, oldCfg));
+    SELFTEST_CHECK(oldCfg.key(Action::Help) == SDL_SCANCODE_F2);
+    SELFTEST_CHECK(oldCfg.key(Action::Screenshot) == SDL_SCANCODE_UNKNOWN);
 
     fs::remove(cfg, ec);
     fs::remove(cfg + ".bak", ec);

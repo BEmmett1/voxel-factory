@@ -71,6 +71,7 @@ private:
     void drawCraftMenu();        // crafting menu overlay
     void drawHelp();             // F1 how-to-play overlay
     void drawDebugOverlay();     // F3 perf readout
+    void takeScreenshot();       // end of onRender: back buffer -> PNG
     void updateMenu();           // crafting menu navigation + crafting
     void openPauseMenu();        // freezes the simulation (engine setPaused)
     void closePauseMenu();       // resume
@@ -272,6 +273,7 @@ private:
     bool m_invOpen = false;              // inventory overlay (Tab) visible?
     bool m_helpOpen = false;             // F1 help overlay visible?
     bool m_debugOpen = false;            // F3 perf overlay visible?
+    bool m_screenshotPending = false;    // capture this frame once it is drawn
     int  m_menuSelection = 0;
     bool m_pauseOpen = false;            // pause menu (Esc); sim time frozen
     int  m_pauseSel = 0;

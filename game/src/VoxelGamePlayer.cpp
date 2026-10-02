@@ -90,6 +90,11 @@ void VoxelGame::onUpdate(float dt) {
     if (input().wasKeyPressed(SDL_SCANCODE_F3)) {
         m_debugOpen = !m_debugOpen;
     }
+    // Screenshot works over every screen, so it is read before any overlay
+    // takes the input -- except an armed keybind capture, which owns the key.
+    if (m_bindCapture < 0 && input().wasKeyPressed(key(Action::Screenshot))) {
+        m_screenshotPending = true;
+    }
 
     // A refusal's reason fades on REAL frame time, not the pause-aware clock
     // below: several of the sites that call deny() are inside panels, where the

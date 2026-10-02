@@ -380,8 +380,13 @@ Settings (`Settings.h`/`Settings.cpp` own the model; UI in VoxelGameUi.cpp):
   HIGH_PIXEL_DENSITY ROADMAP item), vsync (`Window::setVsync`), mouse sensitivity
   (0.02–0.40, read live at the one `addLook` site), master volume — all applied
   live via `applySettings()`. A/D or arrows adjust; Enter/click flips.
-- **KEYBINDS subpanel**: the 11 `Action`s (move ×4, jump, sprint, craft, inventory,
-  wrench, quick save, help) rebind via press-to-capture (row shows PRESS A KEY;
+- **Screenshot** (`Action::Screenshot`, default **F2**) works over every screen:
+  onUpdate flags it, the END of onRender reads the back buffer
+  (`Window::saveScreenshot`, `SDL_SavePNG` — no extra dependency) so the PNG is
+  the whole frame, HUD included, into `<pref dir>/screenshots/`. Appended LAST
+  in `Action` so an old cfg that already used F2 keeps it (first-wins).
+- **KEYBINDS subpanel**: the 13 `Action`s (move ×4, jump, sprint, craft, inventory,
+  wrench, belt filter, quick save, help, screenshot) rebind via press-to-capture (row shows PRESS A KEY;
   Esc cancels the capture; reserved keys — Esc/Enter/arrows/hotbar digits/F3/F4 —
   play deny). A key lives on at most one action: binding steals it and the robbed
   row shows `---` (`SDL_SCANCODE_UNKNOWN` = unbound, safely inert); RESET DEFAULTS
