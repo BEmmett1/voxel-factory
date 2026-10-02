@@ -130,6 +130,22 @@ void VoxelGame::onUpdate(float dt) {
         }
     }
 
+    // Rain ambience. ABOVE the menus' early returns on purpose: the pause menu
+    // returns before the rest of this function, and the whole point of the
+    // duck is what happens WHILE paused -- below them it never ran, and the
+    // rain played on at full over the menu.
+    // Weather visuals ease in and out. The rain loop is Overworld ambience;
+    // the Tempest's arena storm never breaks.
+    m_weather.frameEase(dt);
+    const float rainAmbience = m_dimension == DimensionId::Overworld
+        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
+    // Paused, the rain hangs mid-air -- so the sound ducks rather than playing
+    // on at full over a frozen picture, and rather than cutting out, which
+    // would sound like the game had died. Eased on REAL frame time: the
+    // pause-aware clock is exactly the one that has stopped.
+    const float duckTarget = paused() ? kRainPausedGain : 1.0f;
+    m_rainDuck += (duckTarget - m_rainDuck) * std::min(1.0f, dt * kRainDuckRate);
+    audio().setLoopGain(m_rainLoop, rainAmbience * kRainVolume * m_rainDuck);
     // Main menu shell (launch): owns all input over an unbuilt world until a
     // slot is chosen. Settings and the slot picker ride on top of it.
     if (m_shellOpen) {
@@ -276,13 +292,8 @@ void VoxelGame::onUpdate(float dt) {
         audio().play("craft", kCraftVolume);
     }
 
-    // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
-    // The rain loop is Overworld ambience — silent in the arena.
-    m_weather.frameEase(dt);
-    // Home rain follows the weather; the Tempest's arena storm never breaks.
-    const float rainAmbience = m_dimension == DimensionId::Overworld
-        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
-    audio().setLoopGain(m_rainLoop, rainAmbience * kRainVolume);
+    // F4 is a dev key to summon/clear rain (the ambience itself is set above,
+    // before the menus' early returns).
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
         m_weather.forceToggle();
     }

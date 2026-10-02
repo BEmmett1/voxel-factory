@@ -282,6 +282,7 @@ private:
     std::vector<DroppedItem> m_drops;
 
     engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows the intensity
+    float m_rainDuck = 1.0f;          // 1 playing, eases to kRainPausedGain while paused
     std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;
 
     Weather m_weather;          // rain/clear phases + eased visual intensity

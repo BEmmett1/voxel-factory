@@ -185,7 +185,9 @@ void VoxelGame::buildRainMesh() {
     const int count = static_cast<int>(static_cast<float>(kRainStreaks) * intensity);
     if (count > 0) {
         const glm::vec3 cam = camera().position;
-        const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        // The pause-aware clock, not the wall clock: pausing freezes the rain
+        // mid-fall along with every other moving thing in the world.
+        const float t = m_animClock;
         for (int i = 0; i < count; ++i) {
             const float ox = (static_cast<float>(hash2(i, 3, 51) % 1024u) / 1023.0f - 0.5f) *
                              2.0f * kRainRadius;

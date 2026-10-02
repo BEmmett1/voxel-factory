@@ -702,7 +702,10 @@ Audio (first pass — mine/place, machine hum, rain, UI clicks):
   `solvePowerAndMarkDirty` + the onStart seed solve) diffs one positional hum loop per
   energized machine (burning generators only, capped at `kMaxHums` nearest);
   open/close/click/craft/deny cover all panels at the same funnels that mutate state.
-  Pause mutes hums (sim frozen) but keeps rain. Mix knobs sit in the `// ---- Audio ----`
+  Pause mutes hums (sim frozen) and DUCKS rain to `kRainPausedGain` (eased on
+  real frame time) rather than cutting it, while the streaks themselves freeze
+  mid-fall on the pause-aware `m_animClock` (Oct 2026, user request — they ran
+  on the wall clock and kept falling over the pause menu). Mix knobs sit in the `// ---- Audio ----`
   block of VoxelGameInternal.h.
 
 Entities (Blockbench import — the combat pillar's first brick):

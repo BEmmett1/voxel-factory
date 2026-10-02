@@ -410,6 +410,8 @@ namespace vg {
     inline constexpr float kHumMaxDistance = 14.0f; // hum audible radius (blocks)
     inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win
     inline constexpr float kRainVolume     = 0.5f;  // rain loop gain at intensity 1
+    inline constexpr float kRainPausedGain = 0.35f; // rain ducks to this share while paused
+    inline constexpr float kRainDuckRate   = 6.0f;  // how fast it ducks / returns, per second
 
     // ---- Deny reasons ----
     // How long a refusal's reason stays on screen (it fades over the last
