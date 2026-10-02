@@ -102,6 +102,16 @@ namespace engine {
 
     void Window::setRelativeMouse(bool enabled) {
         SDL_SetWindowRelativeMouseMode(m_window, enabled);
+        // A released mouse keeps the OS cursor HIDDEN over this window: the
+        // game draws its own, because a capture tool that grabs the game's
+        // frames (OBS Game Capture) never sees the OS cursor over an OpenGL
+        // window that toggles relative mode. SDL hides it over its own windows
+        // only, so the desktop keeps its cursor.
+        SDL_HideCursor();
+    }
+
+    bool Window::relativeMouse() const {
+        return SDL_GetWindowRelativeMouseMode(m_window);
     }
 
     void Window::setTitle(const std::string& title) {

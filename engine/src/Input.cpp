@@ -50,6 +50,18 @@ namespace engine {
         }
     }
 
+    void Input::syncMousePosition() {
+        // Motion events alone leave the position stale whenever the pointer
+        // got where it is without one reaching us -- released from relative
+        // mode, warped by the OS, or sitting still since before the window
+        // opened -- and the game now DRAWS the pointer, so a stale position is
+        // an arrow in the wrong place. Ask SDL where it actually is.
+        float x = 0.0f, y = 0.0f;
+        SDL_GetMouseState(&x, &y);
+        m_mouseX = x;
+        m_mouseY = y;
+    }
+
     bool Input::isKeyDown(SDL_Scancode sc) const {
         return (sc >= 0 && sc < SDL_SCANCODE_COUNT) && m_keyDown[sc];
     }

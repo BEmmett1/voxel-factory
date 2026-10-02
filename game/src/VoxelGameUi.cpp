@@ -520,6 +520,59 @@ namespace {
 
 } // namespace
 
+// The pointer, drawn by the game rather than the OS whenever the mouse is
+// released (every panel and menu). A frame-grabbing recorder -- OBS Game
+// Capture -- never saw the OS cursor over this window, so panels recorded with
+// no pointer; drawing it ourselves puts it in every recording, stream and F2
+// screenshot. Window::setRelativeMouse keeps the OS one hidden to match.
+// Drawn LAST, over every panel, and before the screenshot reads the frame.
+void VoxelGame::drawCursor() {
+    if (window().relativeMouse()) return;                    // FPS look: no pointer
+    if (SDL_GetMouseFocus() != window().handle()) return;    // pointer is elsewhere
+    // The classic arrow, 12x19, hotspot at its tip: '#' outline, 'o' fill.
+    static constexpr const char* kArrow[] = {
+        "#",
+        "##",
+        "#o#",
+        "#oo#",
+        "#ooo#",
+        "#oooo#",
+        "#ooooo#",
+        "#oooooo#",
+        "#ooooooo#",
+        "#oooooooo#",
+        "#ooooooooo#",
+        "#oooooo#####",
+        "#ooo#oo#",
+        "#oo# #oo#",
+        "#o#  #oo#",
+        "##    #oo#",
+        "#     #oo#",
+        "       #oo#",
+        "        ##",
+    };
+    const float mx = std::floor(input().mouseX());
+    const float my = std::floor(input().mouseY());
+    m_ui.begin(window().width(), window().height());
+    for (int y = 0; y < static_cast<int>(std::size(kArrow)); ++y) {
+        // One rect per horizontal run of a colour, not one per pixel.
+        const std::string_view row(kArrow[y]);
+        for (std::size_t x = 0; x < row.size();) {
+            const char c = row[x];
+            std::size_t end = x;
+            while (end < row.size() && row[end] == c) ++end;
+            if (c != ' ') {
+                m_ui.rect(mx + static_cast<float>(x), my + static_cast<float>(y),
+                          static_cast<float>(end - x), 1.0f,
+                          c == '#' ? glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+                                   : glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+            }
+            x = end;
+        }
+    }
+    m_ui.end();
+}
+
 void VoxelGame::drawDebugOverlay() {
     const int w = window().width();
     const int h = window().height();

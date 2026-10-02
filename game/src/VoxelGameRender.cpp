@@ -636,6 +636,7 @@ void VoxelGame::onRender() {
         else if (m_slotPickerOpen) drawSlotPicker();
         else drawMainMenu();
         if (m_debugOpen) drawDebugOverlay();
+        drawCursor();
         if (m_screenshotPending) takeScreenshot();
         return;
     }
@@ -668,6 +669,7 @@ void VoxelGame::onRender() {
         else drawPauseMenu();
     }
     if (m_debugOpen) drawDebugOverlay();
+    drawCursor(); // over everything, so it is in the screenshot too
     // Last, so the image is the whole frame -- HUD and overlays included.
     if (m_screenshotPending) takeScreenshot();
 }

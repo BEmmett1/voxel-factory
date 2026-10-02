@@ -365,6 +365,18 @@ deliberate: the player's mistake is different in each case. Sound-only "deny"
 survives where it is not a refusal at all: the master switch turning OFF, and a
 slipped crank grip.
 
+**The pointer is drawn by the game** (Sep 2026, user report: OBS recorded
+panels with no cursor). Whenever the mouse is released (every panel and menu)
+`Window::setRelativeMouse` keeps the OS cursor hidden over the window and
+`drawCursor()` draws a 12x19 arrow LAST in both render paths, before the F2
+screenshot reads the frame, so it is in every recording, stream and
+screenshot. OBS Game Capture grabs the GL frames and never saw the OS cursor
+over this window, even with Capture Cursor on. `Input::syncMousePosition()`
+asks SDL for the pointer each frame after the events, since motion events
+alone left the position stale after a warp or a relative-mode release, which
+a drawn arrow shows immediately. A hardware cursor would sit a frame ahead of
+it; that is the trade.
+
 UI: an **F1 help overlay** (goal + quickstart + controls — the controls lines are
 built per draw from the current keybinds) on `UiRenderer`; the bitmap font also
 supports `>`, `+`, `<`, and `%`. Esc closes the topmost overlay (machine panel,

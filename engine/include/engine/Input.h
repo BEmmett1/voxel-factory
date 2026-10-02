@@ -28,6 +28,8 @@ namespace engine {
 
         // Absolute cursor position in window coordinates (meaningful while
         // relative mouse mode is off, e.g. inside menus).
+        // Once per frame, after the events: the pointer's CURRENT position.
+        void syncMousePosition();
         float mouseX() const { return m_mouseX; }
         float mouseY() const { return m_mouseY; }
 

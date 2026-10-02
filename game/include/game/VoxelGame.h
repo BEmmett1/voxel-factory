@@ -77,6 +77,7 @@ private:
     void drawCraftMenu();        // crafting menu overlay
     void drawHelp();             // F1 how-to-play overlay
     void drawDebugOverlay();     // F3 perf readout
+    void drawCursor();           // the game-drawn pointer while the mouse is released
     void takeScreenshot();       // end of onRender: back buffer -> PNG
     void updateMenu();           // crafting menu navigation + crafting
     void openPauseMenu();        // freezes the simulation (engine setPaused)

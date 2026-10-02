@@ -23,7 +23,10 @@ namespace engine {
         int height() const;
         float aspect() const;
 
+        // Captured (FPS look) or released (panels). Either way the OS cursor
+        // stays hidden over the window; a released mouse is drawn by the game.
         void setRelativeMouse(bool enabled);
+        bool relativeMouse() const;
         void setTitle(const std::string& title);
         void setFullscreen(bool on);  // SDL3 borderless-desktop fullscreen
         void setVsync(bool on);       // swap interval 1/0 (context is current)
