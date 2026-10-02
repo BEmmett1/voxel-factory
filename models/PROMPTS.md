@@ -13,6 +13,11 @@ Voidstone -- is deliberately absent: it is placed by the million and a cube is
 the right answer. Wire, Conduit, Rune Core, Pedestal, Sapling, the Cauldron,
 Alembic, Auger, Infuser and the four crop stages already have models.
 
+Each prompt carries a **Status** line under its heading. A returned model
+rarely keeps the stem its prompt asked for, so a done block names the file it
+was actually baked from -- that, not the prompt's stem, is what to look for in
+`models/` and on the bake command line.
+
 ## Why the budgets are so tight
 
 Cost is per **placed block** and scales with how many of the thing exist, so
@@ -47,6 +52,8 @@ crown: generate **Herb Source** first, then ask for each of the others as a
 recolour of it, or the set will not hold together.
 
 ### Herb Bush
+
+**Status: done** -- baked from `herb_bush.bbmodel`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -94,6 +101,8 @@ Save the project as herb_bush.bbmodel
 
 ### Crystal Node
 
+**Status: done** -- baked from `violet_crystal_cluster.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -137,6 +146,8 @@ Save the project as crystal_node.bbmodel
 ```
 
 ### Essence Vent
+
+**Status: done** -- baked from `dark_stone_vent.bbmodel`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -182,6 +193,8 @@ Save the project as essence_vent.bbmodel
 
 ### Resonant Node
 
+**Status: done** -- baked from `bicolour_crystal_node.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -225,6 +238,8 @@ Save the project as resonant_node.bbmodel
 ```
 
 ### Herb Source
+
+**Status: done** -- baked from `mossy_shrine_standing_stone.bbmodel`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -271,6 +286,8 @@ Save the project as herb_source.bbmodel
 
 ### Crystal Source
 
+**Status: done** -- baked from `runed_standing_stone.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -314,6 +331,8 @@ Save the project as crystal_source.bbmodel
 ```
 
 ### Copper Source
+
+**Status: done** -- baked from `verdigris_standing_stone.bbmodel`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -359,6 +378,8 @@ Save the project as copper_source.bbmodel
 
 ### Sand Source
 
+**Status: done** -- baked from `sand_source.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -403,6 +424,8 @@ Save the project as sand_source.bbmodel
 
 ### Essence Source
 
+**Status: done** -- baked from `essence_source.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -446,6 +469,8 @@ Save the project as essence_source.bbmodel
 ```
 
 ### Resonant Source
+
+**Status: done** -- baked from `resonant_source.bbmodel`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -499,6 +524,8 @@ height and everything that tells them apart is paint.
 
 ### Scaffold
 
+**Status: done** -- baked from `timber_scaffold_frame.bbmodel`.
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -544,6 +571,9 @@ Save the project as scaffold.bbmodel
 
 ### Tilled Soil
 
+**Status: done** -- baked from `tilled_soil.bbmodel` (furrows on the top face
+repainted by hand; the generator left them out).
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -555,14 +585,15 @@ HARD RULES - a file breaking any of these is rejected by our importer:
 - At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
   22.5, 45. A rotated element collides as its bounding box, so do not rotate
   anything the player would stand on.
-- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
+- The texture is 64x32 pixels with BOX UV: that is exactly the unwrap of a
+  16x15x16 box (a 16x16 texture cannot hold it). Do NOT produce an
   animation strip or multiple frames - a texture a whole multiple
   taller is read as an animation and the extra frames are wasted.
 - Alpha is BINARY: anything below 50% alpha is discarded, everything else is
   drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
   semi-transparent glass, no soft shadows in the alpha channel. Transparency
   cuts holes; it does not fade.
-- Box UV or per-face UV are both fine.
+- Use box UV (see the texture rule above).
 
 STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
 gradients, no text, no logos. It sits on grass in daylight among other blocks
@@ -574,108 +605,77 @@ changes the silhouette - the shape you would still recognise as a black
 cut-out against the sky. This is the rule most often broken and the one that
 matters most.
 
-BUDGET: 1 cube element MAXIMUM. This is a hard limit, not a target;
-fewer is better. Exceeding it makes the model unusable.
+BUDGET: EXACTLY ONE cube element. Not "about one", not "one main body plus
+details" - ONE. An earlier soil attempt came back with 44 elements (separate
+boxes for ridges, furrows, clods and crumbling edges) and was rejected
+outright: this block is laid by the hundred across farm fields, and every
+extra box is paid once per block in the field. If you feel the urge to add a
+second element, paint it instead. Before you answer, check that the elements
+array has length 1.
 
 MODEL: TILLED SOIL
 
 ONE box filling the cell from 0,0,0 to 16,15,16 - full width and depth, one
 unit shy of full height, so worked ground sits slightly below the grass around
-it. Dark brown crumbly earth, with four straight parallel furrows painted
-across the top face and a loose broken edge painted on the sides.
+it. Dark brown crumbly earth, with a loose broken edge painted on the sides.
+
+THE TOP FACE MUST SHOW FURROWS. Paint four straight parallel furrows running
+the full length of the top face: each a dark trough with a lit ridge beside
+it, strong enough to read from ten blocks away. The furrows are the ONLY thing
+that tells tilled ground apart from dirt at a glance; an earlier attempt
+painted plain speckled earth on top and had to be repainted by hand.
 
 Save the project as tilled_soil.bbmodel
 ```
 
 ### Rich Soil
 
+**Status: done** -- baked from `rich_soil.bbmodel` (texture rebuilt from atlas tiles
+194/195/2; the generated one was near-black with no furrows).
+
 ```
-Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
-"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+Make a Blockbench .bbmodel file (File > New > Java Block/Item) with the
+texture embedded as a base64 PNG.
 
-HARD RULES - a file breaking any of these is rejected by our importer:
-- CUBE elements only. No mesh or poly elements of any kind.
-- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
-  never cross one.
-- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
-  22.5, 45. A rotated element collides as its bounding box, so do not rotate
-  anything the player would stand on.
-- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
-  animation strip or multiple frames - a texture a whole multiple
-  taller is read as an animation and the extra frames are wasted.
-- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
-  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
-  semi-transparent glass, no soft shadows in the alpha channel. Transparency
-  cuts holes; it does not fade.
-- Box UV or per-face UV are both fine.
+The model is EXACTLY ONE cube: from [0,0,0] to [16,15,16], no rotation.
+Nothing else. No extra boxes for detail - this block is placed by the
+hundred, so every detail must be painted on the texture.
 
-STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
-gradients, no text, no logos. It sits on grass in daylight among other blocks
-one metre across, and must read at 5-10 blocks distance.
+Texture: 64x32 pixels, box UV, fully opaque (alpha 255 everywhere), flat
+pixel art, no gradients, no text, one frame only.
 
-DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
-grain, rust, dials, vents and engraving must be PAINTED. Model only what
-changes the silhouette - the shape you would still recognise as a black
-cut-out against the sky. This is the rule most often broken and the one that
-matters most.
+Look: rich farmland soil. Almost black-brown earth with flecks of pale straw
+and compost. The TOP face must show four straight parallel furrows running
+its full length - dark troughs with lit ridges beside them, clear from ten
+blocks away. The sides are the same dark earth with a slightly broken,
+lighter lip along the top edge.
 
-BUDGET: 1 cube element MAXIMUM. This is a hard limit, not a target;
-fewer is better. Exceeding it makes the model unusable.
-
-MODEL: RICH SOIL
-
-ONE box filling the cell from 0,0,0 to 16,15,16, exactly the same shape as
-tilled soil. Much darker, almost black-brown, visibly richer, with flecks of
-pale straw and compost painted through it and four parallel furrows across the
-top face.
-
-Save the project as rich_soil.bbmodel
+Save as rich_soil.bbmodel
 ```
 
 ### Grafted Sapling
 
+**Status: done** -- baked from `grafted_sapling.bbmodel`.
+
 ```
-Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
-"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+Make a Blockbench .bbmodel file (File > New > Java Block/Item) with the
+texture embedded as a base64 PNG.
 
-HARD RULES - a file breaking any of these is rejected by our importer:
-- CUBE elements only. No mesh or poly elements of any kind.
-- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
-  never cross one.
-- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
-  22.5, 45. A rotated element collides as its bounding box, so do not rotate
-  anything the player would stand on.
-- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
-  animation strip or multiple frames - a texture a whole multiple
-  taller is read as an animation and the extra frames are wasted.
-- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
-  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
-  semi-transparent glass, no soft shadows in the alpha channel. Transparency
-  cuts holes; it does not fade.
-- Box UV or per-face UV are both fine.
+AT MOST 12 cube elements, all inside the 0..16 cell. Rotations only on one
+axis per element, only -45/-22.5/22.5/45. Detail is painted, not modelled -
+this block may be planted by the dozen.
 
-STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
-gradients, no text, no logos. It sits on grass in daylight among other blocks
-one metre across, and must read at 5-10 blocks distance.
+Texture: 32x32 pixels, flat pixel art, no gradients, no text, one frame only.
+Alpha is 0 or 255 only - no soft edges.
 
-DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
-grain, rust, dials, vents and engraving must be PAINTED. Model only what
-changes the silhouette - the shape you would still recognise as a black
-cut-out against the sky. This is the rule most often broken and the one that
-matters most.
+Look: a young grafted tree, sturdier and fuller than a wild sapling. A
+straight brown trunk about 3 units thick and 14 tall, four short branches
+angling out near the top, and a leaf cluster on each branch. Make each leaf
+cluster from two flat crossed planes (zero thickness on one axis) with the
+leaf shape cut out using alpha 0. Paint a pale grafting band around the
+trunk near its base.
 
-BUDGET: 12 cube elements MAXIMUM. This is a hard limit, not a target;
-fewer is better. Exceeding it makes the model unusable.
-
-MODEL: GRAFTED SAPLING
-
-A young grafted tree: a straight trunk about 14 units tall and 3 units thick,
-four short branches angling out from it, and a small leaf cluster on each
-branch made from flat crossed planes. Sturdier and fuller than a wild sapling.
-A pale grafting band painted around the trunk near its base. Cut the leaf
-silhouettes with alpha 0.
-
-Save the project as grafted_sapling.bbmodel
+Save as grafted_sapling.bbmodel
 ```
 
 ## C. The hand-cranked tier
@@ -692,52 +692,31 @@ None are power nodes, so **none may animate**.
 
 ### Sieve
 
+**Status: done** -- baked from `sieve.bbmodel` (group renamed `handle` -> `crank`;
+the screen's mesh holes painted by hand, it came back solid; screen and braces
+raised 3 units so the mesh shows above the frame instead of hiding inside it).
+
 ```
-Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
-"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+Make a Blockbench .bbmodel file (File > New > Java Block/Item) with the
+texture embedded as a base64 PNG.
 
-HARD RULES - a file breaking any of these is rejected by our importer:
-- CUBE elements only. No mesh or poly elements of any kind.
-- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
-  never cross one.
-- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
-  22.5, 45. A rotated element collides as its bounding box, so do not rotate
-  anything the player would stand on.
-- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
-  animation strip or multiple frames - a texture a whole multiple
-  taller is read as an animation and the extra frames are wasted.
-- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
-  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
-  semi-transparent glass, no soft shadows in the alpha channel. Transparency
-  cuts holes; it does not fade.
-- Box UV or per-face UV are both fine.
+AT MOST 14 cube elements, all inside the 0..16 cell. Rotations only on one
+axis per element, only -45/-22.5/22.5/45. Detail is painted, not modelled.
 
-STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
-gradients, no text, no logos. It sits on grass in daylight among other blocks
-one metre across, and must read at 5-10 blocks distance.
+Texture: 64x64 pixels, flat pixel art, no gradients, no text, one frame only.
+Alpha is 0 or 255 only - no soft edges.
 
-DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
-grain, rust, dials, vents and engraving must be PAINTED. Model only what
-changes the silhouette - the shape you would still recognise as a black
-cut-out against the sky. This is the rule most often broken and the one that
-matters most.
+Look: a hand tool on a bench - low, wooden, worn, human-scale. A square
+wooden frame holding a woven mesh screen, standing on four short legs, with
+a handle on one side for shaking it. The mesh is ONE thin element whose
+texture is a grid of alpha-0 holes, so you can see through it. Sawdust and
+grain painted on the frame.
 
-BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
-fewer is better. Exceeding it makes the model unusable.
+The handle goes in its own outliner group named exactly "crank", with the
+group's origin where the handle meets the frame. Everything else stays in
+the root.
 
-MODEL: SIEVE
-
-A square wooden frame holding a woven mesh screen, standing on four short
-legs, with a handle on one side to shake it. Paint the mesh as a grid of
-alpha-0 holes so you can see through it. Sawdust and grain on the frame.
-
-MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
-in its own outliner group named exactly "crank", with that group's
-origin at the centre of its axle.
-Everything else can sit in the root group, and the exact group name
-is what our code looks for.
-
-Save the project as sieve.bbmodel
+Save as sieve.bbmodel
 ```
 
 ### Mortar
@@ -842,6 +821,8 @@ Save the project as hand_press.bbmodel
 
 ### Anvil
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -891,6 +872,8 @@ Save the project as anvil.bbmodel
 ```
 
 ### Blowpipe
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -942,6 +925,8 @@ Save the project as blowpipe.bbmodel
 
 ### Tamper
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -991,6 +976,8 @@ Save the project as tamper.bbmodel
 ```
 
 ### Compost Heap
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1042,6 +1029,8 @@ Save the project as compost_heap.bbmodel
 
 ### Mixing Bowl
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1091,6 +1080,8 @@ Save the project as mixing_bowl.bbmodel
 ```
 
 ### Infusion Stand
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1142,6 +1133,8 @@ Save the project as infusion_stand.bbmodel
 
 ### Still
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1192,6 +1185,8 @@ Save the project as still.bbmodel
 
 ### Hand Distiller
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1241,6 +1236,8 @@ Save the project as hand_distiller.bbmodel
 ```
 
 ### Hand Transmuter
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1297,6 +1294,8 @@ fire glow into the texture instead of trying to make it flicker.
 
 ### Bloomery
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1341,6 +1340,8 @@ Save the project as bloomery.bbmodel
 ```
 
 ### Furnace
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1391,6 +1392,8 @@ All are power nodes, so animation and moving parts both work, and both play
 only while the network is satisfied. These carry the largest budgets here.
 
 ### Generator
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1443,6 +1446,8 @@ Save the project as generator.bbmodel
 
 ### Grinder
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1492,6 +1497,8 @@ Save the project as grinder.bbmodel
 ```
 
 ### Press
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1543,6 +1550,8 @@ Save the project as press.bbmodel
 
 ### Forge
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1587,6 +1596,8 @@ Save the project as forge.bbmodel
 ```
 
 ### Sifter
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1638,6 +1649,8 @@ Save the project as sifter.bbmodel
 
 ### Glassblower
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1687,6 +1700,8 @@ Save the project as glassblower.bbmodel
 ```
 
 ### Compactor
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1738,6 +1753,8 @@ Save the project as compactor.bbmodel
 
 ### Composter
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1788,6 +1805,8 @@ Save the project as composter.bbmodel
 
 ### Distiller
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1831,6 +1850,8 @@ Save the project as distiller.bbmodel
 ```
 
 ### Transmuter
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1882,6 +1903,8 @@ Save the project as transmuter.bbmodel
 ```
 
 ### Harvester
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1938,6 +1961,8 @@ budget of the three because it is the one that gets stacked in rows.
 
 ### Rain Barrel
 
+**Status: not started.**
+
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
 "java_block") with the texture EMBEDDED in the file as a base64 PNG.
@@ -1981,6 +2006,8 @@ Save the project as rain_barrel.bbmodel
 ```
 
 ### Storage Crate
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -2026,6 +2053,8 @@ Save the project as storage_crate.bbmodel
 ```
 
 ### Irrigator
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -2086,6 +2115,8 @@ Save the project as irrigator.bbmodel
    `fullCube = false` plus `.shape` on the block's `kBlocks` row.
 5. Check the bake's printed quad and KB figures against the budget. Over
    budget is almost always fixed by deleting elements and painting them.
+6. Flip the block's **Status** line above to done, naming the file it was
+   baked from, in the same commit.
 
 `fullCube = false` costs three things every time: the block stops occluding
 its neighbours, stops keeping rain out, and stops blocking grass spread. All

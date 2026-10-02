@@ -250,9 +250,9 @@ namespace {
          .emissive = 0.18f, .machine = true, .drop = {I::BloomeryItem, 1},
          .tiles = {136, 137, 137}, .hardness = 0.5f},
         {.id = B::Sieve, .key = "core:sieve",
-         .name = "Sieve", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Sieve", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::SieveItem, 1}, .tiles = {138, 139, 139},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Sieve},
         {.id = B::Blowpipe, .key = "core:blowpipe",
          .name = "Blowpipe", .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::BlowpipeItem, 1}, .tiles = {140, 141, 141},
@@ -308,9 +308,10 @@ namespace {
         // stage 0 and never untills, or an automated field would need
         // re-tilling by hand forever. Softer than Dirt: it has been broken up.
         {.id = B::TilledSoil, .key = "core:tilled_soil",
-         .name = "Tilled Soil", .color = {0.36f, 0.24f, 0.13f},
+         .name = "Tilled Soil", .fullCube = false, .color = {0.36f, 0.24f, 0.13f},
          .drop = {I::DirtItem, 1}, .tiles = {9, 10, 2}, .hardness = 0.5f,
-         .tool = T::Shovel, .provides = SoilKind::Tilled},
+         .tool = T::Shovel, .provides = SoilKind::Tilled,
+         .shape = ShapeId::TilledSoil},
         // Crops: crossed planes, so they do not fill their cell (no occlusion,
         // no keeping the rain off the field below). They stay SOLID, which is
         // what lets you aim at one and break it -- walking through wheat is a
@@ -347,17 +348,19 @@ namespace {
         // soil either. It has no item of its own -- you make it in place with
         // compost, the way you make Tilled Soil in place with the hoe.
         {.id = B::RichSoil, .key = "core:rich_soil",
-         .name = "Rich Soil", .color = {0.30f, 0.21f, 0.13f},
+         .name = "Rich Soil", .fullCube = false, .color = {0.30f, 0.21f, 0.13f},
          .drop = {I::DirtItem, 1}, .tiles = {194, 195, 2}, .hardness = 0.5f,
-         .tool = T::Shovel, .provides = SoilKind::Rich},
+         .tool = T::Shovel, .provides = SoilKind::Rich,
+         .shape = ShapeId::RichSoil},
         // Two saplings bound together with compost. Grows the size-2 tree
         // (5 logs, 74 leaves) in the same 45 seconds, which is what turns the
         // sapling SURPLUS -- a tree returns ~8 for the one that made it -- into
         // more wood per plot rather than more saplings you cannot place.
         {.id = B::SaplingGrafted, .key = "core:sapling_grafted",
-         .name = "Grafted Sapling", .color = {0.38f, 0.66f, 0.24f},
+         .name = "Grafted Sapling", .fullCube = false, .color = {0.38f, 0.66f, 0.24f},
          .drop = {I::GraftedSaplingItem, 1}, .tiles = {196, 196, 196},
-         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2},
+         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2,
+         .shape = ShapeId::GraftedSapling},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

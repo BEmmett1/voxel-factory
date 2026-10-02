@@ -121,6 +121,10 @@ enum class ShapeId : std::uint8_t {
     EssenceSource,
     ResonantSource,
     TimberScaffoldFrame,
+    TilledSoil,
+    RichSoil,
+    GraftedSapling,
+    Sieve,
     Count
 };
 
@@ -288,6 +292,30 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsTimberScaffoldFrame,
      .anim = kShapeAnimTimberScaffoldFrame,
      .parts = kShapePartsTimberScaffoldFrame},
+    {.id = ShapeId::TilledSoil,
+     .quads = kShapeQuadsTilledSoil,
+     .boxes = kShapeBoxesTilledSoil,
+     .bounds = kShapeBoundsTilledSoil,
+     .anim = kShapeAnimTilledSoil,
+     .parts = kShapePartsTilledSoil},
+    {.id = ShapeId::RichSoil,
+     .quads = kShapeQuadsRichSoil,
+     .boxes = kShapeBoxesRichSoil,
+     .bounds = kShapeBoundsRichSoil,
+     .anim = kShapeAnimRichSoil,
+     .parts = kShapePartsRichSoil},
+    {.id = ShapeId::GraftedSapling,
+     .quads = kShapeQuadsGraftedSapling,
+     .boxes = kShapeBoxesGraftedSapling,
+     .bounds = kShapeBoundsGraftedSapling,
+     .anim = kShapeAnimGraftedSapling,
+     .parts = kShapePartsGraftedSapling},
+    {.id = ShapeId::Sieve,
+     .quads = kShapeQuadsSieve,
+     .boxes = kShapeBoxesSieve,
+     .bounds = kShapeBoundsSieve,
+     .anim = kShapeAnimSieve,
+     .parts = kShapePartsSieve},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -502,7 +530,8 @@ inline constexpr const char* kShapeNames[] = {
     "bicolour_crystal_node", "mossy_shrine_standing_stone", "runed_standing_stone",
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
-    "timber_scaffold_frame",
+    "timber_scaffold_frame", "tilled_soil", "rich_soil",
+    "grafted_sapling", "sieve",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
