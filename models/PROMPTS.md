@@ -721,55 +721,34 @@ Save as sieve.bbmodel
 
 ### Mortar
 
+**Status: done** -- built by hand, not from this prompt: `mortar.bbmodel`, from
+`tools/block_models/mortar.py`. See `ART_PROGRESS.md`.
+
 ```
-Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
-"java_block") with the texture EMBEDDED in the file as a base64 PNG.
+Make a Blockbench .bbmodel file (File > New > Java Block/Item) with the
+texture embedded as a base64 PNG.
 
-HARD RULES - a file breaking any of these is rejected by our importer:
-- CUBE elements only. No mesh or poly elements of any kind.
-- ALL geometry inside the 0..16 cell on every axis. It may touch a wall,
-  never cross one.
-- At most ONE rotation axis per element, and only the angles -45, -22.5, 0,
-  22.5, 45. A rotated element collides as its bounding box, so do not rotate
-  anything the player would stand on.
-- The texture must be EXACTLY 16x16 pixels. Do NOT produce an
-  animation strip or multiple frames - a texture a whole multiple
-  taller is read as an animation and the extra frames are wasted.
-- Alpha is BINARY: anything below 50% alpha is discarded, everything else is
-  drawn fully opaque. Use alpha 0 or alpha 255 only. No anti-aliased edges, no
-  semi-transparent glass, no soft shadows in the alpha channel. Transparency
-  cuts holes; it does not fade.
-- Box UV or per-face UV are both fine.
+AT MOST 14 cube elements, all inside the 0..16 cell. Rotations only on one
+axis per element, only -45/-22.5/22.5/45. Detail is painted, not modelled.
 
-STYLE: chunky low-poly voxel-game block, flat shaded, pixel-art texture, no
-gradients, no text, no logos. It sits on grass in daylight among other blocks
-one metre across, and must read at 5-10 blocks distance.
+Texture: 64x64 pixels, flat pixel art, no gradients, no text, one frame only.
+Alpha is 0 or 255 only - no soft edges.
 
-DETAIL GOES IN THE TEXTURE, NOT IN GEOMETRY. Bolts, planks, panel lines,
-grain, rust, dials, vents and engraving must be PAINTED. Model only what
-changes the silhouette - the shape you would still recognise as a black
-cut-out against the sky. This is the rule most often broken and the one that
-matters most.
+Look: a hand tool on a bench - low, worn, human-scale. A heavy grey stone
+bowl sitting in a low wooden cradle, with an upright stone pestle resting
+inside it. Ground powder painted around the rim.
 
-BUDGET: 14 cube elements MAXIMUM. This is a hard limit, not a target;
-fewer is better. Exceeding it makes the model unusable.
+The pestle goes in its own outliner group named exactly "crank" (not
+"pestle", not "handle" - exactly "crank"), with the group's origin at the
+bottom of the pestle where it meets the bowl. Everything else stays in the
+root.
 
-MODEL: MORTAR
-
-A heavy grey stone bowl sitting in a low wooden cradle, with an upright stone
-pestle resting inside it. The pestle is the handle. Ground powder painted
-around the rim.
-
-MOVING PART: put the handle, crank, pestle, hammer, lever or wheel
-in its own outliner group named exactly "crank", with that group's
-origin at the centre of its axle.
-Everything else can sit in the root group, and the exact group name
-is what our code looks for.
-
-Save the project as mortar.bbmodel
+Save as mortar.bbmodel
 ```
 
 ### Hand Press
+
+**Status: not started.**
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

@@ -67,6 +67,9 @@ private:
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void updateShapeAnim();      // pick each shape's animation frame (a uniform, not a remesh)
     void updatePartAnim();       // pose each moving block part (a uniform, not a remesh)
+    // Which hand-cranked machine is being turned (the one whose panel is open),
+    // remeshing on the edge, and ease the handle toward the turns banked.
+    void updateCrankAnim(float dt);
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
@@ -191,6 +194,13 @@ private:
     // and on the same terms: a part turning is a uniform, never a remesh.
     // Sized to vg::kMaxShapeParts on first use, like m_shapeAnimV.
     std::vector<glm::mat3> m_partRot;
+    std::vector<glm::vec3> m_partOff; // each slot's translation (PartMotion::Bob)
+    // Cranked parts move with the player's hand, not the clock: every step of
+    // the handle adds a quarter turn to m_crankTarget, and m_crankTurns eases
+    // after it. m_cranking is the set the mesher animates in spite of no power.
+    std::unordered_set<glm::ivec3, IVec3Hash> m_cranking;
+    float m_crankTurns = 0.0f;
+    float m_crankTarget = 0.0f;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
     // Conduit cargo, as world geometry rather than the UiRenderer billboard it

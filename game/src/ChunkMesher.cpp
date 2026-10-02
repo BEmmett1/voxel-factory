@@ -122,7 +122,8 @@ namespace ChunkMesher {
     void appendChunk(std::vector<float>& out, std::vector<float>& shapedOut,
                      const World& world,
                      const Chunk& chunk, const glm::ivec3& chunkCoord,
-                     const PowerState& power, const BeltMap& belts) {
+                     const PowerState& power, const BeltMap& belts,
+                     const CellSet& cranking) {
         constexpr float kEnergizedEmissive = 0.7f;
         const glm::ivec3 originBlock = chunkCoord * CHUNK_SIZE;
 
@@ -177,7 +178,12 @@ namespace ChunkMesher {
                         // whose glow flipped, so a machine losing power
                         // re-meshes for the glow regardless. FullCube is the
                         // inert shape: bank offset zero, every part slot 0.
-                        const ShapeId animShape = energized
+                        // A hand-cranked machine is never energized, so the
+                        // one whose handle someone is turning animates instead
+                        // -- a set that changes only when a crank panel opens
+                        // or closes, so it too costs a remesh per edge, never
+                        // per frame.
+                        const ShapeId animShape = energized || cranking.count(w) > 0
                             ? blockInfo(id).shape
                             : ShapeId::FullCube;
 

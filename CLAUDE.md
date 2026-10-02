@@ -646,6 +646,31 @@ Textures:
   rather than anything placed in bulk. Those figures are ~1.5x what this file
   used to say: the bake's size report had assumed a 9-float vertex since before
   shaped vertices carried an animation bank, and parts took it to 14.
+- **Parts can MOVE, and a hand can drive them** (Sep 2026, user request — the
+  Mortar's pestle). Three additions, all uniform-side, none a re-bake:
+  **Translation**: each slot also carries a `uniform vec3 uPartOff[32]`, added
+  after the pivot turn, and `PartMotion::Bob` is a plunge along `axis` that
+  rests at zero (`amount` in blocks) — a model at rest sits exactly where it was
+  authored. The 3x3 stays a 3x3; 96 more vertex uniform components, still well
+  inside GL 3.3's 1024. **Composition**: `kPartAnims` rows naming the SAME part
+  now share a slot (`kPartRowSlots`) and compose — turns multiply, moves add —
+  so the pestle Spins (a cone round the bowl, since it leans 22.5° from a pivot
+  at the bottom) and Bobs (down into the powder twice a turn) at once. Before,
+  a second row on a part would silently have won. **Cranked rows**
+  (`PartAnim::cranked`) take their phase from the player's hand, not the clock:
+  every good crank step adds a quarter turn to `m_crankTarget` and
+  `m_crankTurns` eases after it (`kCrankAnimEase`), so the part moves exactly as
+  far as the hand did and stops where it stops; a slipped grip moves nothing.
+  `rate` then means cycles per TURN. A static_assert keeps a part's rows all
+  cranked or all clock-driven.
+  **The gate for the hand-cranked tier**: none of it is ever a power node, so
+  the power gate parked those parts forever. `appendChunk` now also takes a
+  `cranking` set — the one hand-cranked machine whose panel is open
+  (`updateCrankAnim`) — and animates it despite no power. That set changes only
+  when a crank panel opens or closes, so it costs one chunk remesh per edge,
+  never per frame: the same bargain the power gate makes. Closing the panel
+  parks the part back at rest. Verified in game (a Mortar, eight presses: the
+  pestle sweeps the bowl and mashes, stays inside the walls).
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,

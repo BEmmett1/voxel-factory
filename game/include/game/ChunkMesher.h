@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Chunk;
@@ -43,13 +44,16 @@ class World;
 // reads back as bank 0, offset (0,0,0) and slot 0 -- every one of them inert.
 namespace ChunkMesher {
     using BeltMap = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
+    using CellSet = std::unordered_set<glm::ivec3, IVec3Hash>;
 
     // Append the visible faces of `chunk` (at chunkCoord): full cubes into
     // `out`, shaped blocks into `shapedOut`. Block reads stay inside the
     // chunk's array; only boundary occlusion tests look at (prefetched)
-    // neighbor chunks.
+    // neighbor chunks. `cranking` holds the hand-cranked machines being turned
+    // right now, which animate although no power reaches them.
     void appendChunk(std::vector<float>& out, std::vector<float>& shapedOut,
                      const World& world,
                      const Chunk& chunk, const glm::ivec3& chunkCoord,
-                     const PowerState& power, const BeltMap& belts);
+                     const PowerState& power, const BeltMap& belts,
+                     const CellSet& cranking);
 }

@@ -282,6 +282,10 @@ namespace vg {
     // is to RAISE this (fewer, weightier turns) rather than to cut
     // kManualSlowdown, which would flatten the gap the powered tier sells.
     inline constexpr float kCrankProgress = 3.0f;
+    // How quickly a cranked part (PartAnim::cranked) catches up with the turns
+    // the hand has made, per second. High enough that a steady rhythm reads as
+    // one continuous motion, low enough that a single tap still visibly eases.
+    inline constexpr float kCrankAnimEase = 10.0f;
     // The handle's rotation, clockwise from the top. One array, so changing the
     // gesture -- or making it per-machine later -- is a single edit. These are
     // the ARROWS deliberately: WASD stays with row navigation inside a panel,

@@ -116,6 +116,7 @@ void VoxelGame::onUpdate(float dt) {
         // Ritual motes and bursts on the same clock: a paused game freezes a
         // spark mid-air rather than letting it finish without you.
         updateRitualEffects(dt);
+        updateCrankAnim(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);

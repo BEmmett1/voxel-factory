@@ -114,6 +114,12 @@ namespace engine {
                            glm::value_ptr(m[0]));
     }
 
+    void Shader::setVec3Array(const char* name, const glm::vec3* v, int count) const {
+        static_assert(sizeof(glm::vec3) == 3 * sizeof(float),
+                      "glm::vec3 must be tightly packed for a uniform array upload");
+        glUniform3fv(glGetUniformLocation(m_program, name), count, glm::value_ptr(v[0]));
+    }
+
     void Shader::setVec3(const char* name, const glm::vec3& v) const {
         glUniform3fv(glGetUniformLocation(m_program, name), 1, glm::value_ptr(v));
     }

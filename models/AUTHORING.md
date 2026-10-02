@@ -128,6 +128,13 @@ never silently animate a different lump of it, and a typo'd part name is a
 `static_assert`. Nested groups do not yet inherit a parent's motion — the
 parent is baked but unread, so it can be added later with no re-bake.
 
+A part can turn (Spin, Rock), scale (Pulse) and **move** (Bob, a plunge along
+an axis), and several motions on one part combine, so rig for what it should
+DO: put the pivot where the thing would hinge or bear. A hand-cranked
+machine's `crank` group moves only while the player turns its handle, as far
+as the hand turned it, so rig it at rest in a sensible pose: that is how it
+sits whenever nobody is cranking.
+
 ## Saving and baking
 
 **13. File → Save Project** as `.bbmodel` into `models/`. Not the Export menu —

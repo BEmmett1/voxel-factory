@@ -362,15 +362,17 @@ void VoxelGame::remeshDirtyChunks() {
     // against empty sets (coordinates overlap numerically across dimensions).
     static const PowerState kNoPower;
     static const ChunkMesher::BeltMap kNoBelts;
+    static const ChunkMesher::CellSet kNoCells;
     const bool home = m_dimension == DimensionId::Overworld;
     const PowerState& power = home ? m_power : kNoPower;
     const ChunkMesher::BeltMap& belts = home ? m_belts : kNoBelts;
+    const ChunkMesher::CellSet& cranking = home ? m_cranking : kNoCells;
     for (const auto& [coord, chunk] : m_world->chunks()) {
         if (!chunk->dirty()) continue;
         m_meshScratch.clear();
         m_shapeScratch.clear();
         ChunkMesher::appendChunk(m_meshScratch, m_shapeScratch, *m_world, *chunk,
-                                 coord, power, belts);
+                                 coord, power, belts, cranking);
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
@@ -420,11 +422,19 @@ void VoxelGame::updateShapeAnim() {
 //
 // Driven by the pause-aware m_animClock, so parts freeze with the simulation
 // rather than spinning on over a paused game.
+//
+// Rows naming the same part share a slot (kPartRowSlots) and COMPOSE: turns
+// multiply, moves add, the move applied after the turn -- which is how the
+// mortar's pestle grinds round the bowl and presses down in one motion.
+// A cranked row reads the handle's turns instead of the clock.
 void VoxelGame::updatePartAnim() {
     m_partRot.assign(kMaxShapeParts, glm::mat3(1.0f));
+    m_partOff.assign(kMaxShapeParts, glm::vec3(0.0f));
     for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
         const PartAnim& a = kPartAnims[i];
-        const float phase = glm::two_pi<float>() * a.rate * m_animClock;
+        const float t = a.cranked ? m_crankTurns : m_animClock;
+        const float phase = glm::two_pi<float>() * a.rate * t;
+        const std::size_t slot = kPartRowSlots[i];
         glm::mat3 m(1.0f);
         switch (a.motion) {
         case PartMotion::Spin:
@@ -440,8 +450,41 @@ void VoxelGame::updatePartAnim() {
             // the lighting survives it untouched.
             m = glm::mat3(1.0f + a.amount * std::sin(phase));
             break;
+        case PartMotion::Bob:
+            // Rests at zero and reaches `amount` at the bottom of the stroke,
+            // so a part at rest sits exactly where it was modelled.
+            m_partOff[slot] += a.axis * (a.amount * 0.5f * (1.0f - std::cos(phase)));
+            break;
         }
-        m_partRot[i + 1] = m; // row i owns slot i + 1; slot 0 is identity
+        m_partRot[slot] = m * m_partRot[slot]; // slot 0 is identity
+    }
+}
+
+void VoxelGame::updateCrankAnim(float dt) {
+    // The machine being turned is the hand-cranked one whose panel is open.
+    std::unordered_set<glm::ivec3, IVec3Hash> want;
+    if (m_machineUiOpen && m_dimension == DimensionId::Overworld) {
+        const auto it = m_machines.find(m_machineUiPos);
+        if (it != m_machines.end() && machineTraits(it->second.type).handCranked) {
+            want.insert(m_machineUiPos);
+        }
+    }
+    // Remesh only on the EDGE: opening the panel wakes the parts, closing it
+    // parks them at rest. Nothing per frame.
+    if (want != m_cranking) {
+        for (const glm::ivec3& p : m_cranking) m_world->markDirtyAt(p.x, p.y, p.z);
+        for (const glm::ivec3& p : want) m_world->markDirtyAt(p.x, p.y, p.z);
+        m_cranking = std::move(want);
+    }
+    // Ease after the banked turns, so four taps read as one smooth revolution
+    // rather than four jumps.
+    const float k = std::min(1.0f, dt * kCrankAnimEase);
+    m_crankTurns += (m_crankTarget - m_crankTurns) * k;
+    // Whole turns are invisible to every cranked motion (their rates are whole
+    // cycles per turn), so shed them before a float this big loses its quarters.
+    if (m_crankTurns > 1024.0f) {
+        m_crankTurns -= 1024.0f;
+        m_crankTarget -= 1024.0f;
     }
 }
 
@@ -539,6 +582,7 @@ void VoxelGame::onRender() {
         // offset this array always holds at zero.
         m_shader.setFloatArray("uAnimV", m_shapeAnimV.data(), kMaxShapeBanks);
         m_shader.setMat3Array("uPartRot", m_partRot.data(), kMaxShapeParts);
+        m_shader.setVec3Array("uPartOff", m_partOff.data(), kMaxShapeParts);
         for (auto& [coord, mesh] : m_chunkShapeMeshes) {
             mesh.draw();
         }

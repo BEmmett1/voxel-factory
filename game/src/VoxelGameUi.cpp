@@ -972,7 +972,12 @@ void VoxelGame::updateMachineUi() {
             if (d != mac.crankStep) {
                 mac.crankStep = 0;
                 audio().play("deny", kUiVolume);
-            } else if (++mac.crankStep >= 4) {
+                break;
+            }
+            // Every good step turns the model's handle a quarter; a slipped
+            // grip does not, so the part moves exactly as far as the hand did.
+            m_crankTarget += 0.25f;
+            if (++mac.crankStep >= 4) {
                 mac.crankStep = 0;
                 mac.crankBanked += kCrankProgress;
                 audio().play("craft", kCraftVolume);

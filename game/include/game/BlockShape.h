@@ -125,6 +125,7 @@ enum class ShapeId : std::uint8_t {
     RichSoil,
     GraftedSapling,
     Sieve,
+    Mortar,
     Count
 };
 
@@ -316,6 +317,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsSieve,
      .anim = kShapeAnimSieve,
      .parts = kShapePartsSieve},
+    {.id = ShapeId::Mortar,
+     .quads = kShapeQuadsMortar,
+     .boxes = kShapeBoxesMortar,
+     .bounds = kShapeBoundsMortar,
+     .anim = kShapeAnimMortar,
+     .parts = kShapePartsMortar},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -347,9 +354,13 @@ inline const BlockShape& blockShape(BlockId id) {
 // slots. Slot 0 is identity and belongs to everything else.
 
 enum class PartMotion : std::uint8_t {
-    Spin,   // continuous rotation about `axis`; `rate` is turns per second
+    Spin,   // continuous rotation about `axis`; `rate` is turns per cycle unit
     Rock,   // sine sway about `axis`; `amount` is degrees either side
     Pulse,  // sine breathing; `amount` is the scale delta, `axis` unused
+    // A plunge along `axis` and back, resting at zero: `amount` is the depth in
+    // BLOCKS at the bottom of the stroke. The one motion that is a MOVE rather
+    // than a turn, which is why parts carry a translation beside their 3x3.
+    Bob,
 };
 
 struct PartAnim {
@@ -357,8 +368,15 @@ struct PartAnim {
     const char* part;    // a ShapePart name from the bake
     PartMotion  motion;
     glm::vec3   axis;
-    float       rate;    // Spin: turns/s. Rock, Pulse: cycles/s.
-    float       amount;  // Rock: degrees. Pulse: scale delta. Spin: unused.
+    // Cycles per second -- or, for a `cranked` row, cycles per TURN of the
+    // handle. Spin counts whole turns; the rest count one full back-and-forth.
+    float       rate;
+    float       amount;  // Rock: degrees. Pulse: scale delta. Bob: blocks. Spin: unused.
+    // Driven by the player's hand rather than the clock: the part moves only as
+    // the crank turns and stops where it stops. A cranked machine is never a
+    // power node, so the power gate would otherwise park these parts forever;
+    // the mesher animates the machine whose crank panel is open instead.
+    bool        cranked = false;
 };
 
 // Rates are chosen so rate * kAnimClockWrap is a whole number of cycles: the
@@ -375,6 +393,13 @@ inline constexpr PartAnim kPartAnims[] = {
     // carry scale rather than a rotation-only encoding.
     {ShapeId::ArcaneInfuser, "core", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 0.35f, 0.0f},
     {ShapeId::ArcaneInfuser, "emitter", PartMotion::Pulse, {0.0f, 1.0f, 0.0f}, 0.8f, 0.06f},
+    // The mortar's pestle grinds and mashes at once -- two rows on ONE part,
+    // which share a slot and compose. It leans 22.5 degrees from a pivot at the
+    // bottom of the bowl, so spinning it about the vertical sweeps the shaft
+    // round the bowl in a cone: one circuit per turn of the handle, pressing
+    // down into the powder twice on the way.
+    {ShapeId::Mortar, "crank", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, true},
+    {ShapeId::Mortar, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 2.0f, 1.0f / 16.0f, true},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -407,8 +432,41 @@ static_assert([] {
     return true;
 }(), "a baked shape has more parts than kMaxPartsPerShape");
 
-// (ShapeId, part) -> uPartRot slot, resolved once at compile time so the mesher
-// never does a string compare. Row i of kPartAnims owns slot i + 1.
+// kPartAnims row -> uPartRot/uPartOff slot. Rows naming the SAME part share a
+// slot, and the renderer composes them into it: that is how one part grinds and
+// mashes at once. Every distinct animated part gets the next slot up; slot 0 is
+// identity.
+inline constexpr auto kPartRowSlots = [] {
+    std::array<std::uint8_t, std::size(kPartAnims)> slots {};
+    std::uint8_t next = 1;
+    for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            if (kPartAnims[j].shape == kPartAnims[i].shape &&
+                std::string_view(kPartAnims[j].part) == std::string_view(kPartAnims[i].part)) {
+                slots[i] = slots[j];
+                break;
+            }
+        }
+        if (slots[i] == 0) slots[i] = next++;
+    }
+    return slots;
+}();
+
+// A part is either cranked or clock-driven, never both: its rows share one
+// transform, and half of it following the hand while the other half followed
+// the clock would come apart the moment the handle stopped.
+static_assert([] {
+    for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            if (kPartRowSlots[i] == kPartRowSlots[j] &&
+                kPartAnims[i].cranked != kPartAnims[j].cranked) return false;
+        }
+    }
+    return true;
+}(), "rows sharing a part must agree on `cranked`");
+
+// (ShapeId, part) -> slot, resolved once at compile time so the mesher never
+// does a string compare.
 inline constexpr auto kPartSlots = [] {
     std::array<std::array<std::uint8_t, kMaxPartsPerShape>,
                static_cast<std::size_t>(ShapeId::Count)> table {};
@@ -416,7 +474,7 @@ inline constexpr auto kPartSlots = [] {
         const std::size_t shape = static_cast<std::size_t>(kPartAnims[i].shape);
         const std::size_t part =
             static_cast<std::size_t>(partIndex(kPartAnims[i].shape, kPartAnims[i].part));
-        table[shape][part] = static_cast<std::uint8_t>(i + 1);
+        table[shape][part] = kPartRowSlots[i];
     }
     return table;
 }();
@@ -531,7 +589,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve",
+    "grafted_sapling", "sieve", "mortar",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
