@@ -591,9 +591,11 @@ Textures:
 - **Load-bearing assumption:** every query iterates the cells an AABB overlaps
   and tests only THAT cell's boxes, so shape geometry must stay inside its own
   cell. The bake enforces it with a hard error.
-- **Shaped blocks so far: `Cauldron`, `Alembic`, `Miner`, and `Infuser`.** They
-  no longer occlude or keep rain out, and you collide with the model rather than
-  the cell. Their atlas tiles stay for the item icon and the generated-atlas
+- **Every machine, source, soil and sapling is a shaped block** (the art pass
+  finished Oct 2026; `ART_PROGRESS.md` logs each one, and most were authored
+  in Python with `tools/modelkit` -- `tools/block_models/<block>.py` is how
+  each was made and how to remake it). They no longer occlude or keep rain
+  out, and you collide with the model rather than the cell. Their atlas tiles stay for the item icon and the generated-atlas
   fallback. Adding the next one is: bake, append a `ShapeId` row + a
   `kBlockShapes` row + a `kShapeNames` entry, then set `fullCube = false` and
   `shape` on the kBlocks row. If any of it should MOVE, author that piece as its
