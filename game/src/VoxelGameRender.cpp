@@ -548,12 +548,11 @@ void VoxelGame::onRender() {
     buildRainMesh();
     buildCargoMesh();
 
-    // Sky: fair-weather blue easing toward storm grey — or the arena's flat
+    // Sky: fair-weather dusk easing toward storm slate — or the arena's flat
     // void purple-black. Rain dimming applies at home only.
     const bool home = m_dimension == DimensionId::Overworld;
     const glm::vec3 sky = home
-        ? glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
-                   glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity)
+        ? glm::mix(kSkyClear, kSkyStorm, m_weather.intensity)
         : (m_arenaStorm ? glm::vec3(0.16f, 0.17f, 0.26f)   // storm-lashed slate
                         : glm::vec3(0.09f, 0.05f, 0.14f)); // dead void purple
     const float rainDim = home ? m_weather.intensity * kRainDimMax

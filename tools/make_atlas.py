@@ -1373,6 +1373,15 @@ def write_png(path, w, h, rgba):
 
 
 def main():
+    # Since the PixelLab art pass (Oct 2026, see ART_PROGRESS.md) the committed
+    # atlas.png is the SOURCE, not this script's output: rerunning it would
+    # silently replace generated, hand-tuned tiles with the programmatic
+    # starters. It still works -- to start a fresh sheet, or to lift a single
+    # starter tile -- but only when asked for by name.
+    import sys
+    if "--overwrite-art" not in sys.argv:
+        sys.exit("refusing to overwrite game/assets/atlas.png: it holds the PixelLab "
+                 "art now. Pass --overwrite-art if you really mean to replace it.")
     terrain()
     machines()
     nodes_and_sources()

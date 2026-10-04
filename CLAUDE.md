@@ -497,9 +497,13 @@ Textures:
   `Atlas::tilesForBlock()` (`{top, side, bottom}` — grass tops, log rings, machine
   lids); the mesher picks per face. Material items own icon tiles (`ItemInfo::
   atlasTile`); placeables borrow their block's side tile (`iconTile()`). Repaint the
-  PNG in any pixel editor and rebuild (an always-run CMake target copies assets), or
-  regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
-  overwrites hand edits!). A SECOND sheet, `assets/shapes.png`, carries the 3D
+  PNG in any pixel editor and rebuild (an always-run CMake target copies assets).
+  **Since Oct 2026 the committed atlas.png is the SOURCE**: the PixelLab art pass
+  (moodier, alchemical; see `ART_PROGRESS.md`) writes generated tiles into it, so
+  `python tools/make_atlas.py` (pure stdlib, the programmatic starter set) now
+  refuses to run without `--overwrite-art` rather than silently replacing them.
+  The Overworld sky is dusk to match (`kSkyClear`/`kSkyStorm` in
+  VoxelGameInternal.h). A SECOND sheet, `assets/shapes.png`, carries the 3D
   detailed blocks' textures as arbitrary regions rather than 16px tiles — it is
   generated, never hand-painted (see below).
 - The sheet grew 8 → 16 rows for the recipe overhaul. Because a tile index is

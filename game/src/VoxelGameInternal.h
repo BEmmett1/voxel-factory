@@ -32,6 +32,13 @@ namespace vg {
     // Sun direction, shared by the chunk and entity passes.
     inline const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
+    // The Overworld sky (the clear colour), eased between by rain intensity.
+    // Dusk, not noon: the moodier, alchemical art direction (Oct 2026) needs
+    // a sky that agrees with it -- a dusky world under a bright blue sky reads
+    // as a texture swap, not a mood. The arena keeps its own colours.
+    inline const glm::vec3 kSkyClear{0.24f, 0.34f, 0.40f}; // twilight teal
+    inline const glm::vec3 kSkyStorm{0.20f, 0.21f, 0.27f}; // bruised slate
+
     // ---- Player physics: the feel knobs. Tune freely. ----
     inline constexpr float kWalkSpeed    = 4.5f;   // blocks per second
     inline constexpr float kSprintMult   = 1.6f;   // LCtrl multiplier
