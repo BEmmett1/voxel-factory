@@ -854,7 +854,8 @@ Save the project as anvil.bbmodel
 
 ### Blowpipe
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `blowpipe.bbmodel`,
+from `tools/block_models/blowpipe.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

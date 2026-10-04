@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 18 of 42 done, 24 to go
+## Block models: 19 of 42 done, 23 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -86,7 +86,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 1 | Mortar | hand-cranked | 14 | **done**: 12 elements, 63 quads, 20.7 KB |
 | 2 | Hand Press | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 3 | Anvil | hand-cranked | 14 | **done**: 9 elements, 47 quads, 15.4 KB |
-| 4 | Blowpipe | hand-cranked | 14 | not started |
+| 4 | Blowpipe | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 5 | Tamper | hand-cranked | 14 | not started |
 | 6 | Compost Heap | hand-cranked | 14 | not started |
 | 7 | Mixing Bowl | hand-cranked | 14 | not started |
@@ -231,3 +231,9 @@ view").
   machines want a moving part. Raising it costs real vertex uniforms (a mat3
   is three vec4), so the likely fix is packing `uAnimV` into a vec4 array to
   free room first.
+- **2026-10-04. Blowpipe done.** A trestle bench, a stone bowl of embers
+  (painted, not modelled), a brass pipe on two iron rests with a molten
+  amber gather over the coals, and oxblood-leather bellows whose lid and
+  handle are the `crank`, hinged at the back: one pump per turn. No new
+  PixelLab material: leather and hot glass are recolours of the wood and
+  glass swatches.
