@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 33 of 42 done, 9 to go
+## Block models: 34 of 42 done, 8 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -101,7 +101,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 16 | Press | powered | 28 | **done**: 10 elements, 47 quads, 15.4 KB |
 | 17 | Forge | powered | 32 | **done**: 19 elements, 87 quads, 28.5 KB |
 | 18 | Sifter | powered | 28 | **done**: 10 elements, 55 quads, 18.0 KB |
-| 19 | Glassblower | powered | 28 | not started |
+| 19 | Glassblower | powered | 28 | **done**: 14 elements, 78 quads, 25.6 KB |
 | 20 | Compactor | powered | 28 | not started |
 | 21 | Composter | powered | 28 | not started |
 | 22 | Distiller | powered | 32 | not started |
@@ -319,3 +319,9 @@ view").
   hopper heaped with sand, a pan of sand and nuggets below, and the `tray`
   -- a wooden frame with an iron mesh painted over sand -- shaking three
   times a second along X while powered, stopping short of the posts.
+- **2026-10-04. Glassblower done.** A round firebrick furnace (two crossed
+  boxes and a dome) with a glowing port decal on the front -- at 6x8 texels
+  a circle is a rounded square, so its rim was tightened until the glow read
+  -- an iron post at the back carrying the `arm` (beam, brass blowpipe,
+  molten gather), which swings 12 degrees either way every four seconds
+  while powered, and a cooling rack of vials on the west side.

@@ -1645,7 +1645,8 @@ Save the project as sifter.bbmodel
 
 ### Glassblower
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `glassblower.bbmodel`,
+from `tools/block_models/glassblower.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
