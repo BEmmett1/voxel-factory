@@ -527,22 +527,54 @@ static_assert([] {
 
 // kPartAnims row -> uPartRot/uPartOff slot. Rows naming the SAME part share a
 // slot, and the renderer composes them into it: that is how one part grinds and
-// mashes at once. Every distinct animated part gets the next slot up; slot 0 is
-// identity.
+// mashes at once. Slot 0 is identity.
+//
+// Clock-driven parts get a slot each, from 1 up. CRANKED parts do not: only one
+// hand-cranked machine ever moves at a time -- the one whose panel is open; every
+// other is meshed with slot 0 -- so all of them share one block of slots after
+// the clock parts, a shape's first cranked part in the first, its second in the
+// next. The renderer fills that block from the shape being turned and nothing
+// else. Before this every crank handle held a slot of its own for the one moment
+// in a session it might be used, and the hand-cranked tier alone spent eleven of
+// the shader's 32 (Oct 2026, the art pass).
 inline constexpr auto kPartRowSlots = [] {
     std::array<std::uint8_t, std::size(kPartAnims)> slots {};
+    auto samePart = [](std::size_t i, std::size_t j) {
+        return kPartAnims[j].shape == kPartAnims[i].shape &&
+               std::string_view(kPartAnims[j].part) == std::string_view(kPartAnims[i].part);
+    };
     std::uint8_t next = 1;
     for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        if (kPartAnims[i].cranked) continue;
         for (std::size_t j = 0; j < i; ++j) {
-            if (kPartAnims[j].shape == kPartAnims[i].shape &&
-                std::string_view(kPartAnims[j].part) == std::string_view(kPartAnims[i].part)) {
-                slots[i] = slots[j];
-                break;
-            }
+            if (samePart(i, j)) { slots[i] = slots[j]; break; }
         }
         if (slots[i] == 0) slots[i] = next++;
     }
+    const std::uint8_t crankBase = next;
+    for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
+        if (!kPartAnims[i].cranked) continue;
+        std::uint8_t local = 0; // distinct cranked parts of this shape before row i
+        bool shared = false;
+        for (std::size_t j = 0; j < i; ++j) {
+            if (!kPartAnims[j].cranked || kPartAnims[j].shape != kPartAnims[i].shape) continue;
+            if (samePart(i, j)) { slots[i] = slots[j]; shared = true; break; }
+            bool firstOfItsPart = true;
+            for (std::size_t k = 0; k < j; ++k) {
+                if (samePart(j, k)) { firstOfItsPart = false; break; }
+            }
+            if (firstOfItsPart) ++local;
+        }
+        if (!shared) slots[i] = static_cast<std::uint8_t>(crankBase + local);
+    }
     return slots;
+}();
+
+// How many uPartRot/uPartOff slots the table above uses, identity included.
+inline constexpr int kPartSlotCount = [] {
+    int top = 0;
+    for (std::uint8_t s : kPartRowSlots) top = s > top ? s : top;
+    return top + 1;
 }();
 
 // A part is either cranked or clock-driven, never both: its rows share one
@@ -551,7 +583,10 @@ inline constexpr auto kPartRowSlots = [] {
 static_assert([] {
     for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
         for (std::size_t j = 0; j < i; ++j) {
-            if (kPartRowSlots[i] == kPartRowSlots[j] &&
+            // By NAME, not slot: cranked and clock parts are numbered apart, so
+            // a part split between the two would never share a slot to compare.
+            if (kPartAnims[j].shape == kPartAnims[i].shape &&
+                std::string_view(kPartAnims[j].part) == std::string_view(kPartAnims[i].part) &&
                 kPartAnims[i].cranked != kPartAnims[j].cranked) return false;
         }
     }

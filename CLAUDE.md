@@ -687,6 +687,14 @@ Textures:
   never per frame: the same bargain the power gate makes. Closing the panel
   parks the part back at rest. Verified in game (a Mortar, eight presses: the
   pestle sweeps the bowl and mashes, stays inside the walls).
+  **Cranked parts share their uniform slots** (Oct 2026). Since only that one
+  machine moves, `kPartRowSlots` gives clock-driven parts a slot each and puts
+  every cranked part in one shared block after them (a shape's first cranked
+  part in the first, its second in the next); `updatePartAnim` fills the block
+  from `m_crankShape` alone. Eleven hand-cranked models cost one slot, not
+  eleven. The `static_assert` against `kMaxShapeParts` checks `kPartSlotCount`
+  -- it used to count kPartAnims ROWS, which was the ceiling that would
+  actually have bitten first.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,

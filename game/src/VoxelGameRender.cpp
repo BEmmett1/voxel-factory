@@ -35,8 +35,9 @@ static_assert(static_cast<int>(ShapeId::Count) <= kMaxShapeBanks,
 
 // Same shape of hazard for uPartRot[]: the shader indexes it by the slot baked
 // into the vertex, so one animated part too many would read off the end of a
-// uniform array. Slot 0 is identity, hence the + 1.
-static_assert(static_cast<int>(std::size(kPartAnims)) + 1 <= kMaxShapeParts,
+// uniform array. kPartSlotCount includes slot 0 (identity) and the one block
+// every cranked part shares.
+static_assert(kPartSlotCount <= kMaxShapeParts,
               "uPartRot[] in voxel.vert needs a slot per animated part — "
               "raise vg::kMaxShapeParts and the array size in the shader");
 
@@ -434,6 +435,9 @@ void VoxelGame::updatePartAnim() {
     m_partOff.assign(kMaxShapeParts, glm::vec3(0.0f));
     for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
         const PartAnim& a = kPartAnims[i];
+        // Every cranked shape shares one block of slots (kPartRowSlots); only
+        // the shape being turned may write it, or they would compose together.
+        if (a.cranked && static_cast<int>(a.shape) != m_crankShape) continue;
         const float t = a.cranked ? m_crankTurns : m_animClock;
         const float phase = glm::two_pi<float>() * a.rate * t;
         const std::size_t slot = kPartRowSlots[i];
@@ -471,6 +475,10 @@ void VoxelGame::updateCrankAnim(float dt) {
             want.insert(m_machineUiPos);
         }
     }
+    // Which shape owns the shared cranked slots this frame (updatePartAnim).
+    m_crankShape = want.empty() ? -1
+        : static_cast<int>(blockInfo(m_world->getBlock(m_machineUiPos.x, m_machineUiPos.y,
+                                                       m_machineUiPos.z)).shape);
     // Remesh only on the EDGE: opening the panel wakes the parts, closing it
     // parks them at rest. Nothing per frame.
     if (want != m_cranking) {

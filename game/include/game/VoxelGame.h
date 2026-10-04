@@ -200,6 +200,10 @@ private:
     // the handle adds a quarter turn to m_crankTarget, and m_crankTurns eases
     // after it. m_cranking is the set the mesher animates in spite of no power.
     std::unordered_set<glm::ivec3, IVec3Hash> m_cranking;
+    // The ShapeId of that machine, as an int (-1 when none; ShapeId is only
+    // forward-declared here): the one shape allowed to fill the uniform slots
+    // every cranked part shares.
+    int m_crankShape = -1;
     float m_crankTurns = 0.0f;
     float m_crankTarget = 0.0f;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame

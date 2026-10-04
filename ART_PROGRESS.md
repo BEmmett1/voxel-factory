@@ -226,11 +226,8 @@ view").
   brighter worked face) on a log stump, the hammer in `crank`: authored
   lifted 22.5 degrees so the Rock sway spans resting-on-the-face to lifted,
   two blows per turn. 9 elements, no new material. It was the 33rd shape, one
-  past the shader's `uAnimV[32]`, so `kMaxShapeBanks` went to 64. **Watch the
-  part slots next:** 19 of `kMaxShapeParts`' 32 are taken and most remaining
-  machines want a moving part. Raising it costs real vertex uniforms (a mat3
-  is three vec4), so the likely fix is packing `uAnimV` into a vec4 array to
-  free room first.
+  past the shader's `uAnimV[32]`, so `kMaxShapeBanks` went to 64. (The part-slot worry this entry used to raise was a miscount -- see the
+  2026-10-04 slot entry below.)
 - **2026-10-04. Blowpipe done.** A trestle bench, a stone bowl of embers
   (painted, not modelled), a brass pipe on two iron rests with a molten
   amber gather over the coals, and oxblood-leather bellows whose lid and
@@ -274,3 +271,11 @@ view").
   wheel on the front as the `crank`. In-game checks for these three showed
   the models and the craft bar filling but not the wheels, which face -Z,
   away from the test camera; their turning is checked in the preview.
+- **2026-10-04. Cranked parts share their uniform slots.** The real ceiling
+  on moving parts was the static_assert in VoxelGameRender.cpp, which counted
+  kPartAnims ROWS (18 after the hand-cranked tier, so about a dozen more
+  motions to go). Only one hand-cranked machine ever moves at a time, so every
+  cranked part now shares one block of slots after the clock-driven ones and
+  the renderer fills it from the shape being turned: 6 of the 32 slots are in
+  use, and the assert checks real slots. The powered machines' clock-driven
+  parts have room to spare.
