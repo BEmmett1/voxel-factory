@@ -73,57 +73,57 @@ namespace {
          .name = "Philosopher's Stone", .atlasTile = 89},
         // Placeables (each places a block).
         {.id = I::Conduit, .key = "core:conduit",
-         .name = "Conduit", .placeable = true, .placesBlock = B::Belt},
+         .name = "Conduit", .atlasTile = 208, .placeable = true, .placesBlock = B::Belt},
         {.id = I::WireItem, .key = "core:wire_item",
-         .name = "Wire", .placeable = true, .placesBlock = B::Wire},
+         .name = "Wire", .atlasTile = 209, .placeable = true, .placesBlock = B::Wire},
         {.id = I::GeneratorItem, .key = "core:generator_item",
-         .name = "Generator", .placeable = true, .placesBlock = B::Generator},
+         .name = "Generator", .atlasTile = 210, .placeable = true, .placesBlock = B::Generator},
         {.id = I::GrinderItem, .key = "core:grinder_item",
-         .name = "Grinder", .placeable = true, .placesBlock = B::Grinder},
+         .name = "Grinder", .atlasTile = 211, .placeable = true, .placesBlock = B::Grinder},
         {.id = I::CauldronItem, .key = "core:cauldron_item",
-         .name = "Cauldron", .placeable = true, .placesBlock = B::Cauldron},
+         .name = "Cauldron", .atlasTile = 212, .placeable = true, .placesBlock = B::Cauldron},
         {.id = I::InfuserItem, .key = "core:infuser_item",
-         .name = "Infuser", .placeable = true, .placesBlock = B::Infuser},
+         .name = "Infuser", .atlasTile = 213, .placeable = true, .placesBlock = B::Infuser},
         {.id = I::AlembicItem, .key = "core:alembic_item",
-         .name = "Alembic", .placeable = true, .placesBlock = B::Alembic},
+         .name = "Alembic", .atlasTile = 214, .placeable = true, .placesBlock = B::Alembic},
         {.id = I::DistillerItem, .key = "core:distiller_item",
-         .name = "Distiller", .placeable = true, .placesBlock = B::Distiller},
+         .name = "Distiller", .atlasTile = 215, .placeable = true, .placesBlock = B::Distiller},
         {.id = I::TransmuterItem, .key = "core:transmuter_item",
-         .name = "Transmuter", .placeable = true, .placesBlock = B::Transmuter},
+         .name = "Transmuter", .atlasTile = 216, .placeable = true, .placesBlock = B::Transmuter},
         {.id = I::MinerItem, .key = "core:miner_item",
-         .name = "Miner", .placeable = true, .placesBlock = B::Miner},
+         .name = "Miner", .atlasTile = 217, .placeable = true, .placesBlock = B::Miner},
         // Placeable resource sources (relocatable / end-game craftable).
         {.id = I::HerbSourceItem, .key = "core:herb_source_item",
-         .name = "Herb Source", .placeable = true, .placesBlock = B::SourceHerb},
+         .name = "Herb Source", .atlasTile = 218, .placeable = true, .placesBlock = B::SourceHerb},
         {.id = I::CrystalSourceItem, .key = "core:crystal_source_item",
-         .name = "Crystal Source", .placeable = true, .placesBlock = B::SourceCrystal},
+         .name = "Crystal Source", .atlasTile = 219, .placeable = true, .placesBlock = B::SourceCrystal},
         {.id = I::CopperSourceItem, .key = "core:copper_source_item",
-         .name = "Copper Source", .placeable = true, .placesBlock = B::SourceCopper},
+         .name = "Copper Source", .atlasTile = 220, .placeable = true, .placesBlock = B::SourceCopper},
         {.id = I::SandSourceItem, .key = "core:sand_source_item",
-         .name = "Sand Source", .placeable = true, .placesBlock = B::SourceSand},
+         .name = "Sand Source", .atlasTile = 221, .placeable = true, .placesBlock = B::SourceSand},
         {.id = I::EssenceSourceItem, .key = "core:essence_source_item",
-         .name = "Essence Source", .placeable = true, .placesBlock = B::SourceEssence},
+         .name = "Essence Source", .atlasTile = 222, .placeable = true, .placesBlock = B::SourceEssence},
         // Tools.
         {.id = I::Wrench, .key = "core:wrench",
          .name = "Wrench", .atlasTile = 78},
         // Collected terrain (placeable back; conserves the island's material).
         {.id = I::DirtItem, .key = "core:dirt_item",
-         .name = "Dirt", .placeable = true, .placesBlock = B::Dirt},
+         .name = "Dirt", .atlasTile = 223, .placeable = true, .placesBlock = B::Dirt},
         {.id = I::GrassItem, .key = "core:grass_item",
-         .name = "Grass", .placeable = true, .placesBlock = B::Grass},
+         .name = "Grass", .atlasTile = 224, .placeable = true, .placesBlock = B::Grass},
         // Structural.
         {.id = I::ScaffoldItem, .key = "core:scaffold_item",
-         .name = "Scaffold", .placeable = true, .placesBlock = B::Scaffold},
+         .name = "Scaffold", .atlasTile = 225, .placeable = true, .placesBlock = B::Scaffold},
         // Forestry (wood is the raw; saplings replant).
         {.id = I::Wood, .key = "core:wood",
          .name = "Wood", .atlasTile = 76},
         {.id = I::SaplingItem, .key = "core:sapling_item",
-         .name = "Sapling", .placeable = true, .placesBlock = B::Sapling},
+         .name = "Sapling", .atlasTile = 226, .placeable = true, .placesBlock = B::Sapling},
         {.id = I::Bucket, .key = "core:bucket",
          .name = "Bucket", .atlasTile = 77},
         // Rain collection (rain is the only water).
         {.id = I::RainBarrelItem, .key = "core:rain_barrel_item",
-         .name = "Rain Barrel", .placeable = true, .placesBlock = B::RainBarrel},
+         .name = "Rain Barrel", .atlasTile = 227, .placeable = true, .placesBlock = B::RainBarrel},
         // Combat.
         {.id = I::CopperSword, .key = "core:copper_sword",
          .name = "Copper Sword", .atlasTile = 79,
@@ -143,7 +143,7 @@ namespace {
         {.id = I::Resonance, .key = "core:resonance",
          .name = "Resonance", .atlasTile = 94, .nodeBlock = B::ResonantNode},
         {.id = I::ResonantSourceItem, .key = "core:resonant_source_item",
-         .name = "Resonant Source", .placeable = true, .placesBlock = B::ResonantSource},
+         .name = "Resonant Source", .atlasTile = 228, .placeable = true, .placesBlock = B::ResonantSource},
         {.id = I::FusionCatalyst, .key = "core:fusion_catalyst",
          .name = "Fusion Catalyst", .atlasTile = 95},
         // Mining tools. `tool` is the block class they break; `toolTier` gates
@@ -180,7 +180,7 @@ namespace {
          .tool = ToolType::Shovel, .toolTier = kTierStone, .miningSpeed = 6.0f},
         // The Composter machine (renewable dirt).
         {.id = I::ComposterItem, .key = "core:composter_item",
-         .name = "Composter", .placeable = true, .placesBlock = B::Composter},
+         .name = "Composter", .atlasTile = 229, .placeable = true, .placesBlock = B::Composter},
         // Combat armor. `armorSlot` picks the equip slot; `armor` is the flat
         // combat damage reduction (fraction). Icons live in atlas tiles 106+
         // (see assets/ATLAS.md). The Copper set totals 0.30; the boss-gated
@@ -205,7 +205,7 @@ namespace {
          .armorSlot = ArmorSlot::Feet, .armor = 0.10f},
         // The Forge machine (block-crafts weapons/armor).
         {.id = I::ForgeItem, .key = "core:forge_item",
-         .name = "Forge", .placeable = true, .placesBlock = B::Forge},
+         .name = "Forge", .atlasTile = 230, .placeable = true, .placesBlock = B::Forge},
         // The shared parts tier, all Press-made: rods draw from ingots, gears
         // from rods, casings from plates, etched plates from plates + crystal
         // dust. The three converge into the Machine Frame. Icons at 112+.
@@ -219,14 +219,14 @@ namespace {
          .name = "Etched Plate", .atlasTile = 115},
         // The Press machine (forms the parts tier + assembles the frame).
         {.id = I::PressItem, .key = "core:press_item",
-         .name = "Press", .placeable = true, .placesBlock = B::Press},
+         .name = "Press", .atlasTile = 231, .placeable = true, .placesBlock = B::Press},
         // The Alchemy Circle multiblock (placeables borrow their block's side
         // tile for the icon, so these need no atlasTile of their own).
         {.id = I::RuneCoreItem, .key = "core:rune_core_item",
-         .name = "Rune Core", .placeable = true,
+         .name = "Rune Core", .atlasTile = 232, .placeable = true,
          .placesBlock = B::RuneCore},
         {.id = I::PedestalItem, .key = "core:pedestal_item",
-         .name = "Pedestal", .placeable = true,
+         .name = "Pedestal", .atlasTile = 233, .placeable = true,
          .placesBlock = B::Pedestal},
         // ---- The recipe overhaul ----------------------------------------
         // Charcoal: the Furnace's own product and the best fuel in kFuelSeed, so
@@ -271,52 +271,52 @@ namespace {
         // The four new powered machines (placeables borrow their block's side
         // tile for the icon, so none of these need an atlasTile).
         {.id = I::FurnaceItem, .key = "core:furnace_item",
-         .name = "Furnace", .placeable = true, .placesBlock = B::Furnace},
+         .name = "Furnace", .atlasTile = 234, .placeable = true, .placesBlock = B::Furnace},
         {.id = I::SifterItem, .key = "core:sifter_item",
-         .name = "Sifter", .placeable = true, .placesBlock = B::Sifter},
+         .name = "Sifter", .atlasTile = 235, .placeable = true, .placesBlock = B::Sifter},
         {.id = I::GlassblowerItem, .key = "core:glassblower_item",
-         .name = "Glassblower", .placeable = true,
+         .name = "Glassblower", .atlasTile = 236, .placeable = true,
          .placesBlock = B::Glassblower},
         {.id = I::CompactorItem, .key = "core:compactor_item",
-         .name = "Compactor", .placeable = true,
+         .name = "Compactor", .atlasTile = 237, .placeable = true,
          .placesBlock = B::Compactor},
         // The manual tier: one hand-cranked twin per Processor. Each runs its
         // powered counterpart's recipes (MachineTraits::recipeGroup) at
         // MachineTraits::speedMult, and asks for no power at all.
         {.id = I::BloomeryItem, .key = "core:bloomery_item",
-         .name = "Bloomery", .placeable = true, .placesBlock = B::Bloomery},
+         .name = "Bloomery", .atlasTile = 238, .placeable = true, .placesBlock = B::Bloomery},
         {.id = I::SieveItem, .key = "core:sieve_item",
-         .name = "Sieve", .placeable = true, .placesBlock = B::Sieve},
+         .name = "Sieve", .atlasTile = 239, .placeable = true, .placesBlock = B::Sieve},
         {.id = I::BlowpipeItem, .key = "core:blowpipe_item",
-         .name = "Blowpipe", .placeable = true, .placesBlock = B::Blowpipe},
+         .name = "Blowpipe", .atlasTile = 240, .placeable = true, .placesBlock = B::Blowpipe},
         {.id = I::TamperItem, .key = "core:tamper_item",
-         .name = "Tamper", .placeable = true, .placesBlock = B::Tamper},
+         .name = "Tamper", .atlasTile = 241, .placeable = true, .placesBlock = B::Tamper},
         {.id = I::MortarItem, .key = "core:mortar_item",
-         .name = "Mortar", .placeable = true, .placesBlock = B::Mortar},
+         .name = "Mortar", .atlasTile = 242, .placeable = true, .placesBlock = B::Mortar},
         {.id = I::HandPressItem, .key = "core:hand_press_item",
-         .name = "Hand Press", .placeable = true,
+         .name = "Hand Press", .atlasTile = 243, .placeable = true,
          .placesBlock = B::HandPress},
         {.id = I::AnvilItem, .key = "core:anvil_item",
-         .name = "Anvil", .placeable = true, .placesBlock = B::Anvil},
+         .name = "Anvil", .atlasTile = 244, .placeable = true, .placesBlock = B::Anvil},
         {.id = I::CompostHeapItem, .key = "core:compost_heap_item",
-         .name = "Compost Heap", .placeable = true,
+         .name = "Compost Heap", .atlasTile = 245, .placeable = true,
          .placesBlock = B::CompostHeap},
         {.id = I::MixingBowlItem, .key = "core:mixing_bowl_item",
-         .name = "Mixing Bowl", .placeable = true,
+         .name = "Mixing Bowl", .atlasTile = 246, .placeable = true,
          .placesBlock = B::MixingBowl},
         {.id = I::InfusionStandItem, .key = "core:infusion_stand_item",
-         .name = "Infusion Stand", .placeable = true,
+         .name = "Infusion Stand", .atlasTile = 247, .placeable = true,
          .placesBlock = B::InfusionStand},
         {.id = I::StillItem, .key = "core:still_item",
-         .name = "Still", .placeable = true, .placesBlock = B::Still},
+         .name = "Still", .atlasTile = 248, .placeable = true, .placesBlock = B::Still},
         {.id = I::HandDistillerItem, .key = "core:hand_distiller_item",
-         .name = "Hand Distiller", .placeable = true,
+         .name = "Hand Distiller", .atlasTile = 249, .placeable = true,
          .placesBlock = B::HandDistiller},
         {.id = I::HandTransmuterItem, .key = "core:hand_transmuter_item",
-         .name = "Hand Transmuter", .placeable = true,
+         .name = "Hand Transmuter", .atlasTile = 250, .placeable = true,
          .placesBlock = B::HandTransmuter},
         {.id = I::StorageCrateItem, .key = "core:storage_crate_item",
-         .name = "Storage Crate", .placeable = true,
+         .name = "Storage Crate", .atlasTile = 251, .placeable = true,
          .placesBlock = B::StorageCrate},
         // ---- Farming ------------------------------------------------------
         // No ToolType and no miningSpeed: the hoe is a hotbar tool like the
@@ -328,11 +328,11 @@ namespace {
         // rather than an atlasTile of its own -- which is why tile 11 is
         // painted as loose seeds and not as a tiny plant.
         {.id = I::HerbSeed, .key = "core:herb_seed",
-         .name = "Herb Seed", .placeable = true, .placesBlock = B::HerbCrop0},
+         .name = "Herb Seed", .atlasTile = 252, .placeable = true, .placesBlock = B::HerbCrop0},
         {.id = I::HarvesterItem, .key = "core:harvester_item",
-         .name = "Harvester", .placeable = true, .placesBlock = B::Harvester},
+         .name = "Harvester", .atlasTile = 253, .placeable = true, .placesBlock = B::Harvester},
         {.id = I::IrrigatorItem, .key = "core:irrigator_item",
-         .name = "Irrigator", .placeable = true, .placesBlock = B::Irrigator},
+         .name = "Irrigator", .atlasTile = 254, .placeable = true, .placesBlock = B::Irrigator},
         // ---- The primitive tier ---------------------------------------
         // Fiber and Pebble are the two things bare hands get out of the
         // ground, and unlike every other raw they are not a block's `drop`
@@ -355,7 +355,7 @@ namespace {
         // Placeable, so iconTile() borrows the block's side tile -- the
         // HerbSeed precedent.
         {.id = I::GraftedSaplingItem, .key = "core:grafted_sapling_item",
-         .name = "Grafted Sapling", .placeable = true,
+         .name = "Grafted Sapling", .atlasTile = 255, .placeable = true,
          .placesBlock = B::SaplingGrafted},
     };
 
@@ -417,6 +417,12 @@ ItemId addItem(const ItemInfo& row) {
 
 int iconTile(ItemId id) {
     const ItemInfo& info = itemInfo(id);
+    // An item's OWN icon tile wins, placeable or not: a Mortar in your pack
+    // should look like a mortar, not like the flat side of the block it
+    // places -- and for every block with a 3D model, that side tile is a
+    // texture nobody sees in the world any more. A placeable without one
+    // still borrows its block's side, so nothing has to have an icon.
+    if (info.atlasTile >= 0) return info.atlasTile;
     if (info.placeable) {
         return Atlas::tilesForBlock(info.placesBlock).side;
     }
