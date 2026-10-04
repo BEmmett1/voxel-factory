@@ -129,6 +129,7 @@ enum class ShapeId : std::uint8_t {
     HandPress,
     Anvil,
     Blowpipe,
+    Tamper,
     Count
 };
 
@@ -344,6 +345,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsBlowpipe,
      .anim = kShapeAnimBlowpipe,
      .parts = kShapePartsBlowpipe},
+    {.id = ShapeId::Tamper,
+     .quads = kShapeQuadsTamper,
+     .boxes = kShapeBoxesTamper,
+     .bounds = kShapeBoundsTamper,
+     .anim = kShapeAnimTamper,
+     .parts = kShapePartsTamper},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -429,6 +436,8 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::Anvil, "crank", PartMotion::Rock, {1.0f, 0.0f, 0.0f}, 2.0f, 22.5f, true},
     // The blowpipe's bellows pump once per turn, hinged at their back edge.
     {ShapeId::Blowpipe, "crank", PartMotion::Rock, {1.0f, 0.0f, 0.0f}, 1.0f, 10.0f, true},
+    // The tamper's rammer drops onto the mould twice per turn.
+    {ShapeId::Tamper, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 2.0f, 2.0f / 16.0f, true},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -618,7 +627,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

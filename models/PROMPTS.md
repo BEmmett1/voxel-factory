@@ -907,7 +907,8 @@ Save the project as blowpipe.bbmodel
 
 ### Tamper
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `tamper.bbmodel`,
+from `tools/block_models/tamper.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

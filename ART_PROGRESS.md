@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 19 of 42 done, 23 to go
+## Block models: 20 of 42 done, 22 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -87,7 +87,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 2 | Hand Press | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 3 | Anvil | hand-cranked | 14 | **done**: 9 elements, 47 quads, 15.4 KB |
 | 4 | Blowpipe | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
-| 5 | Tamper | hand-cranked | 14 | not started |
+| 5 | Tamper | hand-cranked | 14 | **done**: 8 elements, 43 quads, 14.1 KB |
 | 6 | Compost Heap | hand-cranked | 14 | not started |
 | 7 | Mixing Bowl | hand-cranked | 14 | not started |
 | 8 | Infusion Stand | hand-cranked | 14 | not started |
@@ -237,3 +237,8 @@ view").
   handle are the `crank`, hinged at the back: one pump per turn. No new
   PixelLab material: leather and hot glass are recolours of the wood and
   glass swatches.
+- **2026-10-04. Tamper done.** A stone base plate, a wooden mould with
+  packed earth on its face, two guide posts and a crossbar, and the rammer
+  (iron weight, shaft, T-handle) as the `crank`, authored lifted so Bob
+  drops it onto the mould twice per turn. Terrain atlas tiles and existing
+  swatches only.
