@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 32 of 42 done, 10 to go
+## Block models: 33 of 42 done, 9 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -100,7 +100,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 15 | Grinder | powered | 28 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 16 | Press | powered | 28 | **done**: 10 elements, 47 quads, 15.4 KB |
 | 17 | Forge | powered | 32 | **done**: 19 elements, 87 quads, 28.5 KB |
-| 18 | Sifter | powered | 28 | not started |
+| 18 | Sifter | powered | 28 | **done**: 10 elements, 55 quads, 18.0 KB |
 | 19 | Glassblower | powered | 28 | not started |
 | 20 | Compactor | powered | 28 | not started |
 | 21 | Composter | powered | 28 | not started |
@@ -315,3 +315,7 @@ view").
   it pulses rather than crawls), a stepped iron hood on two back posts, and
   a small anvil on a wooden shelf at the east side. Checked in game: the bed
   pulses while powered.
+- **2026-10-04. Sifter done.** Four iron corner posts and two floor rails, a
+  hopper heaped with sand, a pan of sand and nuggets below, and the `tray`
+  -- a wooden frame with an iron mesh painted over sand -- shaking three
+  times a second along X while powered, stopping short of the posts.

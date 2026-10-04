@@ -1592,7 +1592,8 @@ Save the project as forge.bbmodel
 
 ### Sifter
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `sifter.bbmodel`,
+from `tools/block_models/sifter.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
