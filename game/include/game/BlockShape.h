@@ -130,6 +130,7 @@ enum class ShapeId : std::uint8_t {
     Anvil,
     Blowpipe,
     Tamper,
+    CompostHeap,
     Count
 };
 
@@ -351,6 +352,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsTamper,
      .anim = kShapeAnimTamper,
      .parts = kShapePartsTamper},
+    {.id = ShapeId::CompostHeap,
+     .quads = kShapeQuadsCompostHeap,
+     .boxes = kShapeBoxesCompostHeap,
+     .bounds = kShapeBoundsCompostHeap,
+     .anim = kShapeAnimCompostHeap,
+     .parts = kShapePartsCompostHeap},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -438,6 +445,9 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::Blowpipe, "crank", PartMotion::Rock, {1.0f, 0.0f, 0.0f}, 1.0f, 10.0f, true},
     // The tamper's rammer drops onto the mould twice per turn.
     {ShapeId::Tamper, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 2.0f, 2.0f / 16.0f, true},
+    // The compost heap's fork stirs round the bin once and digs in twice per turn.
+    {ShapeId::CompostHeap, "crank", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, true},
+    {ShapeId::CompostHeap, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 2.0f, 1.0f / 16.0f, true},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -627,7 +637,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

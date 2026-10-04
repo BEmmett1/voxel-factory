@@ -960,7 +960,8 @@ Save the project as tamper.bbmodel
 
 ### Compost Heap
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `compost_heap.bbmodel`,
+from `tools/block_models/compost_heap.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

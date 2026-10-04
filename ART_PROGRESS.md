@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 20 of 42 done, 22 to go
+## Block models: 21 of 42 done, 21 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -88,7 +88,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 3 | Anvil | hand-cranked | 14 | **done**: 9 elements, 47 quads, 15.4 KB |
 | 4 | Blowpipe | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 5 | Tamper | hand-cranked | 14 | **done**: 8 elements, 43 quads, 14.1 KB |
-| 6 | Compost Heap | hand-cranked | 14 | not started |
+| 6 | Compost Heap | hand-cranked | 14 | **done**: 12 elements, 62 quads, 20.3 KB |
 | 7 | Mixing Bowl | hand-cranked | 14 | not started |
 | 8 | Infusion Stand | hand-cranked | 14 | not started |
 | 9 | Still | hand-cranked | 14 | not started |
@@ -242,3 +242,9 @@ view").
   (iron weight, shaft, T-handle) as the `crank`, authored lifted so Bob
   drops it onto the mould twice per turn. Terrain atlas tiles and existing
   swatches only.
+- **2026-10-04. Compost Heap done.** A bin of four plank walls heaped with
+  compost (a procedural texture: dark crumb, short straw strokes, the odd
+  green peeling), and a turning fork as the `crank`, leaning 22.5 degrees
+  from the heap's surface so its Spin stirs a cone round the bin while a
+  small Bob digs in twice per turn -- the Mortar's pestle rig. No new
+  material.
