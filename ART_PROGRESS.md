@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 23 of 42 done, 19 to go
+## Block models: 26 of 42 done, 16 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -91,9 +91,9 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 6 | Compost Heap | hand-cranked | 14 | **done**: 12 elements, 62 quads, 20.3 KB |
 | 7 | Mixing Bowl | hand-cranked | 14 | **done**: 11 elements, 53 quads, 17.4 KB |
 | 8 | Infusion Stand | hand-cranked | 14 | **done**: 13 elements, 65 quads, 21.3 KB |
-| 9 | Still | hand-cranked | 14 | not started |
-| 10 | Hand Distiller | hand-cranked | 14 | not started |
-| 11 | Hand Transmuter | hand-cranked | 14 | not started |
+| 9 | Still | hand-cranked | 14 | **done**: 10 elements, 51 quads, 16.7 KB |
+| 10 | Hand Distiller | hand-cranked | 14 | **done**: 9 elements, 50 quads, 16.4 KB |
+| 11 | Hand Transmuter | hand-cranked | 14 | **done**: 7 elements, 38 quads, 12.5 KB |
 | 12 | Bloomery | fuel-fired | 16 | not started |
 | 13 | Furnace | fuel-fired | 20 | not started |
 | 14 | Generator | powered | 28 | not started |
@@ -261,3 +261,16 @@ view").
   spoked brass wheel with a knob on the east upright as the `crank`, turning
   about X once per turn. In game the wheel sat at the panel's edge in the
   test shot; the preview carries the motion check.
+- **2026-10-04. Still done.** A squat copper pot stepped round (foot, belly,
+  shoulder, dome), a darker copper arm across and down into a glass jar, and
+  a brass valve wheel on the front as the `crank`, turning about Z. The
+  copper swatch carries the verdigris.
+- **2026-10-04. Hand Distiller done.** A stone footing, a narrow copper
+  column with two brass collecting rings and a cap, a spout into a glass
+  jar, and an iron hand wheel low on the front as the `crank`.
+- **2026-10-04. Hand Transmuter done.** A slate slab whose top is painted
+  with a violet-inlaid ring and rune notches, a dull lilac crystal turned 45
+  degrees and held over the centre on a bent iron arm, and a brass hand
+  wheel on the front as the `crank`. In-game checks for these three showed
+  the models and the craft bar filling but not the wheels, which face -Z,
+  away from the test camera; their turning is checked in the preview.

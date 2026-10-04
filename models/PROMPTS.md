@@ -1119,7 +1119,8 @@ Save the project as infusion_stand.bbmodel
 
 ### Still
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `still.bbmodel`,
+from `tools/block_models/still.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1171,7 +1172,8 @@ Save the project as still.bbmodel
 
 ### Hand Distiller
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `hand_distiller.bbmodel`,
+from `tools/block_models/hand_distiller.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1223,7 +1225,8 @@ Save the project as hand_distiller.bbmodel
 
 ### Hand Transmuter
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `hand_transmuter.bbmodel`,
+from `tools/block_models/hand_transmuter.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

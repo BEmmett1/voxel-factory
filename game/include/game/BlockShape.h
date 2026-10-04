@@ -133,6 +133,9 @@ enum class ShapeId : std::uint8_t {
     CompostHeap,
     MixingBowl,
     InfusionStand,
+    Still,
+    HandDistiller,
+    HandTransmuter,
     Count
 };
 
@@ -372,6 +375,24 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsInfusionStand,
      .anim = kShapeAnimInfusionStand,
      .parts = kShapePartsInfusionStand},
+    {.id = ShapeId::Still,
+     .quads = kShapeQuadsStill,
+     .boxes = kShapeBoxesStill,
+     .bounds = kShapeBoundsStill,
+     .anim = kShapeAnimStill,
+     .parts = kShapePartsStill},
+    {.id = ShapeId::HandDistiller,
+     .quads = kShapeQuadsHandDistiller,
+     .boxes = kShapeBoxesHandDistiller,
+     .bounds = kShapeBoundsHandDistiller,
+     .anim = kShapeAnimHandDistiller,
+     .parts = kShapePartsHandDistiller},
+    {.id = ShapeId::HandTransmuter,
+     .quads = kShapeQuadsHandTransmuter,
+     .boxes = kShapeBoxesHandTransmuter,
+     .bounds = kShapeBoundsHandTransmuter,
+     .anim = kShapeAnimHandTransmuter,
+     .parts = kShapePartsHandTransmuter},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -466,6 +487,12 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::MixingBowl, "crank", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, true},
     // The infusion stand's side wheel turns once per turn of the crank.
     {ShapeId::InfusionStand, "crank", PartMotion::Spin, {1.0f, 0.0f, 0.0f}, 1.0f, 0.0f, true},
+    // The still's valve wheel turns once per turn of the crank.
+    {ShapeId::Still, "crank", PartMotion::Spin, {0.0f, 0.0f, 1.0f}, 1.0f, 0.0f, true},
+    // The hand distiller's wheel turns once per turn of the crank.
+    {ShapeId::HandDistiller, "crank", PartMotion::Spin, {0.0f, 0.0f, 1.0f}, 1.0f, 0.0f, true},
+    // The hand transmuter's wheel turns once per turn of the crank.
+    {ShapeId::HandTransmuter, "crank", PartMotion::Spin, {0.0f, 0.0f, 1.0f}, 1.0f, 0.0f, true},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -655,7 +682,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
