@@ -40,8 +40,8 @@ namespace {
         // Equipment / machines (machines show a distinct lid tile on top). Your
         // own placed gear stays retrievable by hand: soft, ungated.
         {.id = B::Generator, .key = "core:generator",
-         .name = "Generator", .color = {0.86f, 0.45f, 0.12f},
-         .machine = true, .drop = {I::GeneratorItem, 1}, .tiles = {16, 17, 17}, .hardness = 0.5f},
+         .name = "Generator", .fullCube = false, .color = {0.86f, 0.45f, 0.12f},
+         .machine = true, .drop = {I::GeneratorItem, 1}, .tiles = {16, 17, 17}, .hardness = 0.5f, .shape = ShapeId::Generator},
         // Wire and Conduit are the two blocks whose whole FUNCTION is being
         // thin, so a painted cube was the one place the art contradicted the
         // mechanic. Both are hubs with six arms drawn per neighbour

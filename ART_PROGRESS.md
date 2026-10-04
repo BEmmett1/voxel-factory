@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 28 of 42 done, 14 to go
+## Block models: 29 of 42 done, 13 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -96,7 +96,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 11 | Hand Transmuter | hand-cranked | 14 | **done**: 7 elements, 38 quads, 12.5 KB |
 | 12 | Bloomery | fuel-fired | 16 | **done**: 9 elements, 47 quads, 15.4 KB |
 | 13 | Furnace | fuel-fired | 20 | **done**: 9 elements, 43 quads, 14.1 KB |
-| 14 | Generator | powered | 28 | not started |
+| 14 | Generator | powered | 28 | **done**: 22 elements, 117 quads, 38.4 KB |
 | 15 | Grinder | powered | 28 | not started |
 | 16 | Press | powered | 28 | not started |
 | 17 | Forge | powered | 32 | not started |
@@ -288,3 +288,10 @@ view").
   iron band, a chimney with an iron cap at the back, and a decal door front
   (fire in an iron frame, soot climbing above) with three real iron bars and
   a lintel standing proud of it for the silhouette. Static.
+- **2026-10-04. Generator done.** A riveted iron firebox on four stubby legs
+  with a warning-stripe band, an exhaust stack, and a barred grate whose
+  fire flickers across an 8-frame strip (the first strip written by
+  modelkit). The `flywheel` -- eight rim pieces, four turned 45 degrees
+  about the axle so it reads round, two spokes and a brass hub -- spins at
+  half a turn a second while the generator burns. Checked in game burning
+  for a Grinder.

@@ -138,6 +138,7 @@ enum class ShapeId : std::uint8_t {
     HandTransmuter,
     Bloomery,
     Furnace,
+    Generator,
     Count
 };
 
@@ -407,6 +408,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsFurnace,
      .anim = kShapeAnimFurnace,
      .parts = kShapePartsFurnace},
+    {.id = ShapeId::Generator,
+     .quads = kShapeQuadsGenerator,
+     .boxes = kShapeBoxesGenerator,
+     .bounds = kShapeBoundsGenerator,
+     .anim = kShapeAnimGenerator,
+     .parts = kShapePartsGenerator},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -507,6 +514,8 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::HandDistiller, "crank", PartMotion::Spin, {0.0f, 0.0f, 1.0f}, 1.0f, 0.0f, true},
     // The hand transmuter's wheel turns once per turn of the crank.
     {ShapeId::HandTransmuter, "crank", PartMotion::Spin, {0.0f, 0.0f, 1.0f}, 1.0f, 0.0f, true},
+    // The generator's flywheel turns while it burns for a network.
+    {ShapeId::Generator, "flywheel", PartMotion::Spin, {1.0f, 0.0f, 0.0f}, 0.5f, 0.0f},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -731,7 +740,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

@@ -1384,7 +1384,8 @@ only while the network is satisfied. These carry the largest budgets here.
 
 ### Generator
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `generator.bbmodel`,
+from `tools/block_models/generator.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
