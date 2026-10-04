@@ -5,6 +5,35 @@ A working log for the art pass: the 3D block models still missing from
 items on the ground. Update the tables and the log with every asset that
 lands.
 
+## Art direction (decided 2026-10-02)
+
+**Moodier and more alchemical**, applied to everything: atlas tiles, item
+icons, and the 3D models' textures (keeping the models that are already good).
+Concretely, from the approved terrain pilot:
+
+- **Mid-tone and readable, never near-black.** The first pilot was too dark:
+  under the game's lighting the moss read as asphalt and the canopy as a black
+  blob. Ask for MEDIUM brightness and check it on blocks in the game, not on
+  the tile alone.
+- **Dusky, desaturated, with faint verdigris and violet undertones.** Moss
+  green, grooved warm bark, slate stone, ashen sand, peat; violet flecks in the
+  leaves, verdigris in the copper.
+- **A dusk sky to match** (`kSkyClear` twilight teal, `kSkyStorm` bruised
+  slate, in VoxelGameInternal.h). A dusky world under a noon-blue sky reads as
+  a texture swap, not a mood.
+- **Style references for later batches are the approved atlas tiles**: 0, 1,
+  2, 3, 6, 7, 8, 50, 51, 60.
+
+**Tile lessons.** `create_tiles_pro` draws a dark outline round every tile by
+default, and on a block face that tiles into a visible grid across the whole
+island. `outline_mode: segmentation` usually prevents it -- but not always
+(the voidstone came back rimmed anyway), so measure every pick: the mean edge
+luminance minus the interior's should be within about +-6. A rimmed tile with
+good texture is rescued by copying the row/column inside the border onto it;
+the grass also needed its grey patches pulled toward moss and its contrast cut
+to 60% so the 16px repeat stopped reading as a pattern. Ask for numbered tiles;
+each comes back as two candidates.
+
 ## How each kind of asset is made
 
 **Block models (`models/*.bbmodel`).** Geometry is written by hand as cube
@@ -41,8 +70,8 @@ its tile. Two things need code, not just art:
   block's side texture, so a Mortar in your pack is a flat stone square. They
   need `ItemInfo::atlasTile` honoured for placeables too, plus free atlas
   rows (the grid only grows in rows, see `game/assets/ATLAS.md`).
-- **`tools/make_atlas.py` overwrites hand edits.** Once generated icons are
-  in, it must not be rerun without first teaching it to keep them.
+- **`tools/make_atlas.py` overwrites hand edits.** It now refuses to run
+  without `--overwrite-art`: the committed atlas.png is the source.
 
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
@@ -82,14 +111,67 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 26 | Storage Crate | unpowered | 8 | not started |
 | 27 | Irrigator | unpowered | 16 | not started |
 
-## Item icons: 0 of 118 done
+## Atlas terrain: done
+
+Every non-machine block still drawn from the atlas: grass (top, side), dirt,
+stone, log (end, bark), leaves, copper ore, sand node, voidstone -- tiles 0,
+1, 2, 3, 6, 7, 8, 50, 51, 60. The 26 machines still on atlas tiles are
+deliberately skipped: each is waiting for a 3D model, and a new flat texture
+for it would be thrown away.
+
+## 3D model textures
+
+All 29 shaped blocks were photographed in a gallery under the new sky (a
+temporary new-game hook stands them in three stepped rows). Most already
+fit the mood -- the generator painted them dark -- and keep their textures.
+Six stood out and were **retextured with their geometry untouched**:
+Conduit (glaring white -> verdigris glass in bronze), Wire (gold blob ->
+tarnished copper), Rune Core (neon cyan -> verdigris glass, brass, violet),
+Sand Source (cream -> ashen sandstone), Copper Source (pale -> slate banded
+with copper), Herb Bush (flat green -> the terrain's violet-flecked leaves).
+
+How: `tools/block_models/retexture.py` classifies every texel by what its
+ORIGINAL colour depicted and repaints it from a material swatch (or recolours
+a glow), scaled by the texel's lightness relative to its class's average --
+so the author's shading, edges and silhouette cues survive and only material
+and colour change. Box UV, per-face UV and animation strips (the Rune Core's
+8 frames) all work, since it never needs to know which face a texel is on.
+`retexture_moody.py` holds the six classifications; it must run on ORIGINAL
+textures (a second pass would reclassify the new colours) and takes model
+names to redo just those. Materials: PixelLab bronze, verdigris glass,
+copper, sandstone and brass in models/materials/, plus the terrain's slate,
+bark and leaves straight from the atlas, so models and terrain share a
+palette. Lesson: a model whose whole texture is tiny (the Wire's 16x16)
+samples one corner of a swatch, and the copper swatch's corner was
+verdigris-green -- it needed a clean 16x16 window of the swatch instead.
+
+## Item icons: 118 of 118 done
 
 | batch | items | count | status |
 |---|---|--:|---|
-| 1 | Raw materials and parts: Stone, Copper Ore, Sand, Herb, Crystal, Rain Water, Essence, Wood, Stick, Pebble, Plant Fiber, Twine, Compost, Bio Briquette, Charcoal, Copper/Iron Nugget, Copper/Iron Ingot, Copper/Iron Plate, Copper/Iron Rod, Gear, Machine Casing, Etched Plate, Machine Frame, Glass, Vial | 29 | not started |
-| 2 | Alchemy: Ground Herb, Crystal Dust, Herbal Tincture, Mineral Solution, Healing Draught, Mana Vial, Elixir of Vigor, Refined Elixir, Philosopher's Catalyst, Philosopher's Stone, Resonance, Fusion Catalyst, Void Catalyst, Storm Core, Teleport Key, Storm Key | 16 | not started |
-| 3 | Tools, weapons, armor: Wood/Stone/Copper/Iron Pickaxe and Axe; Stone/Copper/Iron Shovel; Copper Hoe; Copper/Iron Sword; Wrench, Bucket; Copper/Iron/Aegis Helm, Chestplate, Boots | 25 | not started |
-| 4 | Placeables (needs the code change above): the 48 machines, sources, soils and saplings | 48 | not started |
+| 1 | Raw materials and parts | 29 | **done** |
+| 2 | Alchemy: potions, catalysts, cores, keys (+ rerolls of pebble, iron nugget, casing, essence) | 16 | **done** |
+| 3 | Tools, weapons, armor, wrench, bucket | 25 | **done** |
+| 4 | Placeables: the 48 machines, sources, soils and saplings (atlas rows 13-15, tiles 208-255) | 48 | **done** |
+
+`iconTile()` now prefers an item's own `atlasTile`, placeable or not, falling
+back to the block's side; the 48 placeable rows in Item.cpp carry tiles
+208-255 (the map is in game/assets/ATLAS.md). Seen in game: the Tab inventory
+and the crafting menu with the F6 kit.
+
+**Icon lessons.** `create_1_direction_object` at size 16 returns 64
+candidates per call (20 generations); give each item two description slots
+and pick by eye, since a reroll's frames do not reliably follow their slot
+order. Batch 1 ran on description alone and its best picks then went in as
+`style_images` for every later batch, which is what keeps 118 icons in one
+style. Recurring fixes, all free: dark iron pieces need lightness lifted
+(x1.2-1.45) to read on the dark panel; two keys came back on an opaque slate
+panel that needed flood-filling out from the transparent border; a few
+"extras" (the slots past the described items) were better than the named
+attempt -- the bucket, the mortar and pestle, the crate. Small hand tools are
+the hard case at 16px: ten of the 24 hand-tier placeables needed a reroll
+with more concrete descriptions ("classic black iron blacksmith anvil, side
+view").
 
 ## Log
 
@@ -114,3 +196,21 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
   **For every hand-cranked model from here on:** give the `crank` group a
   pivot where it would bear, pose it sensibly at rest, and add its
   `kPartAnims` rows (with `cranked = true`) in the same change.
+- **2026-10-02. Art direction set; terrain retextured.** User asked for a
+  full retexture, moodier and more alchemical, models included. Three pilot
+  rounds: too dark (moss as asphalt), then right but gridded (tile outlines),
+  then right. The sky changed to dusk in code to match. Terrain written into
+  atlas.png (tiles 0-3, 6-8, 50, 51, 60); the leaves lightened after review.
+  make_atlas.py now refuses to overwrite the art. About 100 generations used.
+- **2026-10-02. All 118 item icons replaced**, including the 48 placeables,
+  which needed `iconTile()` to honour a placeable's own atlasTile. Six icon
+  calls (two of them the 48 placeables, one a reroll of ten hand tools); 200
+  generations used in total so far, 1800 left this cycle.
+- **2026-10-04. modelkit built** (`tools/modelkit/`): preview any block or
+  creature in seconds with its real animation, check bounds across the whole
+  motion, and build new models from Python. The remaining 26 block models
+  should be authored with it: spec -> preview -> iterate -> one in-game look
+  at the end, instead of a game launch per iteration.
+- **2026-10-04. Six model textures redone** (Conduit, Wire, Rune Core, Sand
+  Source, Copper Source, Herb Bush) after a gallery review; the user chose
+  all six. 5 generations for materials. Checked in the gallery in game.
