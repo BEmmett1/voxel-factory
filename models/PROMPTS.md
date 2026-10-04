@@ -1804,7 +1804,8 @@ Save the project as composter.bbmodel
 
 ### Distiller
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `distiller.bbmodel`,
+from `tools/block_models/distiller.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1850,7 +1851,8 @@ Save the project as distiller.bbmodel
 
 ### Transmuter
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `transmuter.bbmodel`,
+from `tools/block_models/transmuter.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1903,7 +1905,8 @@ Save the project as transmuter.bbmodel
 
 ### Harvester
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `harvester.bbmodel`,
+from `tools/block_models/harvester.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

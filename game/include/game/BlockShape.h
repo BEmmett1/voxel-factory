@@ -146,6 +146,9 @@ enum class ShapeId : std::uint8_t {
     Glassblower,
     Compactor,
     Composter,
+    Distiller,
+    Transmuter,
+    Harvester,
     Count
 };
 
@@ -463,6 +466,24 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsComposter,
      .anim = kShapeAnimComposter,
      .parts = kShapePartsComposter},
+    {.id = ShapeId::Distiller,
+     .quads = kShapeQuadsDistiller,
+     .boxes = kShapeBoxesDistiller,
+     .bounds = kShapeBoundsDistiller,
+     .anim = kShapeAnimDistiller,
+     .parts = kShapePartsDistiller},
+    {.id = ShapeId::Transmuter,
+     .quads = kShapeQuadsTransmuter,
+     .boxes = kShapeBoxesTransmuter,
+     .bounds = kShapeBoundsTransmuter,
+     .anim = kShapeAnimTransmuter,
+     .parts = kShapePartsTransmuter},
+    {.id = ShapeId::Harvester,
+     .quads = kShapeQuadsHarvester,
+     .boxes = kShapeBoxesHarvester,
+     .bounds = kShapeBoundsHarvester,
+     .anim = kShapeAnimHarvester,
+     .parts = kShapePartsHarvester},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -577,6 +598,11 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::Compactor, "plate", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 0.6f, 2.5f / 16.0f},
     // The composter's drum rolls slowly about its axle while powered.
     {ShapeId::Composter, "drum", PartMotion::Spin, {1.0f, 0.0f, 0.0f}, 0.2f, 0.0f},
+    // The transmuter's crystal turns slowly and bobs between its arms.
+    {ShapeId::Transmuter, "crystal", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 0.3f, 0.0f},
+    {ShapeId::Transmuter, "crystal", PartMotion::Bob, {0.0f, 1.0f, 0.0f}, 0.5f, 0.75f / 16.0f},
+    // The harvester's cutting reel turns while it is powered.
+    {ShapeId::Harvester, "reel", PartMotion::Spin, {1.0f, 0.0f, 0.0f}, 1.0f, 0.0f},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -801,7 +827,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower", "compactor", "composter",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower", "compactor", "composter", "distiller", "transmuter", "harvester",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

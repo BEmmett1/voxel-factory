@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 36 of 42 done, 6 to go
+## Block models: 39 of 42 done, 3 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -104,9 +104,9 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 19 | Glassblower | powered | 28 | **done**: 14 elements, 78 quads, 25.6 KB |
 | 20 | Compactor | powered | 28 | **done**: 11 elements, 52 quads, 17.1 KB |
 | 21 | Composter | powered | 28 | **done**: 10 elements, 55 quads, 18.0 KB |
-| 22 | Distiller | powered | 32 | not started |
-| 23 | Transmuter | powered | 32 | not started |
-| 24 | Harvester | powered | 28 | not started |
+| 22 | Distiller | powered | 32 | **done**: 18 elements, 98 quads, 32.2 KB |
+| 23 | Transmuter | powered | 32 | **done**: 11 elements, 64 quads, 21.0 KB |
+| 24 | Harvester | powered | 28 | **done**: 13 elements, 77 quads, 25.3 KB |
 | 25 | Rain Barrel | unpowered | 14 | not started |
 | 26 | Storage Crate | unpowered | 8 | not started |
 | 27 | Irrigator | unpowered | 16 | not started |
@@ -333,3 +333,18 @@ view").
   compost showing through the gaps and an iron hoop at each end -- with a
   hatch on its surface; the `drum` rolls a fifth of a turn a second while
   powered.
+- **2026-10-04. Distiller done.** A copper column of three bulbs, each two
+  crossed boxes and each smaller than the last, a gauge decal on the lowest,
+  and a condenser from the top tube across and down the east side through
+  four coil rings into a glass vessel. Static.
+- **2026-10-04. Transmuter done.** A dark stone pedestal with a concentric-
+  ring decal on top and runes round its sides that brighten and dim over an
+  8-frame strip, three iron arms at 120 degrees with brass claws, and the
+  `crystal` (turned 45 degrees, tipped above and below) turning slowly and
+  bobbing between them while powered.
+- **2026-10-04. Harvester done.** A low iron chassis on four wheels with a
+  wooden bin of cut herbs behind, and across the front the `reel`: four
+  green-stained blades round an axle between two end plates, one turn a
+  second while powered. The square end plates first swept 0.42 units out of
+  the cell at their corners, which only the preview's whole-motion bounds
+  check sees; they were shrunk.
