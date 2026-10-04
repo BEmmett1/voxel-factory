@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 30 of 42 done, 12 to go
+## Block models: 31 of 42 done, 11 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -98,7 +98,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 13 | Furnace | fuel-fired | 20 | **done**: 9 elements, 43 quads, 14.1 KB |
 | 14 | Generator | powered | 28 | **done**: 22 elements, 117 quads, 38.4 KB |
 | 15 | Grinder | powered | 28 | **done**: 12 elements, 64 quads, 21.0 KB |
-| 16 | Press | powered | 28 | not started |
+| 16 | Press | powered | 28 | **done**: 10 elements, 47 quads, 15.4 KB |
 | 17 | Forge | powered | 32 | not started |
 | 18 | Sifter | powered | 28 | not started |
 | 19 | Glassblower | powered | 28 | not started |
@@ -303,3 +303,9 @@ view").
   spins at 0.75 turns a second while powered. The first two passes read as a
   striped block: the uprights hid the disc and the four coplanar end faces
   fought.
+- **2026-10-04. Press done.** A base plate with a copper die, two uprights
+  whose fronts carry a decal hydraulic line and pressure dial, a crossbeam
+  with a fixed hydraulic cylinder and copper lines, and the `ram` (head +
+  rod) striking 4 units down onto the die every two seconds while powered.
+  The rod is long enough to stay in the cylinder at the bottom of the
+  stroke.

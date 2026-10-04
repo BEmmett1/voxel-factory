@@ -206,8 +206,8 @@ namespace {
         // Press machine: forms the shared parts tier. Uses spare machine atlas
         // tiles (39 top, 40 side).
         {.id = B::Press, .key = "core:press",
-         .name = "Press", .color = {0.42f, 0.44f, 0.52f},
-         .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f},
+         .name = "Press", .fullCube = false, .color = {0.42f, 0.44f, 0.52f},
+         .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f, .shape = ShapeId::Press},
         // The Alchemy Circle. Both halves are machines so they get a Machine
         // entity (buffers + progress) and ride the existing save records; the
         // Core glows faintly so a built circle reads as alive at night. Uses

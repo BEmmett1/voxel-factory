@@ -1491,7 +1491,8 @@ Save the project as grinder.bbmodel
 
 ### Press
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `press.bbmodel`,
+from `tools/block_models/press.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
