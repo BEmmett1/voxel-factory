@@ -1438,7 +1438,8 @@ Save the project as generator.bbmodel
 
 ### Grinder
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `grinder.bbmodel`,
+from `tools/block_models/grinder.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

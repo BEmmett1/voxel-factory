@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 29 of 42 done, 13 to go
+## Block models: 30 of 42 done, 12 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -97,7 +97,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 12 | Bloomery | fuel-fired | 16 | **done**: 9 elements, 47 quads, 15.4 KB |
 | 13 | Furnace | fuel-fired | 20 | **done**: 9 elements, 43 quads, 14.1 KB |
 | 14 | Generator | powered | 28 | **done**: 22 elements, 117 quads, 38.4 KB |
-| 15 | Grinder | powered | 28 | not started |
+| 15 | Grinder | powered | 28 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 16 | Press | powered | 28 | not started |
 | 17 | Forge | powered | 32 | not started |
 | 18 | Sifter | powered | 28 | not started |
@@ -295,3 +295,11 @@ view").
   about the axle so it reads round, two spokes and a brass hub -- spins at
   half a turn a second while the generator burns. Checked in game burning
   for a Grinder.
+- **2026-10-04. Grinder done.** An iron plinth, two slim uprights and a
+  crossbar, a wooden hopper heaped with ore, a chute of powder at the front,
+  and the `wheel`: four stone boxes, two turned 45 degrees about the axle,
+  each inset a hair along it so their end faces do not z-fight, with lighter
+  millstone faces over darker rims so the sixteen-sided disc reads round. It
+  spins at 0.75 turns a second while powered. The first two passes read as a
+  striped block: the uprights hid the disc and the four coplanar end faces
+  fought.

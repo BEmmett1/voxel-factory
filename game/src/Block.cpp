@@ -58,8 +58,8 @@ namespace {
          .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f,
          .shape = ShapeId::ConduitHub},
         {.id = B::Grinder, .key = "core:grinder",
-         .name = "Grinder", .color = {0.45f, 0.45f, 0.48f},
-         .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f},
+         .name = "Grinder", .fullCube = false, .color = {0.45f, 0.45f, 0.48f},
+         .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f, .shape = ShapeId::Grinder},
         // The first shaped block: a real 3D model rather than a painted cube,
         // so it no longer fills its cell (does not occlude, does not keep rain
         // out) and you collide with the basin and legs instead of the whole
