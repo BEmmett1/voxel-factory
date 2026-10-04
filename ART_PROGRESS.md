@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 17 of 42 done, 25 to go
+## Block models: 18 of 42 done, 24 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -85,7 +85,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 |--:|---|---|--:|---|
 | 1 | Mortar | hand-cranked | 14 | **done**: 12 elements, 63 quads, 20.7 KB |
 | 2 | Hand Press | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
-| 3 | Anvil | hand-cranked | 14 | not started |
+| 3 | Anvil | hand-cranked | 14 | **done**: 9 elements, 47 quads, 15.4 KB |
 | 4 | Blowpipe | hand-cranked | 14 | not started |
 | 5 | Tamper | hand-cranked | 14 | not started |
 | 6 | Compost Heap | hand-cranked | 14 | not started |
@@ -222,3 +222,12 @@ view").
   the stroke was sized so the plate just meets the bed. One generation for a
   wrought-iron swatch (lifted x1.7: as delivered it read as a hole). Checked
   in the game while cranking.
+- **2026-10-04. Anvil done.** A blackened anvil (horn, waist, heel, a
+  brighter worked face) on a log stump, the hammer in `crank`: authored
+  lifted 22.5 degrees so the Rock sway spans resting-on-the-face to lifted,
+  two blows per turn. 9 elements, no new material. It was the 33rd shape, one
+  past the shader's `uAnimV[32]`, so `kMaxShapeBanks` went to 64. **Watch the
+  part slots next:** 19 of `kMaxShapeParts`' 32 are taken and most remaining
+  machines want a moving part. Raising it costs real vertex uniforms (a mat3
+  is three vec4), so the likely fix is packing `uAnimV` into a vec4 array to
+  free room first.

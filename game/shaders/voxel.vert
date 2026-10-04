@@ -22,7 +22,7 @@ uniform mat4 uProj;
 // This frame's v-offset into an animated shape texture, one per ShapeId.
 // Frames are bands stacked down shapes.png, so advancing one is a shift in v
 // -- which is why a bubbling cauldron never costs a remesh.
-uniform float uAnimV[32]; // must match vg::kMaxShapeBanks
+uniform float uAnimV[64]; // must match vg::kMaxShapeBanks
 // This frame's transform for every moving part, one per slot. Slot 0 is
 // permanently identity, so a static vertex costs a multiply and moves nowhere.
 // A 3x3 rather than a 4x4 because no translation is needed (see below) -- which

@@ -801,7 +801,8 @@ Save the project as hand_press.bbmodel
 
 ### Anvil
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `anvil.bbmodel`,
+from `tools/block_models/anvil.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

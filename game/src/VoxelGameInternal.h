@@ -308,10 +308,12 @@ namespace vg {
     // index naming the vertex's ShapeId plus one uniform array of this frame's
     // v-offsets — never a remesh, so an animated machine costs nothing beyond
     // the uniform upload. Sized with headroom exactly like kMaxEntityBones so
-    // adding a shape doesn't mean editing the shader — 32 covers modelling
-    // every machine and then some, and the array is a few dozen bytes uploaded
-    // once a frame, so the headroom is cheaper than ever revisiting this.
-    inline constexpr int   kMaxShapeBanks  = 32;     // must match uAnimV[] in voxel.vert
+    // adding a shape doesn't mean editing the shader. It was 32, which the
+    // art pass outgrew at the Anvil (Oct 2026): giving every machine a model
+    // lands near 60 shapes. 64 still fits GL 3.3's vertex-uniform floor even
+    // on a driver that spends a whole vec4 per array float -- about 209 of the
+    // guaranteed 256 vec4 with uPartRot/uPartOff and the matrices.
+    inline constexpr int   kMaxShapeBanks  = 64;     // must match uAnimV[] in voxel.vert
     // Moving block PARTS get their own uniform array, one 3x3 per part that is
     // actually animated -- not one per group in every model, which would run to
     // hundreds. A 3x3 rather than a 4x4 is what keeps this affordable: 32 of
