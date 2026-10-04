@@ -1066,7 +1066,8 @@ Save the project as mixing_bowl.bbmodel
 
 ### Infusion Stand
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `infusion_stand.bbmodel`,
+from `tools/block_models/infusion_stand.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 22 of 42 done, 20 to go
+## Block models: 23 of 42 done, 19 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -90,7 +90,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 5 | Tamper | hand-cranked | 14 | **done**: 8 elements, 43 quads, 14.1 KB |
 | 6 | Compost Heap | hand-cranked | 14 | **done**: 12 elements, 62 quads, 20.3 KB |
 | 7 | Mixing Bowl | hand-cranked | 14 | **done**: 11 elements, 53 quads, 17.4 KB |
-| 8 | Infusion Stand | hand-cranked | 14 | not started |
+| 8 | Infusion Stand | hand-cranked | 14 | **done**: 13 elements, 65 quads, 21.3 KB |
 | 9 | Still | hand-cranked | 14 | not started |
 | 10 | Hand Distiller | hand-cranked | 14 | not started |
 | 11 | Hand Transmuter | hand-cranked | 14 | not started |
@@ -255,3 +255,9 @@ view").
   prompt had it, so it can stir: leaning 22.5 degrees, one sweep of the bowl
   per turn. The first pass read as a square tray on stilts; the stepped
   profile fixed it.
+- **2026-10-04. Infusion Stand done.** A wooden base, an unlit brass burner
+  with a sooty wick, two thin uprights and a brass crossbar clasping a phial
+  (violet infusion below, verdigris glass above, a neck and a cork), and a
+  spoked brass wheel with a knob on the east upright as the `crank`, turning
+  about X once per turn. In game the wheel sat at the panel's edge in the
+  test shot; the preview carries the motion check.
