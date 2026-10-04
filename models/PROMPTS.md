@@ -748,7 +748,8 @@ Save as mortar.bbmodel
 
 ### Hand Press
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `hand_press.bbmodel`,
+from `tools/block_models/hand_press.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

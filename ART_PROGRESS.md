@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 16 of 42 done, 26 to go
+## Block models: 17 of 42 done, 25 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -84,7 +84,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | # | block | tier | budget | status |
 |--:|---|---|--:|---|
 | 1 | Mortar | hand-cranked | 14 | **done**: 12 elements, 63 quads, 20.7 KB |
-| 2 | Hand Press | hand-cranked | 14 | not started |
+| 2 | Hand Press | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 3 | Anvil | hand-cranked | 14 | not started |
 | 4 | Blowpipe | hand-cranked | 14 | not started |
 | 5 | Tamper | hand-cranked | 14 | not started |
@@ -214,3 +214,11 @@ view").
 - **2026-10-04. Six model textures redone** (Conduit, Wire, Rune Core, Sand
   Source, Copper Source, Herb Bush) after a gallery review; the user chose
   all six. 5 generations for materials. Checked in the gallery in game.
+- **2026-10-04. Hand Press done**, the first model built entirely with
+  modelkit: a wooden bench and frame, an iron bed, and the `crank` group
+  (screw, pressing plate, bar handle with brass knobs) that spins once and
+  presses once per turn. The first preview caught the stroke driving the
+  handle into the crossbeam, before any game launch; the beam came down and
+  the stroke was sized so the plate just meets the bed. One generation for a
+  wrought-iron swatch (lifted x1.7: as delivered it read as a hole). Checked
+  in the game while cranking.

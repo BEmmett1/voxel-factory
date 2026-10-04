@@ -126,6 +126,7 @@ enum class ShapeId : std::uint8_t {
     GraftedSapling,
     Sieve,
     Mortar,
+    HandPress,
     Count
 };
 
@@ -323,6 +324,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsMortar,
      .anim = kShapeAnimMortar,
      .parts = kShapePartsMortar},
+    {.id = ShapeId::HandPress,
+     .quads = kShapeQuadsHandPress,
+     .boxes = kShapeBoxesHandPress,
+     .bounds = kShapeBoundsHandPress,
+     .anim = kShapeAnimHandPress,
+     .parts = kShapePartsHandPress},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -400,6 +407,10 @@ inline constexpr PartAnim kPartAnims[] = {
     // down into the powder twice on the way.
     {ShapeId::Mortar, "crank", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, true},
     {ShapeId::Mortar, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 2.0f, 1.0f / 16.0f, true},
+    // The hand press turns its screw once per turn of the bar and drives the
+    // plate down onto the bed and back: one pressing stroke per turn.
+    {ShapeId::HandPress, "crank", PartMotion::Spin, {0.0f, 1.0f, 0.0f}, 1.0f, 0.0f, true},
+    {ShapeId::HandPress, "crank", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 1.0f, 1.5f / 16.0f, true},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -589,7 +600,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar",
+    "grafted_sapling", "sieve", "mortar", "hand_press",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
