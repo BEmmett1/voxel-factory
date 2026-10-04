@@ -1963,7 +1963,8 @@ budget of the three because it is the one that gets stacked in rows.
 
 ### Rain Barrel
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `rain_barrel.bbmodel`,
+from `tools/block_models/rain_barrel.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -2009,7 +2010,8 @@ Save the project as rain_barrel.bbmodel
 
 ### Storage Crate
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `storage_crate.bbmodel`,
+from `tools/block_models/storage_crate.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -2056,7 +2058,8 @@ Save the project as storage_crate.bbmodel
 
 ### Irrigator
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `irrigator.bbmodel`,
+from `tools/block_models/irrigator.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

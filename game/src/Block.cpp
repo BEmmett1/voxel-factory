@@ -170,9 +170,9 @@ namespace {
          .name = "Leaves", .color = {0.18f, 0.50f, 0.16f},
          .tiles = {8, 8, 8}, .hardness = 0.2f},
         {.id = B::RainBarrel, .key = "core:rain_barrel",
-         .name = "Rain Barrel", .color = {0.40f, 0.28f, 0.15f},
+         .name = "Rain Barrel", .fullCube = false, .color = {0.40f, 0.28f, 0.15f},
          .machine = true, .drop = {I::RainBarrelItem, 1},
-         .tiles = {52, 58, 58}, .hardness = 0.5f}, // open water top, stave sides
+         .tiles = {52, 58, 58}, .hardness = 0.5f, .shape = ShapeId::RainBarrel}, // open water top, stave sides
         {.id = B::VoidStone, .key = "core:void_stone",
          .name = "Voidstone", .color = {0.24f, 0.16f, 0.36f},
          .tiles = {60, 60, 60}, // arena ground; deliberately no drop
@@ -299,9 +299,9 @@ namespace {
          .hardness = 0.5f, .shape = ShapeId::HandTransmuter},
         // ---- Bulk storage -------------------------------------------------
         {.id = B::StorageCrate, .key = "core:storage_crate",
-         .name = "Storage Crate", .color = {0.55f, 0.40f, 0.22f},
+         .name = "Storage Crate", .fullCube = false, .color = {0.55f, 0.40f, 0.22f},
          .machine = true, .drop = {I::StorageCrateItem, 1}, .tiles = {192, 193, 193},
-         .hardness = 0.5f}, // lid on top, slatted sides
+         .hardness = 0.5f, .shape = ShapeId::StorageCrate}, // lid on top, slatted sides
         // ---- Farming ------------------------------------------------------
         // Worked ground. Drops Dirt, so tilling is not a way to duplicate soil,
         // and it must SURVIVE a harvest -- the Harvester resets a cell to
@@ -340,9 +340,9 @@ namespace {
          .machine = true, .drop = {I::HarvesterItem, 1}, .tiles = {13, 14, 14},
          .hardness = 0.5f, .shape = ShapeId::Harvester},
         {.id = B::Irrigator, .key = "core:irrigator",
-         .name = "Irrigator", .color = {0.42f, 0.58f, 0.72f},
+         .name = "Irrigator", .fullCube = false, .color = {0.42f, 0.58f, 0.72f},
          .machine = true, .drop = {I::IrrigatorItem, 1}, .tiles = {15, 45, 45},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Irrigator},
         // Tilled soil fed compost. Drops Dirt like the tilled ground it came
         // from, for the same reason: enriching must not be a way to duplicate
         // soil either. It has no item of its own -- you make it in place with

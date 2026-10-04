@@ -149,6 +149,9 @@ enum class ShapeId : std::uint8_t {
     Distiller,
     Transmuter,
     Harvester,
+    RainBarrel,
+    StorageCrate,
+    Irrigator,
     Count
 };
 
@@ -484,6 +487,24 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsHarvester,
      .anim = kShapeAnimHarvester,
      .parts = kShapePartsHarvester},
+    {.id = ShapeId::RainBarrel,
+     .quads = kShapeQuadsRainBarrel,
+     .boxes = kShapeBoxesRainBarrel,
+     .bounds = kShapeBoundsRainBarrel,
+     .anim = kShapeAnimRainBarrel,
+     .parts = kShapePartsRainBarrel},
+    {.id = ShapeId::StorageCrate,
+     .quads = kShapeQuadsStorageCrate,
+     .boxes = kShapeBoxesStorageCrate,
+     .bounds = kShapeBoundsStorageCrate,
+     .anim = kShapeAnimStorageCrate,
+     .parts = kShapePartsStorageCrate},
+    {.id = ShapeId::Irrigator,
+     .quads = kShapeQuadsIrrigator,
+     .boxes = kShapeBoxesIrrigator,
+     .bounds = kShapeBoundsIrrigator,
+     .anim = kShapeAnimIrrigator,
+     .parts = kShapePartsIrrigator},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -827,7 +848,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower", "compactor", "composter", "distiller", "transmuter", "harvester",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower", "compactor", "composter", "distiller", "transmuter", "harvester", "rain_barrel", "storage_crate", "irrigator",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

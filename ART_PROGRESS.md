@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 39 of 42 done, 3 to go
+## Block models: 42 of 42 done, 0 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -107,9 +107,9 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 22 | Distiller | powered | 32 | **done**: 18 elements, 98 quads, 32.2 KB |
 | 23 | Transmuter | powered | 32 | **done**: 11 elements, 64 quads, 21.0 KB |
 | 24 | Harvester | powered | 28 | **done**: 13 elements, 77 quads, 25.3 KB |
-| 25 | Rain Barrel | unpowered | 14 | not started |
-| 26 | Storage Crate | unpowered | 8 | not started |
-| 27 | Irrigator | unpowered | 16 | not started |
+| 25 | Rain Barrel | unpowered | 14 | **done**: 8 elements, 36 quads, 11.8 KB |
+| 26 | Storage Crate | unpowered | 8 | **done**: 2 elements, 10 quads, 3.3 KB |
+| 27 | Irrigator | unpowered | 16 | **done**: 13 elements, 71 quads, 23.3 KB |
 
 ## Atlas terrain: done
 
@@ -348,3 +348,16 @@ view").
   second while powered. The square end plates first swept 0.42 units out of
   the cell at their corners, which only the preview's whole-motion bounds
   check sees; they were shrunk.
+- **2026-10-04. Rain Barrel done.** Two crossed boxes of vertical staves
+  (the wood swatch turned so the grain runs up) with iron hoops and damp
+  darkening at the foot, dark rainwater a unit below a rim built round both
+  outlines so the top reads open. Static.
+- **2026-10-04. Storage Crate done.** Two elements, the crate and its lid,
+  because crates are placed in rows: planks, iron corner brackets with nails
+  and the rope handle are all decals. 3.3 KB, about two and a half plain
+  blocks.
+- **2026-10-04. Irrigator done.** A round iron tank (crossed boxes, a lid
+  and a brass cap) on a four-legged frame, a round water gauge decal on the
+  front, and four brass sprinkler arms out of its sides, each tipped 22.5
+  degrees down. Static: it spends water, not power. **All 42 block models
+  are done.**
