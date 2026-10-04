@@ -226,9 +226,9 @@ namespace {
         // fire, and a lit furnace should read across the factory floor at
         // night the way an energized network does.
         {.id = B::Furnace, .key = "core:furnace",
-         .name = "Furnace", .color = {0.46f, 0.38f, 0.33f},
+         .name = "Furnace", .fullCube = false, .color = {0.46f, 0.38f, 0.33f},
          .emissive = 0.20f, .machine = true, .drop = {I::FurnaceItem, 1},
-         .tiles = {128, 129, 129}, .hardness = 0.5f},
+         .tiles = {128, 129, 129}, .hardness = 0.5f, .shape = ShapeId::Furnace},
         {.id = B::Sifter, .key = "core:sifter",
          .name = "Sifter", .color = {0.61f, 0.52f, 0.36f},
          .machine = true, .drop = {I::SifterItem, 1}, .tiles = {130, 131, 131},
@@ -246,9 +246,9 @@ namespace {
         // itself, like every other machine, so relocating your hand-cranked
         // starter kit stays free.
         {.id = B::Bloomery, .key = "core:bloomery",
-         .name = "Bloomery", .color = {0.44f, 0.36f, 0.31f},
+         .name = "Bloomery", .fullCube = false, .color = {0.44f, 0.36f, 0.31f},
          .emissive = 0.18f, .machine = true, .drop = {I::BloomeryItem, 1},
-         .tiles = {136, 137, 137}, .hardness = 0.5f},
+         .tiles = {136, 137, 137}, .hardness = 0.5f, .shape = ShapeId::Bloomery},
         {.id = B::Sieve, .key = "core:sieve",
          .name = "Sieve", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::SieveItem, 1}, .tiles = {138, 139, 139},

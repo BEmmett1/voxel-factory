@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 26 of 42 done, 16 to go
+## Block models: 28 of 42 done, 14 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -94,8 +94,8 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 9 | Still | hand-cranked | 14 | **done**: 10 elements, 51 quads, 16.7 KB |
 | 10 | Hand Distiller | hand-cranked | 14 | **done**: 9 elements, 50 quads, 16.4 KB |
 | 11 | Hand Transmuter | hand-cranked | 14 | **done**: 7 elements, 38 quads, 12.5 KB |
-| 12 | Bloomery | fuel-fired | 16 | not started |
-| 13 | Furnace | fuel-fired | 20 | not started |
+| 12 | Bloomery | fuel-fired | 16 | **done**: 9 elements, 47 quads, 15.4 KB |
+| 13 | Furnace | fuel-fired | 20 | **done**: 9 elements, 43 quads, 14.1 KB |
 | 14 | Generator | powered | 28 | not started |
 | 15 | Grinder | powered | 28 | not started |
 | 16 | Press | powered | 28 | not started |
@@ -279,3 +279,12 @@ view").
   the renderer fills it from the shape being turned: 6 of the 32 slots are in
   use, and the assert checks real slots. The powered machines' clock-driven
   parts have room to spare.
+- **2026-10-04. Bloomery done.** Four clay tiers narrowing up from a stone
+  footing, a glowing arched mouth painted as a DECAL on the front (a new
+  modelkit option: the whole image on one face, not a tiled window), embers
+  down the flue, a clay tuyere and a three-drip slag scar on the east flank,
+  soot on the upper tiers. Static: fire-driven, never a power node.
+- **2026-10-04. Furnace done.** A squat stone body on a plinth, a riveted
+  iron band, a chimney with an iron cap at the back, and a decal door front
+  (fire in an iron frame, soot climbing above) with three real iron bars and
+  a lintel standing proud of it for the silhouette. Static.

@@ -136,6 +136,8 @@ enum class ShapeId : std::uint8_t {
     Still,
     HandDistiller,
     HandTransmuter,
+    Bloomery,
+    Furnace,
     Count
 };
 
@@ -393,6 +395,18 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsHandTransmuter,
      .anim = kShapeAnimHandTransmuter,
      .parts = kShapePartsHandTransmuter},
+    {.id = ShapeId::Bloomery,
+     .quads = kShapeQuadsBloomery,
+     .boxes = kShapeBoxesBloomery,
+     .bounds = kShapeBoundsBloomery,
+     .anim = kShapeAnimBloomery,
+     .parts = kShapePartsBloomery},
+    {.id = ShapeId::Furnace,
+     .quads = kShapeQuadsFurnace,
+     .boxes = kShapeBoxesFurnace,
+     .bounds = kShapeBoundsFurnace,
+     .anim = kShapeAnimFurnace,
+     .parts = kShapePartsFurnace},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -717,7 +731,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

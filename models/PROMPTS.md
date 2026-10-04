@@ -1283,7 +1283,8 @@ fire glow into the texture instead of trying to make it flicker.
 
 ### Bloomery
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `bloomery.bbmodel`,
+from `tools/block_models/bloomery.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1330,7 +1331,8 @@ Save the project as bloomery.bbmodel
 
 ### Furnace
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `furnace.bbmodel`,
+from `tools/block_models/furnace.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
