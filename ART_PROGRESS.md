@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 21 of 42 done, 21 to go
+## Block models: 22 of 42 done, 20 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -89,7 +89,7 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 4 | Blowpipe | hand-cranked | 14 | **done**: 12 elements, 64 quads, 21.0 KB |
 | 5 | Tamper | hand-cranked | 14 | **done**: 8 elements, 43 quads, 14.1 KB |
 | 6 | Compost Heap | hand-cranked | 14 | **done**: 12 elements, 62 quads, 20.3 KB |
-| 7 | Mixing Bowl | hand-cranked | 14 | not started |
+| 7 | Mixing Bowl | hand-cranked | 14 | **done**: 11 elements, 53 quads, 17.4 KB |
 | 8 | Infusion Stand | hand-cranked | 14 | not started |
 | 9 | Still | hand-cranked | 14 | not started |
 | 10 | Hand Distiller | hand-cranked | 14 | not started |
@@ -248,3 +248,10 @@ view").
   from the heap's surface so its Spin stirs a cone round the bin while a
   small Bob digs in twice per turn -- the Mortar's pestle rig. No new
   material.
+- **2026-10-04. Mixing Bowl done.** A clay bowl (the sandstone swatch tinted
+  terracotta), stepped -- a narrow body under a wide rim -- so it reads
+  round, on a three-legged stand, with a murky green mixture. The paddle
+  stands in the mix as the `crank` rather than lying across the rim as the
+  prompt had it, so it can stir: leaning 22.5 degrees, one sweep of the bowl
+  per turn. The first pass read as a square tray on stilts; the stepped
+  profile fixed it.

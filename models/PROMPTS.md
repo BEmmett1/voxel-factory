@@ -1013,7 +1013,8 @@ Save the project as compost_heap.bbmodel
 
 ### Mixing Bowl
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `mixing_bowl.bbmodel`,
+from `tools/block_models/mixing_bowl.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
