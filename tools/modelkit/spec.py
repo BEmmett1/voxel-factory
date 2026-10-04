@@ -67,10 +67,17 @@ class Clip:
 
 
 class Model:
-    def __init__(self, name, kind="block"):
+    def __init__(self, name, kind="block", frames=1, frame_time=2):
+        """frames > 1 makes the texture an ANIMATION STRIP (blocks only): the
+        sheet is written `frames` times, stacked, and the game steps through
+        them every `frame_time` ticks -- while the block is POWERED (see
+        AUTHORING.md). A material given as a list of `frames` images animates;
+        every other material repeats unchanged in each frame."""
         assert kind in ("block", "creature")
-        self.name, self.kind = name, kind
+        assert frames == 1 or kind == "block", "only block shapes play texture strips"
+        self.name, self.kind, self.frames, self.frame_time = name, kind, frames, frame_time
         self.mats, self.groups, self.boxes, self.decals = {}, {}, [], set()
+        self.anim_mats = {}
         self.moves, self.clips = [], []
 
     # ---- content -------------------------------------------------------------
@@ -79,6 +86,10 @@ class Model:
         own window of it, so a box never shows the same grain twice. A DECAL is
         a picture -- a glowing arch, a dial -- and each face using it shows the
         WHOLE image, stretched to fit, so paint it at the face's size."""
+        if isinstance(img, (list, tuple)):
+            assert len(img) == self.frames, f"{key}: {len(img)} images for {self.frames} frames"
+            self.anim_mats[key] = [i.convert("RGBA") for i in img]
+            img = img[0]
         self.mats[key] = img.convert("RGBA")
         if decal:
             self.decals.add(key)
@@ -139,18 +150,22 @@ class Model:
                 x, y, row_h = 0, y + row_h, 0
             regions[k] = (x, y, r); x += r; row_h = max(row_h, r)
         H = 1 << max(4, math.ceil(math.log2(max(16, y + row_h))))
-        sheet = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        for k, (rx, ry, r) in regions.items():
-            src = self.mats[k]
-            for ty in range(0, r, src.height):
-                for tx in range(0, r, src.width):
-                    sheet.paste(src.crop((0, 0, min(src.width, r - tx), min(src.height, r - ty))), (rx + tx, ry + ty))
+        # One sheet per frame, stacked: the bake reads a texture `frames` times
+        # its uv_height as a strip, and a region's UVs (frame 0) stay valid.
+        sheet = Image.new("RGBA", (W, H * self.frames), (0, 0, 0, 0))
+        for f in range(self.frames):
+            for k, (rx, ry, r) in regions.items():
+                src = self.anim_mats[k][f] if k in self.anim_mats else self.mats[k]
+                for ty in range(0, r, src.height):
+                    for tx in range(0, r, src.width):
+                        sheet.paste(src.crop((0, 0, min(src.width, r - tx), min(src.height, r - ty))),
+                                    (rx + tx, f * H + ry + ty))
         return sheet, regions
 
     # ---- writing ------------------------------------------------------------
     def to_json(self):
         sheet, regions = self._sheet()
-        W, H = sheet.size
+        W, H = sheet.width, sheet.height // self.frames
         elements, members = [], {g: [] for g in self.groups}
         root_children = []
         for i, b in enumerate(self.boxes):
@@ -202,9 +217,11 @@ class Model:
                "name": self.name, "model_identifier": "", "resolution": {"width": W, "height": H},
                "elements": elements, "outliner": outliner,
                "textures": [{"name": "texture.png", "uuid": _uid(self.name, "tex"), "id": "0",
-                             "width": W, "height": H, "uv_width": W, "uv_height": H,
+                             "width": W, "height": H * self.frames, "uv_width": W, "uv_height": H,
                              "mode": "bitmap", "saved": False, "particle": False,
                              "source": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()}]}
+        if self.frames > 1:
+            doc["textures"][0]["frame_time"] = self.frame_time
         if self.kind == "creature":
             anims = []
             for c in self.clips:

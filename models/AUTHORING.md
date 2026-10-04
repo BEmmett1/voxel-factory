@@ -51,7 +51,10 @@ texel per unit, groups inline -- both loaders and Blockbench read it),
 `cpp_part_anims("ShapeIdName")` prints the `kPartAnims` rows to paste. A material TILES by default (each face takes its own window of it, so
 no two faces show the same grain); `material(key, img, decal=True)` instead
 maps the WHOLE image onto every face that uses it -- for a picture such as the
-Furnace door or the Bloomery's glowing arch, painted at the face's size. The
+Furnace door or the Bloomery's glowing arch, painted at the face's size. `Model(name, frames=8, frame_time=2)` writes an
+animation strip: give a material a LIST of eight images and it animates (the
+Generator's grate), while every other material repeats in each frame. Like any
+strip it plays only while the block is powered. The
 `.bbmodel` stays the source and still opens in Blockbench; the script is how
 it was made. Everything below this section still applies to its output.
 
