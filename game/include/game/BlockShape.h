@@ -141,6 +141,7 @@ enum class ShapeId : std::uint8_t {
     Generator,
     Grinder,
     Press,
+    Forge,
     Count
 };
 
@@ -428,6 +429,12 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsPress,
      .anim = kShapeAnimPress,
      .parts = kShapePartsPress},
+    {.id = ShapeId::Forge,
+     .quads = kShapeQuadsForge,
+     .boxes = kShapeBoxesForge,
+     .bounds = kShapeBoundsForge,
+     .anim = kShapeAnimForge,
+     .parts = kShapePartsForge},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -758,7 +765,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");

@@ -201,8 +201,8 @@ namespace {
         // Forge machine: block-crafts weapons/armor. Uses spare machine atlas
         // tiles (37 top, 38 side).
         {.id = B::Forge, .key = "core:forge",
-         .name = "Forge", .color = {0.30f, 0.22f, 0.24f},
-         .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f},
+         .name = "Forge", .fullCube = false, .color = {0.30f, 0.22f, 0.24f},
+         .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f, .shape = ShapeId::Forge},
         // Press machine: forms the shared parts tier. Uses spare machine atlas
         // tiles (39 top, 40 side).
         {.id = B::Press, .key = "core:press",

@@ -1544,7 +1544,8 @@ Save the project as press.bbmodel
 
 ### Forge
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `forge.bbmodel`,
+from `tools/block_models/forge.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
