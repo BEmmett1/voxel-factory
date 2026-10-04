@@ -20,6 +20,7 @@
 #include "game/World.h"
 #include "VoxelGameInternal.h" // vg::kOrgName / kAppName
 
+#include "engine/BbModel.h"
 #include "engine/CrashHandler.h"
 #include "engine/Log.h"
 #include "engine/Paths.h"
@@ -2218,11 +2219,17 @@ int main(int argc, char** argv) {
     // confusing failure.
     std::vector<std::string> packs;
     const char* mode = "";
+    const char* modelPath = nullptr; // --check-bbmodel's argument
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--pack") == 0 && i + 1 < argc) packs.push_back(argv[++i]);
+        else if (std::strcmp(argv[i], "--check-bbmodel") == 0 && i + 1 < argc) {
+            mode = argv[i];
+            modelPath = argv[++i];
+        }
         else if (!*mode) mode = argv[i];
     }
     const bool headless = std::strcmp(mode, "--selftest") == 0 ||
+                          std::strcmp(mode, "--check-bbmodel") == 0 ||
                           std::strcmp(mode, "--dump-recipes") == 0 ||
                           std::strcmp(mode, "--dump-content") == 0 ||
                           std::strcmp(mode, "--validate") == 0;
@@ -2253,6 +2260,36 @@ int main(int argc, char** argv) {
         const std::string doc = content::dumpContent();
         std::fwrite(doc.data(), 1, doc.size(), stdout);
         return 0;
+    }
+    // Load a creature .bbmodel with the ENGINE's own loader and report what it
+    // made of it -- the ground truth behind tools/modelkit, whose renderer is a
+    // replica of BbModel.cpp and could otherwise drift from it unnoticed.
+    // Exit 0 only if it loads and carries the clips every creature needs.
+    if (std::strcmp(mode, "--check-bbmodel") == 0) {
+        engine::BbModel model;
+        if (!engine::loadBbModel(modelPath, model, vg::kMaxEntityBones)) {
+            std::printf("FAILED to load %s (see the log line above)\n", modelPath);
+            return 1;
+        }
+        std::printf("%s: %zu bones, %zu vertices, texture %dx%d\n", modelPath,
+                    model.bones.size(), model.vertexData.size() / 9,
+                    model.texture.width, model.texture.height);
+        for (const engine::BbBone& b : model.bones) {
+            std::printf("  bone %-16s parent %2d  pivot (%.3f, %.3f, %.3f)\n", b.name.c_str(),
+                        b.parent, b.pivot.x, b.pivot.y, b.pivot.z);
+        }
+        for (const engine::BbAnimation& a : model.animations) {
+            std::printf("  clip %-28s %.2fs %s, %zu tracks\n", a.name.c_str(), a.length,
+                        a.loop ? "loop" : "once", a.tracks.size());
+        }
+        bool ok = true;
+        for (const char* need : {"idle", "walk"}) {
+            if (model.findAnimation(need) < 0) {
+                std::printf("  MISSING required clip '%s'\n", need);
+                ok = false;
+            }
+        }
+        return ok ? 0 : 1;
     }
     // Is the content set coherent? The --selftest checks that are about
     // CONTENT rather than about code, on their own and without the save

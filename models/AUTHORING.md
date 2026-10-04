@@ -14,6 +14,44 @@ how boss #1 went missing from fresh clones for weeks.
 The loop is two commands: save the project here, then re-bake **every** model
 in one run (see step 14).
 
+## modelkit: build and preview without the game
+
+`tools/modelkit/` (Python + numpy + Pillow) builds, previews and checks block
+shapes **and** creatures without launching the game.
+
+**Preview anything**, existing or new:
+
+    python tools/modelkit/preview.py models/mortar.bbmodel
+    python tools/modelkit/preview.py game/assets/models/void_warden.bbmodel --anim attack
+
+It writes four views (front = the model's -Z face), an animation strip and a
+looping GIF to `%TEMP%/modelkit_preview/` (or `--out`), in about a second for
+a block and a few for a boss. Nothing is approximated: a block is loaded
+through the bake's own `load_model` + `cull_interior`, its moving parts are
+posed by the real `kPartAnims` rows in BlockShape.h exactly as `voxel.vert`
+does, and a creature is loaded and posed by a replica of `BbModel.cpp`; the
+lighting is the game shaders'.
+
+**The checks it prints**: a block's quads and KB (the bake's numbers), and
+whether any animated part leaves the cell at ANY sampled moment of its motion
+-- the bake only checks the rest pose, so a spinning blade that clears the
+cell's top halfway round passes the bake and fails here. A creature's bone
+count against the engine's 32, the `idle`/`walk` clips the game requires, and
+a cross-check against the GAME's loader: `voxel-factory --check-bbmodel <file>`
+(headless -- no window, no save touched) must report the same bones and
+vertices as the preview, so the replica cannot drift unnoticed.
+
+**Build a new model in Python** with `modelkit.Model` (see the docstring in
+`spec.py`, and `tools/modelkit/examples/`): materials, `group()` for a part or
+a bone (pivot, parent, rest rotation), `box()` with per-face materials and an
+element rotation, `move()` for a block part's motion, `clip().rot()/.pos()`
+for creature keyframes. `save()` writes the `.bbmodel` (per-face UVs at one
+texel per unit, groups inline -- both loaders and Blockbench read it),
+`preview()` saves and renders it with the spec's own motions, and
+`cpp_part_anims("ShapeIdName")` prints the `kPartAnims` rows to paste. The
+`.bbmodel` stays the source and still opens in Blockbench; the script is how
+it was made. Everything below this section still applies to its output.
+
 ## Creating the project
 
 **1. File → New → Java Block/Item.** This writes `model_format: "java_block"`

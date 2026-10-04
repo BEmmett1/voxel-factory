@@ -746,6 +746,16 @@ Entities (Blockbench import — the combat pillar's first brick):
   missing `idle`/`walk` clip, and a row with `swingImpact > 0` whose model has no
   `attack` clip (a telegraph the player cannot see). **Adding a `kSpecies` row
   therefore means committing its model**, under the convention above.
+- **`tools/modelkit/`** (Oct 2026) builds, previews and checks block shapes and
+  creatures WITHOUT the game: `preview.py <model>` renders four views plus
+  animation strips/GIFs in seconds and checks cell bounds across a part's
+  whole motion (the bake only sees the rest pose), mesh budget, bone cap and
+  required clips; `spec.Model` writes new models from Python. Blocks load
+  through the bake's own `load_model`, posed by the real `kPartAnims` rows; a
+  creature through a replica of BbModel.cpp, which `preview.py` cross-checks
+  against `voxel-factory --check-bbmodel <file>` -- a headless mode that runs
+  the ENGINE's loader on one file and prints bones, vertices and clips (exit 1
+  if it fails to load or lacks idle/walk). See models/AUTHORING.md.
 
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine, extracted as the **`Weather`**
