@@ -1698,7 +1698,8 @@ Save the project as glassblower.bbmodel
 
 ### Compactor
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `compactor.bbmodel`,
+from `tools/block_models/compactor.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format
@@ -1750,7 +1751,8 @@ Save the project as compactor.bbmodel
 
 ### Composter
 
-**Status: not started.**
+**Status: done** -- built with modelkit, not from this prompt: `composter.bbmodel`,
+from `tools/block_models/composter.py`.
 
 ```
 Output a Blockbench "Java Block/Item" project file (.bbmodel, model_format

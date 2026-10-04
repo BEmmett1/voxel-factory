@@ -196,8 +196,8 @@ namespace {
         // Composter machine: composts plant matter into renewable Dirt. Uses
         // spare machine atlas tiles (35 top, 36 side).
         {.id = B::Composter, .key = "core:composter",
-         .name = "Composter", .color = {0.36f, 0.25f, 0.14f},
-         .machine = true, .drop = {I::ComposterItem, 1}, .tiles = {35, 36, 36}, .hardness = 0.5f},
+         .name = "Composter", .fullCube = false, .color = {0.36f, 0.25f, 0.14f},
+         .machine = true, .drop = {I::ComposterItem, 1}, .tiles = {35, 36, 36}, .hardness = 0.5f, .shape = ShapeId::Composter},
         // Forge machine: block-crafts weapons/armor. Uses spare machine atlas
         // tiles (37 top, 38 side).
         {.id = B::Forge, .key = "core:forge",
@@ -238,9 +238,9 @@ namespace {
          .machine = true, .drop = {I::GlassblowerItem, 1}, .tiles = {132, 133, 133},
          .hardness = 0.5f, .shape = ShapeId::Glassblower},
         {.id = B::Compactor, .key = "core:compactor",
-         .name = "Compactor", .color = {0.49f, 0.48f, 0.45f},
+         .name = "Compactor", .fullCube = false, .color = {0.49f, 0.48f, 0.45f},
          .machine = true, .drop = {I::CompactorItem, 1}, .tiles = {134, 135, 135},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Compactor},
         // ---- The manual tier (atlas tiles 136-161) -----------------------
         // Thirteen rows of pure data. Each is soft (hardness 0.5) and drops
         // itself, like every other machine, so relocating your hand-cranked

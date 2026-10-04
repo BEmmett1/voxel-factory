@@ -76,7 +76,7 @@ its tile. Two things need code, not just art:
 PixelLab budget: 2000 generations a cycle (refills on the 30th of each
 month). A 16px batch costs 20-40.
 
-## Block models: 34 of 42 done, 8 to go
+## Block models: 36 of 42 done, 6 to go
 
 Done before this pass (see the Status lines in `models/PROMPTS.md`): all ten
 Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
@@ -102,8 +102,8 @@ Sources and Nodes, Scaffold, Tilled Soil, Rich Soil, Grafted Sapling, Sieve.
 | 17 | Forge | powered | 32 | **done**: 19 elements, 87 quads, 28.5 KB |
 | 18 | Sifter | powered | 28 | **done**: 10 elements, 55 quads, 18.0 KB |
 | 19 | Glassblower | powered | 28 | **done**: 14 elements, 78 quads, 25.6 KB |
-| 20 | Compactor | powered | 28 | not started |
-| 21 | Composter | powered | 28 | not started |
+| 20 | Compactor | powered | 28 | **done**: 11 elements, 52 quads, 17.1 KB |
+| 21 | Composter | powered | 28 | **done**: 10 elements, 55 quads, 18.0 KB |
 | 22 | Distiller | powered | 32 | not started |
 | 23 | Transmuter | powered | 32 | not started |
 | 24 | Harvester | powered | 28 | not started |
@@ -325,3 +325,11 @@ view").
   -- an iron post at the back carrying the `arm` (beam, brass blowpipe,
   molten gather), which swings 12 degrees either way every four seconds
   while powered, and a cooling rack of vials on the west side.
+- **2026-10-04. Compactor done.** A dented iron body with a recess of packed
+  earth, a hazard-striped rim, four thick guide posts, and the `plate` (with
+  a boss on top) pressing 2.5 units down into the recess while powered.
+- **2026-10-04. Composter done.** Iron rails and a two-sided cradle holding
+  a slatted drum -- four boxes, two turned 45 degrees, staves painted with
+  compost showing through the gaps and an iron hoop at each end -- with a
+  hatch on its surface; the `drum` rolls a fifth of a turn a second while
+  powered.

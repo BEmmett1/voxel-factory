@@ -144,6 +144,8 @@ enum class ShapeId : std::uint8_t {
     Forge,
     Sifter,
     Glassblower,
+    Compactor,
+    Composter,
     Count
 };
 
@@ -449,6 +451,18 @@ inline constexpr BlockShape kBlockShapes[] = {
      .bounds = kShapeBoundsGlassblower,
      .anim = kShapeAnimGlassblower,
      .parts = kShapePartsGlassblower},
+    {.id = ShapeId::Compactor,
+     .quads = kShapeQuadsCompactor,
+     .boxes = kShapeBoxesCompactor,
+     .bounds = kShapeBoundsCompactor,
+     .anim = kShapeAnimCompactor,
+     .parts = kShapePartsCompactor},
+    {.id = ShapeId::Composter,
+     .quads = kShapeQuadsComposter,
+     .boxes = kShapeBoxesComposter,
+     .bounds = kShapeBoundsComposter,
+     .anim = kShapeAnimComposter,
+     .parts = kShapePartsComposter},
 };
 
 static_assert(std::size(kBlockShapes) == static_cast<std::size_t>(ShapeId::Count),
@@ -559,6 +573,10 @@ inline constexpr PartAnim kPartAnims[] = {
     {ShapeId::Sifter, "tray", PartMotion::Bob, {1.0f, 0.0f, 0.0f}, 3.0f, 0.75f / 16.0f},
     // The glassblower's arm swings the blowpipe to and fro over its port.
     {ShapeId::Glassblower, "arm", PartMotion::Rock, {0.0f, 1.0f, 0.0f}, 0.25f, 12.0f},
+    // The compactor's plate presses down into its recess while powered.
+    {ShapeId::Compactor, "plate", PartMotion::Bob, {0.0f, -1.0f, 0.0f}, 0.6f, 2.5f / 16.0f},
+    // The composter's drum rolls slowly about its axle while powered.
+    {ShapeId::Composter, "drum", PartMotion::Spin, {1.0f, 0.0f, 0.0f}, 0.2f, 0.0f},
 };
 
 // A shape's part index by name, or -1. Constexpr so the table below and the
@@ -783,7 +801,7 @@ inline constexpr const char* kShapeNames[] = {
     "verdigris_standing_stone",
     "sand_source", "essence_source", "resonant_source",
     "timber_scaffold_frame", "tilled_soil", "rich_soil",
-    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower",
+    "grafted_sapling", "sieve", "mortar", "hand_press", "anvil", "blowpipe", "tamper", "compost_heap", "mixing_bowl", "infusion_stand", "still", "hand_distiller", "hand_transmuter", "bloomery", "furnace", "generator", "grinder", "press", "forge", "sifter", "glassblower", "compactor", "composter",
 };
 static_assert(std::size(kShapeNames) == static_cast<std::size_t>(ShapeId::Count),
               "kShapeNames needs exactly one name per ShapeId");
