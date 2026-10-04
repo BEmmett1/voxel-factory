@@ -48,7 +48,10 @@ element rotation, `move()` for a block part's motion, `clip().rot()/.pos()`
 for creature keyframes. `save()` writes the `.bbmodel` (per-face UVs at one
 texel per unit, groups inline -- both loaders and Blockbench read it),
 `preview()` saves and renders it with the spec's own motions, and
-`cpp_part_anims("ShapeIdName")` prints the `kPartAnims` rows to paste. The
+`cpp_part_anims("ShapeIdName")` prints the `kPartAnims` rows to paste. A material TILES by default (each face takes its own window of it, so
+no two faces show the same grain); `material(key, img, decal=True)` instead
+maps the WHOLE image onto every face that uses it -- for a picture such as the
+Furnace door or the Bloomery's glowing arch, painted at the face's size. The
 `.bbmodel` stays the source and still opens in Blockbench; the script is how
 it was made. Everything below this section still applies to its output.
 

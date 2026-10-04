@@ -70,12 +70,19 @@ class Model:
     def __init__(self, name, kind="block"):
         assert kind in ("block", "creature")
         self.name, self.kind = name, kind
-        self.mats, self.groups, self.boxes = {}, {}, []
+        self.mats, self.groups, self.boxes, self.decals = {}, {}, [], set()
         self.moves, self.clips = [], []
 
     # ---- content -------------------------------------------------------------
-    def material(self, key, img):
-        self.mats[key] = img.convert("RGBA"); return key
+    def material(self, key, img, decal=False):
+        """A texture to sample. An ordinary material TILES: each face takes its
+        own window of it, so a box never shows the same grain twice. A DECAL is
+        a picture -- a glowing arch, a dial -- and each face using it shows the
+        WHOLE image, stretched to fit, so paint it at the face's size."""
+        self.mats[key] = img.convert("RGBA")
+        if decal:
+            self.decals.add(key)
+        return key
 
     def group(self, name, pivot=(8, 8, 8), parent=None, rotation=(0, 0, 0)):
         """A block PART (something kPartAnims can move) or a creature BONE."""
@@ -123,6 +130,8 @@ class Model:
                 assert k in self.mats, f"unknown material {k}"
                 fw, fh = self._face_dims(b, f)
                 need[k] = max(need.get(k, 16), math.ceil(max(fw, fh)))
+                if k in self.decals:
+                    need[k] = max(need[k], *self.mats[k].size)
         regions, x, y, row_h, W = {}, 0, 0, 0, 128
         for k in sorted(need, key=lambda k: -need[k]):
             r = 16 if need[k] <= 16 else 32 if need[k] <= 32 else 64
@@ -150,6 +159,10 @@ class Model:
                 k = b["faces"].get(f, b["mat"])
                 if k is None: continue
                 rx, ry, r = regions[k]
+                if k in self.decals:
+                    iw, ih = self.mats[k].size
+                    faces[f] = {"uv": [rx, ry, rx + iw, ry + ih], "texture": 0}
+                    continue
                 fw, fh = self._face_dims(b, f)
                 fw, fh = min(fw, r), min(fh, r)
                 h = int(hashlib.md5(f"{self.name}{i}{f}".encode()).hexdigest(), 16)
