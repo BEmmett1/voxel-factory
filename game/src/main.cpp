@@ -2244,9 +2244,11 @@ int main(int argc, char** argv) {
     const char* modelPath = nullptr; // --check-bbmodel's argument
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--pack") == 0 && i + 1 < argc) packs.push_back(argv[++i]);
-        else if (std::strcmp(argv[i], "--check-bbmodel") == 0 && i + 1 < argc) {
+        else if (std::strcmp(argv[i], "--check-bbmodel") == 0) {
+            // Matched with or without its argument: falling through to the
+            // bare-mode branch below would run this mode with no file.
             mode = argv[i];
-            modelPath = argv[++i];
+            if (i + 1 < argc) modelPath = argv[++i];
         }
         else if (!*mode) mode = argv[i];
     }
@@ -2288,6 +2290,10 @@ int main(int argc, char** argv) {
     // replica of BbModel.cpp and could otherwise drift from it unnoticed.
     // Exit 0 only if it loads and carries the clips every creature needs.
     if (std::strcmp(mode, "--check-bbmodel") == 0) {
+        if (!modelPath) {
+            std::printf("usage: voxel-factory --check-bbmodel <file.bbmodel>\n");
+            return 1;
+        }
         engine::BbModel model;
         if (!engine::loadBbModel(modelPath, model, vg::kMaxEntityBones)) {
             std::printf("FAILED to load %s (see the log line above)\n", modelPath);
