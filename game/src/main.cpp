@@ -1481,6 +1481,28 @@ int runSelfTest() {
         }
     }
 
+    // ---- ...and a connected shape collides with no arm --------------------
+    // Arms are drawn per neighbour but collision cannot see the neighbours
+    // (a conduit's depend on belt facings), so its boxes must stay inside the
+    // geometry that is ALWAYS drawn -- or you stand on, and aim at, air.
+    {
+        for (std::size_t si = 0; si < static_cast<std::size_t>(ShapeId::Count); ++si) {
+            const ShapeId id = static_cast<ShapeId>(si);
+            if (!shapeConnects(id)) continue;
+            const BlockShape& sh = blockShape(id);
+            glm::vec3 lo(2.0f), hi(-1.0f);
+            for (const ShapeQuad& q : sh.quads) {
+                if (partFace(id, q.part) >= 0) continue;
+                for (const glm::vec3& v : q.pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            }
+            SELFTEST_CHECK(!sh.boxes.empty());
+            for (const ShapeAabb& b : sh.boxes) {
+                SELFTEST_CHECK(glm::all(glm::greaterThanEqual(b.lo, lo - 1e-4f)) &&
+                               glm::all(glm::lessThanEqual(b.hi, hi + 1e-4f)));
+            }
+        }
+    }
+
     // ---- Cargo slides, and only when it actually moved --------------------
     // The visual is one belt step behind the simulation, which is what makes
     // it always right: predicting the next hop would snap back whenever a belt

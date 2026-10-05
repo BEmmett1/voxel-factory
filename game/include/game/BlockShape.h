@@ -162,6 +162,20 @@ enum class ShapeId : std::uint8_t {
 // per-quad geometry would cost the whole world's meshing speed to buy nothing.
 inline constexpr ShapeAabb kUnitCubeBoxes[] = {{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}};
 
+// The CONNECTED shapes collide with their hub alone. Their baked boxes include
+// all six arms, but the mesher draws an arm only where a neighbour earns it
+// (kConnectParts), and collision cannot ask that question: a conduit's arms
+// depend on belt facings, which live in the belt map, not the World every
+// Collision/raycast query takes. Colliding with every arm left a lone conduit
+// standing you 0.25 above its visible top and a lone wire blocking its whole
+// cell. The hub is the part that is ALWAYS drawn, so collision can never claim
+// more than the picture -- --selftest pins that. A run still bears a player:
+// conduit hubs leave a 0.46 gap between cells against a 0.6-wide body.
+inline constexpr ShapeAabb kConduitHubBoxes[] = {
+    {{0.23125f, 0.23125f, 0.23125f}, {0.76875f, 0.76875f, 0.76875f}}};
+inline constexpr ShapeAabb kWireHubBoxes[] = {
+    {{0.375f, 0.375f, 0.375f}, {0.625f, 0.625f, 0.625f}}};
+
 // Everything about a shape, one row per ShapeId.
 struct BlockShape {
     ShapeId                    id;      // must equal the row's position
@@ -225,14 +239,14 @@ inline constexpr BlockShape kBlockShapes[] = {
      .parts = kShapePartsHerbCrop3},
     {.id = ShapeId::ConduitHub,
      .quads = kShapeQuadsConduitHub,
-     .boxes = kShapeBoxesConduitHub,
-     .bounds = kShapeBoundsConduitHub,
+     .boxes = kConduitHubBoxes, // hub only: arms are drawn per neighbour
+     .bounds = kConduitHubBoxes[0],
      .anim = kShapeAnimConduitHub,
      .parts = kShapePartsConduitHub},
     {.id = ShapeId::WireHub,
      .quads = kShapeQuadsWireHub,
-     .boxes = kShapeBoxesWireHub,
-     .bounds = kShapeBoundsWireHub,
+     .boxes = kWireHubBoxes, // hub only: arms are drawn per neighbour
+     .bounds = kWireHubBoxes[0],
      .anim = kShapeAnimWireHub,
      .parts = kShapePartsWireHub},
     {.id = ShapeId::RuneCore,
