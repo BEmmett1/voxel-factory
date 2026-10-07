@@ -90,6 +90,11 @@ void VoxelGame::onUpdate(float dt) {
     if (input().wasKeyPressed(SDL_SCANCODE_F3)) {
         m_debugOpen = !m_debugOpen;
     }
+    // Screenshot works over every screen, so it is read before any overlay
+    // takes the input -- except an armed keybind capture, which owns the key.
+    if (m_bindCapture < 0 && input().wasKeyPressed(key(Action::Screenshot))) {
+        m_screenshotPending = true;
+    }
 
     // A refusal's reason fades on REAL frame time, not the pause-aware clock
     // below: several of the sites that call deny() are inside panels, where the
@@ -104,6 +109,14 @@ void VoxelGame::onUpdate(float dt) {
         // Animated block textures run off the same pause-aware clock, so a
         // paused cauldron stops bubbling along with the sim that fills it.
         m_animClock = std::fmod(m_animClock + dt, kAnimClockWrap);
+        // Cargo slides across its cell between belt steps. Clamped rather than
+        // wrapped: if the sim stalls, an item parks at its destination instead
+        // of running past it.
+        m_beltLerp = std::min(m_beltLerp + dt, kBeltStepTicks * kTickSeconds);
+        // Ritual motes and bursts on the same clock: a paused game freezes a
+        // spark mid-air rather than letting it finish without you.
+        updateRitualEffects(dt);
+        updateCrankAnim(dt);
         m_attackCooldown = std::max(0.0f, m_attackCooldown - dt);
         m_castCooldown = std::max(0.0f, m_castCooldown - dt);
         m_vigorTimer = std::max(0.0f, m_vigorTimer - dt);
@@ -117,6 +130,22 @@ void VoxelGame::onUpdate(float dt) {
         }
     }
 
+    // Rain ambience. ABOVE the menus' early returns on purpose: the pause menu
+    // returns before the rest of this function, and the whole point of the
+    // duck is what happens WHILE paused -- below them it never ran, and the
+    // rain played on at full over the menu.
+    // Weather visuals ease in and out. The rain loop is Overworld ambience;
+    // the Tempest's arena storm never breaks.
+    m_weather.frameEase(dt);
+    const float rainAmbience = m_dimension == DimensionId::Overworld
+        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
+    // Paused, the rain hangs mid-air -- so the sound ducks rather than playing
+    // on at full over a frozen picture, and rather than cutting out, which
+    // would sound like the game had died. Eased on REAL frame time: the
+    // pause-aware clock is exactly the one that has stopped.
+    const float duckTarget = paused() ? kRainPausedGain : 1.0f;
+    m_rainDuck += (duckTarget - m_rainDuck) * std::min(1.0f, dt * kRainDuckRate);
+    audio().setLoopGain(m_rainLoop, rainAmbience * kRainVolume * m_rainDuck);
     // Main menu shell (launch): owns all input over an unbuilt world until a
     // slot is chosen. Settings and the slot picker ride on top of it.
     if (m_shellOpen) {
@@ -228,6 +257,10 @@ void VoxelGame::onUpdate(float dt) {
         // is the one thing you cannot set up by hand in a fresh world.
         give(ItemId::StorageCrateItem, 4, kHotbarSlots - 4);
         give(ItemId::Conduit, 32, kHotbarSlots - 5);
+        // Wire is only craftable on the Circle, so without this the kit could
+        // build a factory it could not WIRE -- and, since wire became a shaped
+        // block that grows arms toward its network, could not look at either.
+        m_inventory.add(ItemId::WireItem, 32);
         // The Wrench gates BOTH conduit verbs (re-aim and set filter), so a kit
         // without one leaves half the logistics tier untestable.
         m_inventory.add(ItemId::Wrench, 1);
@@ -259,13 +292,8 @@ void VoxelGame::onUpdate(float dt) {
         audio().play("craft", kCraftVolume);
     }
 
-    // Weather visuals ease in and out; F4 is a dev key to summon/clear rain.
-    // The rain loop is Overworld ambience — silent in the arena.
-    m_weather.frameEase(dt);
-    // Home rain follows the weather; the Tempest's arena storm never breaks.
-    const float rainAmbience = m_dimension == DimensionId::Overworld
-        ? m_weather.intensity : (m_arenaStorm ? 1.0f : 0.0f);
-    audio().setLoopGain(m_rainLoop, rainAmbience * kRainVolume);
+    // F4 is a dev key to summon/clear rain (the ambience itself is set above,
+    // before the menus' early returns).
     if (input().wasKeyPressed(SDL_SCANCODE_F4)) {
         m_weather.forceToggle();
     }
@@ -585,11 +613,23 @@ void VoxelGame::onUpdate(float dt) {
                 } else if (itemInfo(held).placeable && m_inventory.has(held) &&
                            !cellOverlapsPlayer(p)) {
                     // A conduit carries items the way the player is facing --
-                    // straight up/down when looking steeply. (Player policy,
-                    // so decided here; WorldEdit just stores it.)
+                    // straight up/down only when looking STEEPLY. (Player
+                    // policy, so decided here; WorldEdit just stores it.)
+                    //
+                    // kVerticalLook used to be 0.7, which is a 44-degree
+                    // glance -- shallower than the angle you naturally hold to
+                    // put a block at your own feet (about 55-60). So laying a
+                    // line along the ground silently gave every segment a
+                    // DOWNWARD facing, and a line of conduits that all point
+                    // into the dirt moves nothing. The bug was always there;
+                    // it was invisible while a conduit was a cube, because a
+                    // cube abuts its neighbour whichever way it faces. A tube
+                    // draws an arm only where something connects, so the same
+                    // mis-facing now reads as a row of disconnected stubs --
+                    // the art telling the truth about a wrong the arrow hid.
                     const glm::vec3 f = camera().front();
                     glm::ivec3 facing;
-                    if (std::abs(f.y) > 0.7f) {
+                    if (std::abs(f.y) > kVerticalLook) {
                         facing = {0, f.y > 0 ? 1 : -1, 0};
                     } else if (std::abs(f.x) > std::abs(f.z)) {
                         facing = {f.x > 0 ? 1 : -1, 0, 0};
@@ -606,6 +646,18 @@ void VoxelGame::onUpdate(float dt) {
                     if (itemInfo(held).placesBlock == BlockId::Belt &&
                         m_machines.find(aim.block) != m_machines.end()) {
                         facing = aim.normal;
+                    }
+                    // ...and a conduit added to the END of a run continues it,
+                    // rather than asking the camera again. Only when the new
+                    // cell lies ON that conduit's axis, so clicking a run's
+                    // SIDE still branches the way you are looking -- inheriting
+                    // there would make a branch impossible to aim.
+                    if (itemInfo(held).placesBlock == BlockId::Belt) {
+                        const auto ab = m_belts.find(aim.block);
+                        if (ab != m_belts.end() &&
+                            glm::abs(aim.normal) == glm::abs(ab->second.facing)) {
+                            facing = ab->second.facing;
+                        }
                     }
 
                     // WorldEdit refuses world-side (cell taken, plants need the
@@ -691,7 +743,7 @@ void VoxelGame::onUpdate(float dt) {
                 const ItemId want = (held == ItemId::Wrench) ? ItemId::None : held;
                 bit->second.filter = (bit->second.filter == want) ? ItemId::None : want;
                 audio().playAt("click", glm::vec3(tb) + glm::vec3(0.5f), kCraftVolume);
-                m_world->markDirtyAt(tb.x, tb.y, tb.z);
+                m_world->markDirtyAround(tb);
             }
         }
     }

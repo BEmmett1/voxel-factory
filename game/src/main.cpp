@@ -6,6 +6,7 @@
 
 #include "game/VoxelGame.h"
 #include "game/AlchemyCircle.h"
+#include "game/BlockShape.h"
 #include "game/ContentPack.h"
 #include "game/ContentRegistry.h"
 #include "game/ContentValidate.h"
@@ -15,9 +16,11 @@
 #include "game/Recipes.h"
 #include "game/SaveSystem.h"
 #include "game/Settings.h"
+#include "game/TubeShape.h"
 #include "game/World.h"
 #include "VoxelGameInternal.h" // vg::kOrgName / kAppName
 
+#include "engine/BbModel.h"
 #include "engine/CrashHandler.h"
 #include "engine/Log.h"
 #include "engine/Paths.h"
@@ -183,6 +186,10 @@ int runSelfTest() {
     // or read in the wrong order.
     belts[glm::ivec3{2, 3, 3}] =
         Belt{glm::ivec3{-1, 0, 0}, ItemId::GroundHerb, ItemId::Crystal};
+    // Cargo MOTION is render state, re-derived by the next beltStep. Set it
+    // here so the load side can prove it is not written: persisting it would
+    // have forced a save version for a purely visual field.
+    belts[glm::ivec3{2, 3, 3}].cameFrom = glm::ivec3{0, 0, 1};
 
     std::unordered_map<glm::ivec3, float, IVec3Hash> sources;
     sources[glm::ivec3{4, 2, 4}] = 3.5f;
@@ -308,6 +315,9 @@ int runSelfTest() {
     SELFTEST_CHECK(b2.facing == glm::ivec3(-1, 0, 0));
     SELFTEST_CHECK(b2.item == ItemId::GroundHerb);
     SELFTEST_CHECK(b2.filter == ItemId::Crystal); // v23
+    // Transient, so it must come back cleared rather than round-tripped --
+    // this is the assertion that says the flowing-cargo visual cost no bump.
+    SELFTEST_CHECK(b2.cameFrom == glm::ivec3(0));
 
     SELFTEST_CHECK(sources2.size() == 1 && sources2.at(glm::ivec3{4, 2, 4}) == 3.5f);
     SELFTEST_CHECK(saplings2.size() == 1 && saplings2.at(glm::ivec3{6, 2, 6}) == 9.0f);
@@ -439,6 +449,19 @@ int runSelfTest() {
     SELFTEST_CHECK(u.volume == 0.8f);                          // bad value -> default
     SELFTEST_CHECK(u.key(Action::Jump) == SDL_SCANCODE_SPACE); // reserved -> default
     SELFTEST_CHECK(!u.vsync);
+    // A cfg from before an action existed has no line for it -> its default.
+    SELFTEST_CHECK(u.key(Action::Screenshot) == SDL_SCANCODE_F2);
+
+    // ...unless that old cfg already gave the new default away: the player's
+    // own bind wins (first in enum order) and the newcomer loads unbound.
+    {
+        std::ofstream old(cfg, std::ios::trunc);
+        old << "BIND_HELP=" << static_cast<int>(SDL_SCANCODE_F2) << "\n";
+    }
+    Settings oldCfg;
+    SELFTEST_CHECK(SettingsIO::load(cfg, oldCfg));
+    SELFTEST_CHECK(oldCfg.key(Action::Help) == SDL_SCANCODE_F2);
+    SELFTEST_CHECK(oldCfg.key(Action::Screenshot) == SDL_SCANCODE_UNKNOWN);
 
     fs::remove(cfg, ec);
     fs::remove(cfg + ".bak", ec);
@@ -664,6 +687,88 @@ int runSelfTest() {
         const glm::ivec3 north = AlchemyCircle::slotPos(core, 0);
         cw.setBlock(north.x, north.y, north.z, BlockId::Air);
         SELFTEST_CHECK(AlchemyCircle::tierAt(cw, cm, core) != AlchemyCircle::Tier::Greater);
+    }
+
+    // ---- A circle runs only once STARTED, and only what it was started on ---
+    // The bug this pins: laying a Press by hand passes through "two ingots on
+    // one pedestal", which satisfies circle/wire ("at least one ingot"), and a
+    // circle that ran whatever the ring spelled crafted wire out from under
+    // you. Starting locks the recipe; the lock then keeps a belt-fed circle on
+    // THAT recipe while its pattern refills.
+    {
+        World cw;
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        PowerState dead; // a Lesser circle runs unpowered
+        const glm::ivec3 core{40, 20, 40};
+        cw.setBlock(core.x, core.y, core.z, BlockId::RuneCore);
+        cm[core].type = BlockId::RuneCore;
+        for (int sl = 0; sl < AlchemyCircle::kRingSlots; sl += 2) {
+            const glm::ivec3 p = AlchemyCircle::slotPos(core, sl);
+            cw.setBlock(p.x, p.y, p.z, BlockId::Pedestal);
+            cm[p].type = BlockId::Pedestal;
+        }
+        auto layOn = [&](int slot, ItemId id, int n) {
+            cm[AlchemyCircle::slotPos(core, slot)].input.add(id, n);
+        };
+        std::uint32_t rc = 0;
+        std::vector<MachineSystem::CircleCompletion> done;
+        auto run = [&](int ticks) {
+            for (int i = 0; i < ticks; ++i) {
+                MachineSystem::tickPowered(cw, cm, dead, 1u, rc, noCrops, &done);
+            }
+        };
+
+        // Half-laid: a pattern the ring spells (Wire), never started.
+        layOn(0, ItemId::CopperIngot, 2);
+        run(400); // far past a Lesser wire craft
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+        SELFTEST_CHECK(cm[AlchemyCircle::slotPos(core, 0)].input.count(ItemId::CopperIngot) == 2);
+        SELFTEST_CHECK(cm[core].progress == 0.0f);
+
+        // Finish laying the Press, start it on exactly that.
+        layOn(2, ItemId::Stone, 2);
+        layOn(4, ItemId::CopperIngot, 2);
+        layOn(6, ItemId::Stone, 2);
+        const auto ring = AlchemyCircle::ringContents(cw, cm, core);
+        const auto match = AlchemyCircle::findMatch(ring, cm[core].input,
+                                                    AlchemyCircle::Tier::Lesser, false);
+        SELFTEST_CHECK(match && match.recipe->output.id == ItemId::PressItem);
+        cm[core].selectedRecipe = static_cast<int>(match.recipe - circleRecipes().data());
+        const int pressTicks = static_cast<int>(
+            AlchemyCircle::craftSeconds(*match.recipe, AlchemyCircle::Tier::Lesser, false) /
+            vg::kTickSeconds) + 2;
+        run(pressTicks);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 1);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+
+        // The finish was REPORTED, with each ingredient on the pedestal it sat on.
+        SELFTEST_CHECK(done.size() == 1);
+        if (done.size() == 1) {
+            SELFTEST_CHECK(done[0].core == core && done[0].made == ItemId::PressItem);
+            SELFTEST_CHECK(!done[0].greater);
+            SELFTEST_CHECK(done[0].consumed[0] == ItemId::CopperIngot &&
+                           done[0].consumed[2] == ItemId::Stone &&
+                           done[0].consumed[4] == ItemId::CopperIngot &&
+                           done[0].consumed[6] == ItemId::Stone);
+            SELFTEST_CHECK(done[0].consumed[1] == ItemId::None);
+        }
+
+        // Still started: a lone ingot now spells Wire, and it must NOT run --
+        // this is a belt mid-refill, and the circle waits for its Press.
+        layOn(0, ItemId::CopperIngot, 1);
+        run(400);
+        SELFTEST_CHECK(cm[core].selectedRecipe >= 0);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::WireItem) == 0);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 1);
+
+        // ...and the refilled pattern runs again with no second START.
+        layOn(0, ItemId::CopperIngot, 1);
+        layOn(2, ItemId::Stone, 2);
+        layOn(4, ItemId::CopperIngot, 2);
+        layOn(6, ItemId::Stone, 2);
+        run(pressTicks);
+        SELFTEST_CHECK(cm[core].output.count(ItemId::PressItem) == 2);
+        SELFTEST_CHECK(done.size() == 2);
     }
 
     // ---- The content set is coherent --------------------------------------
@@ -1264,6 +1369,192 @@ int runSelfTest() {
         MachineSystem::beltStep(hb, hm);
         SELFTEST_CHECK(hb[nextBelt].item == ItemId::Stone); // still occupied this step
         SELFTEST_CHECK(hb[a].item == ItemId::IronIngot);
+    }
+
+    // ---- Tubes: a conduit's shape is a property of its CELL ----------------
+    // The arms are parts of one baked hub, shown per neighbour, so these masks
+    // ARE the geometry. A rule that lived inside the mesher could only be
+    // checked by looking at the screen; this is why TubeShape is free
+    // functions over the registries instead.
+    {
+        using TubeShape::conduitArms;
+        using TubeShape::wireArms;
+        const auto air = [] {
+            TubeShape::Neighbours n;
+            n.fill(BlockId::Air);
+            return n;
+        };
+        // Face indices, from BlockShape.h's kShapeFaceDirs.
+        constexpr int kEast = 0, kWest = 1, kUp = 2, kDown = 3;
+        constexpr int kSouth = 4, kNorth = 5;
+        const auto bit = [](int f) { return static_cast<std::uint8_t>(1u << f); };
+
+        SELFTEST_CHECK(TubeShape::faceIndex({1, 0, 0}) == kEast);
+        SELFTEST_CHECK(TubeShape::faceIndex({0, 0, -1}) == kNorth);
+        SELFTEST_CHECK(TubeShape::faceIndex({1, 1, 0}) == -1); // not a cardinal
+
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> tb;
+        const glm::ivec3 c{200, 20, 200};
+
+        // A lone conduit still states its direction: the OUT arm is drawn into
+        // open air, because it is what replaced the top-face arrow.
+        Belt east;
+        east.facing = {1, 0, 0};
+        tb[c] = east;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == bit(kEast));
+
+        // A straight run: the belt behind aims at us, so we grow an arm back
+        // toward it -- two arms, one continuous pipe.
+        tb[c - glm::ivec3(1, 0, 0)] = east; // behind, pointing our way
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == (bit(kEast) | bit(kWest)));
+
+        // A belt alongside that does NOT aim at us shares no arm: nothing
+        // passes between two parallel lanes, and the picture should say so.
+        tb[c + glm::ivec3(0, 0, 1)] = east;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) == (bit(kEast) | bit(kWest)));
+
+        // ...but turn that neighbour to face us and it becomes a junction.
+        Belt intoUs;
+        intoUs.facing = {0, 0, -1}; // from +Z back toward us
+        tb[c + glm::ivec3(0, 0, 1)] = intoUs;
+        SELFTEST_CHECK(conduitArms(c, east, tb, air()) ==
+                       (bit(kEast) | bit(kWest) | bit(kSouth)));
+
+        // A corner: cargo arrives from -Z and leaves east. Two arms on
+        // perpendicular faces, which is what makes a corner look like one.
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> cb;
+        Belt fromNorth;
+        fromNorth.facing = {0, 0, 1}; // sits at -Z, pushes toward +Z
+        cb[c - glm::ivec3(0, 0, 1)] = fromNorth;
+        SELFTEST_CHECK(conduitArms(c, east, cb, air()) == (bit(kEast) | bit(kNorth)));
+
+        // A machine BEHIND earns an arm, because beltStep pulls out of it.
+        TubeShape::Neighbours nb = air();
+        nb[kWest] = BlockId::Furnace;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> mb;
+        SELFTEST_CHECK(conduitArms(c, east, mb, nb) == (bit(kEast) | bit(kWest)));
+
+        // A machine anywhere else is not on this belt's path at all: it neither
+        // feeds it nor takes from it, so no arm.
+        TubeShape::Neighbours side = air();
+        side[kUp] = BlockId::Furnace;
+        SELFTEST_CHECK(conduitArms(c, east, mb, side) == bit(kEast));
+
+        // Wire connects to exactly what the power solver floods into -- the
+        // same predicate, so the picture can never lie about the network.
+        TubeShape::Neighbours wn = air();
+        wn[kEast] = BlockId::Wire;
+        wn[kWest] = BlockId::Generator;
+        wn[kUp] = BlockId::Grinder;      // demand > 0
+        wn[kDown] = BlockId::Stone;      // not a node
+        wn[kNorth] = BlockId::RainBarrel; // a machine, but demand 0
+        SELFTEST_CHECK(wireArms(wn) == (bit(kEast) | bit(kWest) | bit(kUp)));
+        SELFTEST_CHECK(wireArms(air()) == 0);
+    }
+
+    // ---- ...and every arm really does point where its name says ------------
+    // kConnectParts binds a part NAME to a face. The static_assert proves the
+    // name exists; only geometry can prove it is the right lump. A mirrored or
+    // re-authored model would otherwise connect correctly and point backwards.
+    {
+        for (const ConnectPart& cp : kConnectParts) {
+            const BlockShape& sh = blockShape(cp.shape);
+            const int part = partIndex(cp.shape, cp.part);
+            SELFTEST_CHECK(part >= 0);
+
+            glm::vec3 lo(2.0f), hi(-1.0f);
+            int quads = 0;
+            for (const ShapeQuad& q : sh.quads) {
+                if (q.part != static_cast<std::uint8_t>(part)) continue;
+                ++quads;
+                for (const glm::vec3& v : q.pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            }
+            SELFTEST_CHECK(quads > 0); // an arm nothing draws is a dead row
+
+            // The arm must actually reach the wall it names, and must not
+            // sprawl to the opposite one.
+            const glm::ivec3 d = kShapeFaceDirs[cp.face];
+            const int axis = d.x ? 0 : (d.y ? 1 : 2);
+            const int sign = d.x + d.y + d.z;
+            SELFTEST_CHECK(sign > 0 ? (hi[axis] > 0.98f) : (lo[axis] < 0.02f));
+            SELFTEST_CHECK(sign > 0 ? (lo[axis] > 0.02f) : (hi[axis] < 0.98f));
+        }
+    }
+
+    // ---- ...and a connected shape collides with no arm --------------------
+    // Arms are drawn per neighbour but collision cannot see the neighbours
+    // (a conduit's depend on belt facings), so its boxes must stay inside the
+    // geometry that is ALWAYS drawn -- or you stand on, and aim at, air.
+    {
+        for (std::size_t si = 0; si < static_cast<std::size_t>(ShapeId::Count); ++si) {
+            const ShapeId id = static_cast<ShapeId>(si);
+            if (!shapeConnects(id)) continue;
+            const BlockShape& sh = blockShape(id);
+            glm::vec3 lo(2.0f), hi(-1.0f);
+            for (const ShapeQuad& q : sh.quads) {
+                if (partFace(id, q.part) >= 0) continue;
+                for (const glm::vec3& v : q.pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            }
+            SELFTEST_CHECK(!sh.boxes.empty());
+            for (const ShapeAabb& b : sh.boxes) {
+                SELFTEST_CHECK(glm::all(glm::greaterThanEqual(b.lo, lo - 1e-4f)) &&
+                               glm::all(glm::lessThanEqual(b.hi, hi + 1e-4f)));
+            }
+        }
+    }
+
+    // ---- Cargo slides, and only when it actually moved --------------------
+    // The visual is one belt step behind the simulation, which is what makes
+    // it always right: predicting the next hop would snap back whenever a belt
+    // lost a claim to another belt feeding the same cell.
+    {
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> fm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> fb;
+        const glm::ivec3 a{300, 20, 300};
+        const glm::ivec3 bpos = a + glm::ivec3(1, 0, 0);
+        fb[a].facing = {1, 0, 0};
+        fb[a].item = ItemId::Stone;
+        fb[bpos].facing = {1, 0, 0};
+
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[bpos].item == ItemId::Stone);
+        // Recorded on the RECEIVER and pointing back the way it came, so the
+        // render lerps from the cell behind into this one.
+        SELFTEST_CHECK(fb[bpos].cameFrom == glm::ivec3(-1, 0, 0));
+        SELFTEST_CHECK(fb[a].item == ItemId::None);
+
+        // Nothing ahead: the item sits still and the record clears, so a
+        // stalled line parks its cargo instead of replaying the last slide.
+        MachineSystem::beltStep(fb, fm);
+        SELFTEST_CHECK(fb[bpos].item == ItemId::Stone);
+        SELFTEST_CHECK(fb[bpos].cameFrom == glm::ivec3(0));
+
+        // A pull out of a machine behind is motion too, and from the same
+        // direction the arm points.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> pm2;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> pb;
+        const glm::ivec3 mp2{310, 20, 310};
+        pm2[mp2].type = BlockId::Furnace;
+        pm2[mp2].output.add(ItemId::CopperIngot, 1);
+        const glm::ivec3 out2 = mp2 + glm::ivec3(0, 0, 1);
+        pb[out2].facing = {0, 0, 1};
+        MachineSystem::beltStep(pb, pm2);
+        SELFTEST_CHECK(pb[out2].item == ItemId::CopperIngot);
+        SELFTEST_CHECK(pb[out2].cameFrom == glm::ivec3(0, 0, -1));
+
+        // A corner turns: the direction cargo ARRIVED from is not the
+        // direction it will leave by, which is why the record lives on the
+        // receiver rather than being derived from its own facing.
+        std::unordered_map<glm::ivec3, Machine, IVec3Hash> cm;
+        std::unordered_map<glm::ivec3, Belt, IVec3Hash> cb2;
+        const glm::ivec3 feed{320, 20, 320};
+        const glm::ivec3 corner = feed + glm::ivec3(0, 0, 1);
+        cb2[feed].facing = {0, 0, 1};
+        cb2[feed].item = ItemId::Stone;
+        cb2[corner].facing = {1, 0, 0}; // turns east
+        MachineSystem::beltStep(cb2, cm);
+        SELFTEST_CHECK(cb2[corner].item == ItemId::Stone);
+        SELFTEST_CHECK(cb2[corner].cameFrom == glm::ivec3(0, 0, -1));
     }
 
     // ---- The master switch: off means FROZEN, not broken -------------------
@@ -1950,11 +2241,19 @@ int main(int argc, char** argv) {
     // confusing failure.
     std::vector<std::string> packs;
     const char* mode = "";
+    const char* modelPath = nullptr; // --check-bbmodel's argument
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--pack") == 0 && i + 1 < argc) packs.push_back(argv[++i]);
+        else if (std::strcmp(argv[i], "--check-bbmodel") == 0) {
+            // Matched with or without its argument: falling through to the
+            // bare-mode branch below would run this mode with no file.
+            mode = argv[i];
+            if (i + 1 < argc) modelPath = argv[++i];
+        }
         else if (!*mode) mode = argv[i];
     }
     const bool headless = std::strcmp(mode, "--selftest") == 0 ||
+                          std::strcmp(mode, "--check-bbmodel") == 0 ||
                           std::strcmp(mode, "--dump-recipes") == 0 ||
                           std::strcmp(mode, "--dump-content") == 0 ||
                           std::strcmp(mode, "--validate") == 0;
@@ -1985,6 +2284,40 @@ int main(int argc, char** argv) {
         const std::string doc = content::dumpContent();
         std::fwrite(doc.data(), 1, doc.size(), stdout);
         return 0;
+    }
+    // Load a creature .bbmodel with the ENGINE's own loader and report what it
+    // made of it -- the ground truth behind tools/modelkit, whose renderer is a
+    // replica of BbModel.cpp and could otherwise drift from it unnoticed.
+    // Exit 0 only if it loads and carries the clips every creature needs.
+    if (std::strcmp(mode, "--check-bbmodel") == 0) {
+        if (!modelPath) {
+            std::printf("usage: voxel-factory --check-bbmodel <file.bbmodel>\n");
+            return 1;
+        }
+        engine::BbModel model;
+        if (!engine::loadBbModel(modelPath, model, vg::kMaxEntityBones)) {
+            std::printf("FAILED to load %s (see the log line above)\n", modelPath);
+            return 1;
+        }
+        std::printf("%s: %zu bones, %zu vertices, texture %dx%d\n", modelPath,
+                    model.bones.size(), model.vertexData.size() / 9,
+                    model.texture.width, model.texture.height);
+        for (const engine::BbBone& b : model.bones) {
+            std::printf("  bone %-16s parent %2d  pivot (%.3f, %.3f, %.3f)\n", b.name.c_str(),
+                        b.parent, b.pivot.x, b.pivot.y, b.pivot.z);
+        }
+        for (const engine::BbAnimation& a : model.animations) {
+            std::printf("  clip %-28s %.2fs %s, %zu tracks\n", a.name.c_str(), a.length,
+                        a.loop ? "loop" : "once", a.tracks.size());
+        }
+        bool ok = true;
+        for (const char* need : {"idle", "walk"}) {
+            if (model.findAnimation(need) < 0) {
+                std::printf("  MISSING required clip '%s'\n", need);
+                ok = false;
+            }
+        }
+        return ok ? 0 : 1;
     }
     // Is the content set coherent? The --selftest checks that are about
     // CONTENT rather than about code, on their own and without the save

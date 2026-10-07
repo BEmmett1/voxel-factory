@@ -8,6 +8,7 @@
 #include "game/VoxelGame.h"
 #include "VoxelGameInternal.h"
 #include "game/ChunkMesher.h"
+#include "game/AlchemyCircle.h"
 #include "game/Atlas.h"
 #include "game/BlockShape.h"
 
@@ -15,8 +16,11 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <ctime>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -31,8 +35,9 @@ static_assert(static_cast<int>(ShapeId::Count) <= kMaxShapeBanks,
 
 // Same shape of hazard for uPartRot[]: the shader indexes it by the slot baked
 // into the vertex, so one animated part too many would read off the end of a
-// uniform array. Slot 0 is identity, hence the + 1.
-static_assert(static_cast<int>(std::size(kPartAnims)) + 1 <= kMaxShapeParts,
+// uniform array. kPartSlotCount includes slot 0 (identity) and the one block
+// every cranked part shares.
+static_assert(kPartSlotCount <= kMaxShapeParts,
               "uPartRot[] in voxel.vert needs a slot per animated part — "
               "raise vg::kMaxShapeParts and the array size in the shader");
 
@@ -181,7 +186,9 @@ void VoxelGame::buildRainMesh() {
     const int count = static_cast<int>(static_cast<float>(kRainStreaks) * intensity);
     if (count > 0) {
         const glm::vec3 cam = camera().position;
-        const float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        // The pause-aware clock, not the wall clock: pausing freezes the rain
+        // mid-fall along with every other moving thing in the world.
+        const float t = m_animClock;
         for (int i = 0; i < count; ++i) {
             const float ox = (static_cast<float>(hash2(i, 3, 51) % 1024u) / 1023.0f - 0.5f) *
                              2.0f * kRainRadius;
@@ -204,6 +211,150 @@ void VoxelGame::buildRainMesh() {
     m_rainMesh.upload(m_rainScratch, {3}, GL_DYNAMIC_DRAW);
 }
 
+// Conduit cargo, as world geometry: one camera-facing quad per carried item,
+// through the ordinary voxel shader so it is DEPTH-TESTED like everything else.
+// It used to be a UiRenderer billboard drawn after the world, which meant an
+// item behind a wall drew straight through it, at any distance.
+//
+// Two things it gets for free by being here. Alpha cutout finally does the job
+// it shipped for: an item icon's transparent surround is discarded rather than
+// drawn as a black card. And the distance cull is the ground drops' own knob,
+// so cargo and dropped items disappear at the same range instead of one of
+// them being visible across the island.
+//
+// Alchemy Circle contents ride the same buffer and the same draw: whatever a
+// Pedestal holds floats over it as a small fanned stack, and the Rune Core's
+// centre catalyst floats over the core, so a laid pattern reads from across
+// the room without opening the panel.
+void VoxelGame::buildCargoMesh() {
+    m_cargoScratch.clear();
+    if (m_dimension != DimensionId::Overworld) return; // no belts in the arena
+
+    const glm::vec3 cam = camera().position;
+    const glm::vec3 right = camera().right();
+    const glm::vec3 up = camera().up();
+
+    // One camera-facing icon quad centred on `p`, `size` blocks on a side.
+    const auto pushIcon = [&](const glm::vec3& p, ItemId item, float size, float emissive) {
+        const glm::vec3 toCam = cam - p;
+        if (glm::dot(toCam, toCam) > kDropRenderDist * kDropRenderDist) return;
+
+        glm::vec2 uv0, uv1;
+        Atlas::uvForTile(iconTile(item), uv0, uv1);
+        const glm::vec3 n = glm::normalize(toCam);
+        const glm::vec3 rx = right * (size * 0.5f);
+        const glm::vec3 ry = up * (size * 0.5f);
+
+        // Corners CCW seen from the camera, with v flipped so the icon is not
+        // upside down (atlas v grows downward).
+        const glm::vec3 c[4] = {p - rx - ry, p + rx - ry, p + rx + ry, p - rx + ry};
+        const glm::vec2 t4[4] = {{uv0.x, uv1.y}, {uv1.x, uv1.y},
+                                 {uv1.x, uv0.y}, {uv0.x, uv0.y}};
+        const auto push = [&](int k) {
+            m_cargoScratch.insert(m_cargoScratch.end(),
+                                  {c[k].x, c[k].y, c[k].z, n.x, n.y, n.z,
+                                   t4[k].x, t4[k].y, emissive});
+        };
+        push(0); push(1); push(2);
+        push(0); push(2); push(3);
+    };
+
+    // 0..1 across the belt step: how far this item has slid into its cell.
+    const float step = static_cast<float>(kBeltStepTicks) * kTickSeconds;
+    const float t = step > 0.0f ? glm::clamp(m_beltLerp / step, 0.0f, 1.0f) : 1.0f;
+
+    for (const auto& [pos, b] : m_belts) {
+        if (b.item == ItemId::None) continue;
+
+        // Ride ON the hub rather than inside it: the authored tube texture is
+        // opaque everywhere it is painted, so an item at the centre would be
+        // hidden by its own pipe. Drop kCargoLift to 0 the day the art gets
+        // windows and the item moves inside with nothing else to change.
+        const glm::vec3 centre = glm::vec3(pos) + glm::vec3(0.5f, 0.5f + kCargoLift, 0.5f);
+        // Slide in from the cell it came from. cameFrom is zero when the item
+        // did not move, which parks it dead centre -- a stalled line reads as
+        // stalled.
+        const glm::vec3 from = centre + glm::vec3(b.cameFrom);
+        pushIcon(glm::mix(from, centre, t), b.item, kCargoSize, kCargoEmissive);
+    }
+
+    // How far along each running ritual is, keyed by every cell of its circle,
+    // so the items it is about to consume can rise and brighten with it.
+    std::unordered_map<glm::ivec3, float, IVec3Hash> ritualFrac;
+    for (const auto& [pos, m] : m_machines) {
+        if (machineTraits(m.type).kind != MachineKind::RuneCore) continue;
+        if (!m.crafting || m.jammed || m.selectedRecipe < 0 || m.craftTime <= 0.0f) continue;
+        const float frac = glm::clamp(m.progress / m.craftTime, 0.0f, 1.0f);
+        ritualFrac[pos] = frac;
+        for (int s = 0; s < AlchemyCircle::kRingSlots; ++s) {
+            ritualFrac[AlchemyCircle::slotPos(pos, s)] = frac;
+        }
+    }
+
+    // Circle contents. A pedestal holds one item TYPE, so its first non-empty
+    // entry is the whole story; the core's input is its centre catalyst.
+    for (const auto& [pos, m] : m_machines) {
+        const MachineKind kind = machineTraits(m.type).kind;
+        if (kind != MachineKind::Pedestal && kind != MachineKind::RuneCore) continue;
+        ItemId item = ItemId::None;
+        int count = 0;
+        for (int i = 1; i < static_cast<int>(itemCount()); ++i) {
+            const int c = m.input.count(static_cast<ItemId>(i));
+            if (c > 0) { item = static_cast<ItemId>(i); count = c; break; }
+        }
+        if (item == ItemId::None) continue;
+
+        const BlockId block = m_world->getBlock(pos.x, pos.y, pos.z);
+        const float top = blockBounds(block).hi.y;
+        // Each cell bobs on its own phase so a laid ring shimmers rather than
+        // marching in step. The clock is pause-aware: a paused game holds still.
+        const float phase = static_cast<float>((pos.x * 7 + pos.z * 13) & 15) * 0.4f;
+        const float bob = kCircleItemBob * std::sin(m_animClock * kCircleItemBobRate + phase);
+        // A running ritual lifts what it will consume, eased so the rise is
+        // slow at first and gathers toward the finish.
+        const auto rf = ritualFrac.find(pos);
+        const float frac = rf == ritualFrac.end() ? 0.0f : rf->second;
+        const float lift = kRitualItemLift * frac * frac;
+        const float emissive = glm::mix(kCircleItemEmissive, kRitualItemEmissive, frac);
+        const glm::vec3 base = glm::vec3(pos) +
+                               glm::vec3(0.5f, top + kCircleItemLift + lift + bob, 0.5f);
+
+        // A fanned stack: one icon per item up to kCircleItemStack, each a
+        // little up, a little right, and a hair nearer the camera than the one
+        // behind it, so two ingots read as two from outside the panel and the
+        // depth test never has to break a tie between coplanar cards.
+        const int shown = std::min(count, kCircleItemStack);
+        const glm::vec3 toCam = glm::normalize(cam - base);
+        for (int k = 0; k < shown; ++k) {
+            const float f = static_cast<float>(k) - static_cast<float>(shown - 1) * 0.5f;
+            const glm::vec3 p = base + right * (f * kCircleItemFan) +
+                                up * (f * kCircleItemFan * 0.6f) +
+                                toCam * (static_cast<float>(k) * 0.01f);
+            pushIcon(p, item, kCircleItemSize, emissive);
+        }
+    }
+
+    // A finished ritual's result, popping up over the core: it overshoots to
+    // full size, hangs while it drifts upward, then shrinks away. Cutout icons
+    // cannot fade, so shrinking IS the fade.
+    for (const RitualPop& pop : m_ritualPops) {
+        const float age = glm::clamp(pop.age / kRitualPopSeconds, 0.0f, 1.0f);
+        float scale;
+        if (age < 0.12f)      scale = 1.35f * (age / 0.12f);
+        else if (age < 0.25f) scale = glm::mix(1.35f, 1.0f, (age - 0.12f) / 0.13f);
+        else if (age < 0.8f)  scale = 1.0f;
+        else                  scale = (1.0f - age) / 0.2f;
+        if (scale <= 0.01f) continue;
+        pushIcon(pop.pos + glm::vec3(0.0f, 0.15f + 0.45f * age, 0.0f), pop.item,
+                 kRitualPopSize * scale, 1.0f);
+    }
+
+    if (!m_cargoScratch.empty()) {
+        m_cargoMesh.upload(m_cargoScratch, {3, 3, 2, 1}, GL_DYNAMIC_DRAW);
+    }
+}
+
+
 // Rebuild only the chunks whose contents changed. Runs once per frame (top of
 // onRender), so any number of tick/edit mutations in the frame collapse into
 // at most one rebuild per touched chunk.
@@ -214,15 +365,17 @@ void VoxelGame::remeshDirtyChunks() {
     // against empty sets (coordinates overlap numerically across dimensions).
     static const PowerState kNoPower;
     static const ChunkMesher::BeltMap kNoBelts;
+    static const ChunkMesher::CellSet kNoCells;
     const bool home = m_dimension == DimensionId::Overworld;
     const PowerState& power = home ? m_power : kNoPower;
     const ChunkMesher::BeltMap& belts = home ? m_belts : kNoBelts;
+    const ChunkMesher::CellSet& cranking = home ? m_cranking : kNoCells;
     for (const auto& [coord, chunk] : m_world->chunks()) {
         if (!chunk->dirty()) continue;
         m_meshScratch.clear();
         m_shapeScratch.clear();
         ChunkMesher::appendChunk(m_meshScratch, m_shapeScratch, *m_world, *chunk,
-                                 coord, power, belts);
+                                 coord, power, belts, cranking);
         // Empty chunks keep their (vertexless) entry; draw() skips them.
         m_chunkMeshes[coord].upload(m_meshScratch, {3, 3, 2, 1}, // pos, normal, uv, emissive
                                     GL_DYNAMIC_DRAW);
@@ -272,11 +425,22 @@ void VoxelGame::updateShapeAnim() {
 //
 // Driven by the pause-aware m_animClock, so parts freeze with the simulation
 // rather than spinning on over a paused game.
+//
+// Rows naming the same part share a slot (kPartRowSlots) and COMPOSE: turns
+// multiply, moves add, the move applied after the turn -- which is how the
+// mortar's pestle grinds round the bowl and presses down in one motion.
+// A cranked row reads the handle's turns instead of the clock.
 void VoxelGame::updatePartAnim() {
     m_partRot.assign(kMaxShapeParts, glm::mat3(1.0f));
+    m_partOff.assign(kMaxShapeParts, glm::vec3(0.0f));
     for (std::size_t i = 0; i < std::size(kPartAnims); ++i) {
         const PartAnim& a = kPartAnims[i];
-        const float phase = glm::two_pi<float>() * a.rate * m_animClock;
+        // Every cranked shape shares one block of slots (kPartRowSlots); only
+        // the shape being turned may write it, or they would compose together.
+        if (a.cranked && static_cast<int>(a.shape) != m_crankShape) continue;
+        const float t = a.cranked ? m_crankTurns : m_animClock;
+        const float phase = glm::two_pi<float>() * a.rate * t;
+        const std::size_t slot = kPartRowSlots[i];
         glm::mat3 m(1.0f);
         switch (a.motion) {
         case PartMotion::Spin:
@@ -292,8 +456,45 @@ void VoxelGame::updatePartAnim() {
             // the lighting survives it untouched.
             m = glm::mat3(1.0f + a.amount * std::sin(phase));
             break;
+        case PartMotion::Bob:
+            // Rests at zero and reaches `amount` at the bottom of the stroke,
+            // so a part at rest sits exactly where it was modelled.
+            m_partOff[slot] += a.axis * (a.amount * 0.5f * (1.0f - std::cos(phase)));
+            break;
         }
-        m_partRot[i + 1] = m; // row i owns slot i + 1; slot 0 is identity
+        m_partRot[slot] = m * m_partRot[slot]; // slot 0 is identity
+    }
+}
+
+void VoxelGame::updateCrankAnim(float dt) {
+    // The machine being turned is the hand-cranked one whose panel is open.
+    std::unordered_set<glm::ivec3, IVec3Hash> want;
+    if (m_machineUiOpen && m_dimension == DimensionId::Overworld) {
+        const auto it = m_machines.find(m_machineUiPos);
+        if (it != m_machines.end() && machineTraits(it->second.type).handCranked) {
+            want.insert(m_machineUiPos);
+        }
+    }
+    // Which shape owns the shared cranked slots this frame (updatePartAnim).
+    m_crankShape = want.empty() ? -1
+        : static_cast<int>(blockInfo(m_world->getBlock(m_machineUiPos.x, m_machineUiPos.y,
+                                                       m_machineUiPos.z)).shape);
+    // Remesh only on the EDGE: opening the panel wakes the parts, closing it
+    // parks them at rest. Nothing per frame.
+    if (want != m_cranking) {
+        for (const glm::ivec3& p : m_cranking) m_world->markDirtyAt(p.x, p.y, p.z);
+        for (const glm::ivec3& p : want) m_world->markDirtyAt(p.x, p.y, p.z);
+        m_cranking = std::move(want);
+    }
+    // Ease after the banked turns, so four taps read as one smooth revolution
+    // rather than four jumps.
+    const float k = std::min(1.0f, dt * kCrankAnimEase);
+    m_crankTurns += (m_crankTarget - m_crankTurns) * k;
+    // Whole turns are invisible to every cranked motion (their rates are whole
+    // cycles per turn), so shed them before a float this big loses its quarters.
+    if (m_crankTurns > 1024.0f) {
+        m_crankTurns -= 1024.0f;
+        m_crankTarget -= 1024.0f;
     }
 }
 
@@ -353,13 +554,13 @@ void VoxelGame::onRender() {
     updateShapeAnim();
     updatePartAnim();
     buildRainMesh();
+    buildCargoMesh();
 
-    // Sky: fair-weather blue easing toward storm grey — or the arena's flat
+    // Sky: fair-weather dusk easing toward storm slate — or the arena's flat
     // void purple-black. Rain dimming applies at home only.
     const bool home = m_dimension == DimensionId::Overworld;
     const glm::vec3 sky = home
-        ? glm::mix(glm::vec3(0.53f, 0.81f, 0.92f),
-                   glm::vec3(0.44f, 0.47f, 0.52f), m_weather.intensity)
+        ? glm::mix(kSkyClear, kSkyStorm, m_weather.intensity)
         : (m_arenaStorm ? glm::vec3(0.16f, 0.17f, 0.26f)   // storm-lashed slate
                         : glm::vec3(0.09f, 0.05f, 0.14f)); // dead void purple
     const float rainDim = home ? m_weather.intensity * kRainDimMax
@@ -390,10 +591,19 @@ void VoxelGame::onRender() {
         // offset this array always holds at zero.
         m_shader.setFloatArray("uAnimV", m_shapeAnimV.data(), kMaxShapeBanks);
         m_shader.setMat3Array("uPartRot", m_partRot.data(), kMaxShapeParts);
+        m_shader.setVec3Array("uPartOff", m_partOff.data(), kMaxShapeParts);
         for (auto& [coord, mesh] : m_chunkShapeMeshes) {
             mesh.draw();
         }
         m_atlas.bind(0);
+    }
+
+    // Conduit cargo: billboards in WORLD space, so a wall hides them. Drawn
+    // after both chunk passes with the atlas bound -- item icons are atlas
+    // tiles, and their transparent surround is what the cutout discards.
+    if (!m_cargoScratch.empty() && !m_cargoMesh.empty()) {
+        m_shader.setMat4("uModel", glm::mat4(1.0f));
+        m_cargoMesh.draw();
     }
 
     // Target outline: flat wireframe cube around the aimed block.
@@ -422,6 +632,10 @@ void VoxelGame::onRender() {
 
     // Creatures: skinned Blockbench models, depth-tested with the world.
     m_creatures.render(camera(), rainDim, m_dimension);
+
+    // Particles LAST of the world passes: additive and depth-read-only, so
+    // everything that should hide them must already be in the depth buffer.
+    m_particles.render(camera());
     m_shader.use(); // the crosshair pass below assumes the voxel shader
 
     // Main menu shell (launch): the empty world above is just a sky backdrop —
@@ -431,6 +645,8 @@ void VoxelGame::onRender() {
         else if (m_slotPickerOpen) drawSlotPicker();
         else drawMainMenu();
         if (m_debugOpen) drawDebugOverlay();
+        drawCursor();
+        if (m_screenshotPending) takeScreenshot();
         return;
     }
 
@@ -462,4 +678,44 @@ void VoxelGame::onRender() {
         else drawPauseMenu();
     }
     if (m_debugOpen) drawDebugOverlay();
+    drawCursor(); // over everything, so it is in the screenshot too
+    // Last, so the image is the whole frame -- HUD and overlays included.
+    if (m_screenshotPending) takeScreenshot();
+}
+
+void VoxelGame::takeScreenshot() {
+    m_screenshotPending = false;
+    if (m_prefDir.empty()) {
+        deny("SCREENSHOT FAILED: NO SAVE FOLDER");
+        return;
+    }
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(m_prefDir) / "screenshots";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &local);
+
+    // Two presses inside one second get -2, -3, ... rather than overwriting.
+    fs::path path = dir / (std::string("screenshot-") + stamp + ".png");
+    for (int n = 2; fs::exists(path, ec); ++n) {
+        path = dir / (std::string("screenshot-") + stamp + "-" + std::to_string(n) + ".png");
+    }
+
+    if (!window().saveScreenshot(path.string())) {
+        SDL_Log("Screenshot failed (%s): %s", path.string().c_str(), SDL_GetError());
+        deny("SCREENSHOT FAILED");
+        return;
+    }
+    SDL_Log("Screenshot saved: %s", path.string().c_str());
+    window().setTitle("Voxel Factory  —  SCREENSHOT SAVED");
+    audio().play("click", kUiVolume);
 }

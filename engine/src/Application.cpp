@@ -24,6 +24,7 @@ namespace engine {
 
             m_input.newFrame();
             processEvents();
+            m_input.syncMousePosition();
 
             // Fixed-timestep simulation ticks, decoupled from render rate.
             // While paused, simulated time simply does not pass: nothing

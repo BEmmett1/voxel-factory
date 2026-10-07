@@ -103,8 +103,9 @@ interleaved pos/normal/color floats). Shaders in `game/shaders/`.
 `VoxelGameWorldGen.cpp` (island + the ruin), `VoxelGameSim.cpp` (the 20 Hz
 tick: machines/belts/power/growth/weather + registries),
 `VoxelGamePlayer.cpp` (per-frame input, walking physics, mine/place),
-`VoxelGameRender.cpp` (atlas, meshes, onRender), and `VoxelGameUi.cpp` (HUD +
-all panels). `VoxelGameInternal.h` (namespace `vg`) holds every gameplay
+`VoxelGameRender.cpp` (atlas, meshes, onRender), `VoxelGameUi.cpp` (HUD +
+all panels), and `VoxelGameEffects.cpp` (the Alchemy Circle's ritual effect —
+pure presentation). `VoxelGameInternal.h` (namespace `vg`) holds every gameplay
 tuning constant and the helpers shared across those files; single-use helpers
 stay in their file's anonymous namespace.
 
@@ -364,6 +365,18 @@ deliberate: the player's mistake is different in each case. Sound-only "deny"
 survives where it is not a refusal at all: the master switch turning OFF, and a
 slipped crank grip.
 
+**The pointer is drawn by the game** (Sep 2026, user report: OBS recorded
+panels with no cursor). Whenever the mouse is released (every panel and menu)
+`Window::setRelativeMouse` keeps the OS cursor hidden over the window and
+`drawCursor()` draws a 12x19 arrow LAST in both render paths, before the F2
+screenshot reads the frame, so it is in every recording, stream and
+screenshot. OBS Game Capture grabs the GL frames and never saw the OS cursor
+over this window, even with Capture Cursor on. `Input::syncMousePosition()`
+asks SDL for the pointer each frame after the events, since motion events
+alone left the position stale after a warp or a relative-mode release, which
+a drawn arrow shows immediately. A hardware cursor would sit a frame ahead of
+it; that is the trade.
+
 UI: an **F1 help overlay** (goal + quickstart + controls — the controls lines are
 built per draw from the current keybinds) on `UiRenderer`; the bitmap font also
 supports `>`, `+`, `<`, and `%`. Esc closes the topmost overlay (machine panel,
@@ -380,8 +393,13 @@ Settings (`Settings.h`/`Settings.cpp` own the model; UI in VoxelGameUi.cpp):
   HIGH_PIXEL_DENSITY ROADMAP item), vsync (`Window::setVsync`), mouse sensitivity
   (0.02–0.40, read live at the one `addLook` site), master volume — all applied
   live via `applySettings()`. A/D or arrows adjust; Enter/click flips.
-- **KEYBINDS subpanel**: the 11 `Action`s (move ×4, jump, sprint, craft, inventory,
-  wrench, quick save, help) rebind via press-to-capture (row shows PRESS A KEY;
+- **Screenshot** (`Action::Screenshot`, default **F2**) works over every screen:
+  onUpdate flags it, the END of onRender reads the back buffer
+  (`Window::saveScreenshot`, `SDL_SavePNG` — no extra dependency) so the PNG is
+  the whole frame, HUD included, into `<pref dir>/screenshots/`. Appended LAST
+  in `Action` so an old cfg that already used F2 keeps it (first-wins).
+- **KEYBINDS subpanel**: the 13 `Action`s (move ×4, jump, sprint, craft, inventory,
+  wrench, belt filter, quick save, help, screenshot) rebind via press-to-capture (row shows PRESS A KEY;
   Esc cancels the capture; reserved keys — Esc/Enter/arrows/hotbar digits/F3/F4 —
   play deny). A key lives on at most one action: binding steals it and the robbed
   row shows `---` (`SDL_SCANCODE_UNKNOWN` = unbound, safely inert); RESET DEFAULTS
@@ -479,9 +497,13 @@ Textures:
   `Atlas::tilesForBlock()` (`{top, side, bottom}` — grass tops, log rings, machine
   lids); the mesher picks per face. Material items own icon tiles (`ItemInfo::
   atlasTile`); placeables borrow their block's side tile (`iconTile()`). Repaint the
-  PNG in any pixel editor and rebuild (an always-run CMake target copies assets), or
-  regenerate the whole starter set with `python tools/make_atlas.py` (pure stdlib —
-  overwrites hand edits!). A SECOND sheet, `assets/shapes.png`, carries the 3D
+  PNG in any pixel editor and rebuild (an always-run CMake target copies assets).
+  **Since Oct 2026 the committed atlas.png is the SOURCE**: the PixelLab art pass
+  (moodier, alchemical; see `ART_PROGRESS.md`) writes generated tiles into it, so
+  `python tools/make_atlas.py` (pure stdlib, the programmatic starter set) now
+  refuses to run without `--overwrite-art` rather than silently replacing them.
+  The Overworld sky is dusk to match (`kSkyClear`/`kSkyStorm` in
+  VoxelGameInternal.h). A SECOND sheet, `assets/shapes.png`, carries the 3D
   detailed blocks' textures as arbitrary regions rather than 16px tiles — it is
   generated, never hand-painted (see below).
 - The sheet grew 8 → 16 rows for the recipe overhaul. Because a tile index is
@@ -569,9 +591,11 @@ Textures:
 - **Load-bearing assumption:** every query iterates the cells an AABB overlaps
   and tests only THAT cell's boxes, so shape geometry must stay inside its own
   cell. The bake enforces it with a hard error.
-- **Shaped blocks so far: `Cauldron`, `Alembic`, `Miner`, and `Infuser`.** They
-  no longer occlude or keep rain out, and you collide with the model rather than
-  the cell. Their atlas tiles stay for the item icon and the generated-atlas
+- **Every machine, source, soil and sapling is a shaped block** (the art pass
+  finished Oct 2026; `ART_PROGRESS.md` logs each one, and most were authored
+  in Python with `tools/modelkit` -- `tools/block_models/<block>.py` is how
+  each was made and how to remake it). They no longer occlude or keep rain
+  out, and you collide with the model rather than the cell. Their atlas tiles stay for the item icon and the generated-atlas
   fallback. Adding the next one is: bake, append a `ShapeId` row + a
   `kBlockShapes` row + a `kShapeNames` entry, then set `fullCube = false` and
   `shape` on the kBlocks row. If any of it should MOVE, author that piece as its
@@ -640,6 +664,39 @@ Textures:
   rather than anything placed in bulk. Those figures are ~1.5x what this file
   used to say: the bake's size report had assumed a 9-float vertex since before
   shaped vertices carried an animation bank, and parts took it to 14.
+- **Parts can MOVE, and a hand can drive them** (Sep 2026, user request — the
+  Mortar's pestle). Three additions, all uniform-side, none a re-bake:
+  **Translation**: each slot also carries a `uniform vec3 uPartOff[32]`, added
+  after the pivot turn, and `PartMotion::Bob` is a plunge along `axis` that
+  rests at zero (`amount` in blocks) — a model at rest sits exactly where it was
+  authored. The 3x3 stays a 3x3; 96 more vertex uniform components, still well
+  inside GL 3.3's 1024. **Composition**: `kPartAnims` rows naming the SAME part
+  now share a slot (`kPartRowSlots`) and compose — turns multiply, moves add —
+  so the pestle Spins (a cone round the bowl, since it leans 22.5° from a pivot
+  at the bottom) and Bobs (down into the powder twice a turn) at once. Before,
+  a second row on a part would silently have won. **Cranked rows**
+  (`PartAnim::cranked`) take their phase from the player's hand, not the clock:
+  every good crank step adds a quarter turn to `m_crankTarget` and
+  `m_crankTurns` eases after it (`kCrankAnimEase`), so the part moves exactly as
+  far as the hand did and stops where it stops; a slipped grip moves nothing.
+  `rate` then means cycles per TURN. A static_assert keeps a part's rows all
+  cranked or all clock-driven.
+  **The gate for the hand-cranked tier**: none of it is ever a power node, so
+  the power gate parked those parts forever. `appendChunk` now also takes a
+  `cranking` set — the one hand-cranked machine whose panel is open
+  (`updateCrankAnim`) — and animates it despite no power. That set changes only
+  when a crank panel opens or closes, so it costs one chunk remesh per edge,
+  never per frame: the same bargain the power gate makes. Closing the panel
+  parks the part back at rest. Verified in game (a Mortar, eight presses: the
+  pestle sweeps the bowl and mashes, stays inside the walls).
+  **Cranked parts share their uniform slots** (Oct 2026). Since only that one
+  machine moves, `kPartRowSlots` gives clock-driven parts a slot each and puts
+  every cranked part in one shared block after them (a shape's first cranked
+  part in the first, its second in the next); `updatePartAnim` fills the block
+  from `m_crankShape` alone. Eleven hand-cranked models cost one slot, not
+  eleven. The `static_assert` against `kMaxShapeParts` checks `kPartSlotCount`
+  -- it used to count kPartAnims ROWS, which was the ceiling that would
+  actually have bitten first.
 
 Audio (first pass — mine/place, machine hum, rain, UI clicks):
 - **`engine::Audio`** wraps vendored miniaudio (`third_party/miniaudio/miniaudio.h`,
@@ -659,7 +716,10 @@ Audio (first pass — mine/place, machine hum, rain, UI clicks):
   `solvePowerAndMarkDirty` + the onStart seed solve) diffs one positional hum loop per
   energized machine (burning generators only, capped at `kMaxHums` nearest);
   open/close/click/craft/deny cover all panels at the same funnels that mutate state.
-  Pause mutes hums (sim frozen) but keeps rain. Mix knobs sit in the `// ---- Audio ----`
+  Pause mutes hums (sim frozen) and DUCKS rain to `kRainPausedGain` (eased on
+  real frame time) rather than cutting it, while the streaks themselves freeze
+  mid-fall on the pause-aware `m_animClock` (Oct 2026, user request — they ran
+  on the wall clock and kept falling over the pause menu). Mix knobs sit in the `// ---- Audio ----`
   block of VoxelGameInternal.h.
 
 Entities (Blockbench import — the combat pillar's first brick):
@@ -696,6 +756,16 @@ Entities (Blockbench import — the combat pillar's first brick):
   missing `idle`/`walk` clip, and a row with `swingImpact > 0` whose model has no
   `attack` clip (a telegraph the player cannot see). **Adding a `kSpecies` row
   therefore means committing its model**, under the convention above.
+- **`tools/modelkit/`** (Oct 2026) builds, previews and checks block shapes and
+  creatures WITHOUT the game: `preview.py <model>` renders four views plus
+  animation strips/GIFs in seconds and checks cell bounds across a part's
+  whole motion (the bake only sees the rest pose), mesh budget, bone cap and
+  required clips; `spec.Model` writes new models from Python. Blocks load
+  through the bake's own `load_model`, posed by the real `kPartAnims` rows; a
+  creature through a replica of BbModel.cpp, which `preview.py` cross-checks
+  against `voxel-factory --check-bbmodel <file>` -- a headless mode that runs
+  the ENGINE's loader on one file and prints bones, vertices and clips (exit 1
+  if it fails to load or lacks idle/walk). See models/AUTHORING.md.
 
 Weather & the water economy:
 - **Rain fronts** — a clear/rain state machine, extracted as the **`Weather`**
@@ -1176,17 +1246,56 @@ The Alchemy Circle (the crafting overhaul — hand-crafting moves into the world
   `openMachineUi` walks the ring offsets backwards from a pedestal to find its
   core. There is deliberately **no blueprint list**: a pattern is laid BY
   HAND, one drag per pedestal — a recipe you perform rather than a row you
-  click — so the panel's only action row is TAKE OUTPUTS and its height no
-  longer grows with the recipe table. Nothing locks a circle (`selectedRecipe`
-  stays −1 and every drop into a pedestal clears a lock left by an older
-  save); the necklace on the ground is the whole statement of intent.
+  click — so the panel has two action rows, START/STOP and TAKE OUTPUTS, and
+  its height does not grow with the recipe table.
+- **A circle runs only once STARTED** (Sep 2026, user request). "Holds at least
+  this many" means every half-laid pattern on the way to the one you meant is
+  itself a pattern — two ingots on one pedestal, on the road to a Press, spell
+  `circle/wire` — and a circle that ran whatever the ring currently said
+  crafted the road out from under you. START locks `selectedRecipe` to what the
+  ring spells at that moment, and **the lock IS "started"**: `tickRuneCore`
+  does nothing while it is −1. The lock was already saved as a recipe KEY
+  (left over from the blueprint era), so this cost no save change. It then
+  STAYS, so a started circle keeps making that recipe whenever belts complete
+  its pattern again and can never drift into a pattern it passes through while
+  they refill it — which is what keeps the Circle automatable. Any hand edit to
+  the ring (a drag onto or off a pedestal or the catalyst cell) clears it, as
+  does STOP. The status line reads READY / MAKING / STARTED -- WAITING FOR ITS
+  PATTERN. A belt-fed circle in a pre-Sep-2026 save sits idle until START is
+  pressed once. `--selftest` pins the Press-vs-Wire case and the refill, and
+  was checked to FAIL with the gate removed.
+- **What the ring holds is visible from the world**: `buildCargoMesh` draws each
+  pedestal's item (and the core's catalyst) as a bobbing camera-facing icon over
+  the block, a fanned stack of up to `kCircleItemStack`, in the same buffer and
+  draw as tube cargo.
+- **The ritual effect** (`VoxelGameEffects.cpp`, the first user of
+  **`ParticleSystem`**). `tickPowered` takes an optional
+  `std::vector<CircleCompletion>*` and REPORTS each finished ritual (core,
+  product, tier, which slot gave which ingredient — read before `consume`
+  empties them) rather than the renderer inferring it from buffer counts, which
+  a belt draining the output the same tick would hide. While a started circle
+  crafts, its items rise and brighten and motes stream into the core, faster as
+  progress fills; at the finish the ingredients rush in, then a flash, a spark
+  burst, a ground shockwave ring, a column of light, the product popping up over
+  the core, and the generated `ritual` sound. Coloured by tier (Lesser cyan,
+  Greater violet — the panel header's colours). Tuned for DAYLIGHT: additive
+  light on a bright sky only reads once it saturates. Knobs in
+  `// ---- Alchemy ritual effect ----`.
+- **`ParticleSystem`** (ParticleSystem.h/.cpp, `shaders/particle.*`) knows
+  nothing about circles: a fixed 2048 pool (recycled round-robin, never grows),
+  camera-facing quads built on the CPU, drawn **additively with depth test on
+  and depth writes off** — order-independent, so no sort (the cutout
+  precedent), and a wall still hides a spark. Advanced on the pause-aware dt,
+  never saved, never read by the sim, and a shader failure just disables it.
+  Drawn LAST of the world passes so everything that should hide it is already
+  in the depth buffer. Ready for generator smoke, mining debris and boss hits.
 - **The hand menu is now a survival tier**: 13 rows (tool ramp, Stone, Ingot,
   Glass, Vial, Bucket, Scaffold + the circle's own two parts, which MUST stay
   hand-craftable or the tree deadlocks). 26 recipes moved to the Circle.
 - Append-only blocks/items and generic machine save records mean **no save
   version bump**. `--selftest` covers tier detection, arrangement disambiguation,
-  rotation invariance, the Greater power gate, `consume`, and the
-  registry-vs-world disagreement case.
+  rotation invariance, the Greater power gate, `consume`, the
+  registry-vs-world disagreement case, and START (above).
 
 The recipe overhaul (keys, the manual tier, and iron — July 2026):
 - **Recipes are keyed.** `Machine::selectedRecipe` used to be a saved INDEX

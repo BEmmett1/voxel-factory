@@ -3,8 +3,11 @@
 
 #include "engine/Window.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace engine {
 
@@ -99,6 +102,16 @@ namespace engine {
 
     void Window::setRelativeMouse(bool enabled) {
         SDL_SetWindowRelativeMouseMode(m_window, enabled);
+        // A released mouse keeps the OS cursor HIDDEN over this window: the
+        // game draws its own, because a capture tool that grabs the game's
+        // frames (OBS Game Capture) never sees the OS cursor over an OpenGL
+        // window that toggles relative mode. SDL hides it over its own windows
+        // only, so the desktop keeps its cursor.
+        SDL_HideCursor();
+    }
+
+    bool Window::relativeMouse() const {
+        return SDL_GetWindowRelativeMouseMode(m_window);
     }
 
     void Window::setTitle(const std::string& title) {
@@ -114,6 +127,30 @@ namespace engine {
 
     void Window::setVsync(bool on) {
         SDL_GL_SetSwapInterval(on ? 1 : 0);
+    }
+
+    bool Window::saveScreenshot(const std::string& path) const {
+        const int w = width(), h = height();
+        if (w <= 0 || h <= 0) {
+            SDL_SetError("window has no drawable area");
+            return false;
+        }
+        // RGB, not RGBA: UI blending leaves the back buffer's alpha below 1,
+        // which would write a see-through PNG.
+        std::vector<std::uint8_t> pixels(static_cast<std::size_t>(w) *
+                                         static_cast<std::size_t>(h) * 3);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+
+        SDL_Surface* surface =
+            SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGB24, pixels.data(), w * 3);
+        if (!surface) return false;
+        // GL's origin is bottom-left; an image's is top-left.
+        bool ok = SDL_FlipSurface(surface, SDL_FLIP_VERTICAL) &&
+                  SDL_SavePNG(surface, path.c_str());
+        SDL_DestroySurface(surface);
+        return ok;
     }
 
 } // namespace engine

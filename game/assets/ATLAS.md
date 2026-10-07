@@ -159,15 +159,36 @@ surface in the powered twin's accent color, every side tile carries the same
 | 194 | rich soil (top/furrows) | 195 | rich soil (side) |
 | 196 | grafted sapling (all faces) | | |
 
-## Rows 12-15 — spare (tiles 197-255)
+## Rows 13-15 — placeable item icons (tiles 208-255)
 
-Empty. This is the headroom the 8→16 row growth bought.
+One icon per placeable item -- machines, sources, soils, saplings -- in
+`kItems` order: 208 Conduit, 209 Wire, 210 Generator, 211 Grinder, 212
+Cauldron, 213 Infuser, 214 Alembic, 215 Distiller, 216 Transmuter, 217 Miner,
+218 Herb Source, 219 Crystal Source, 220 Copper Source, 221 Sand Source, 222
+Essence Source, 223 Dirt, 224 Grass, 225 Scaffold, 226 Sapling, 227 Rain
+Barrel, 228 Resonant Source, 229 Composter, 230 Forge, 231 Press, 232 Rune
+Core, 233 Pedestal, 234 Furnace, 235 Sifter, 236 Glassblower, 237 Compactor,
+238 Bloomery, 239 Sieve, 240 Blowpipe, 241 Tamper, 242 Mortar, 243 Hand
+Press, 244 Anvil, 245 Compost Heap, 246 Mixing Bowl, 247 Infusion Stand, 248
+Still, 249 Hand Distiller, 250 Hand Transmuter, 251 Storage Crate, 252 Herb
+Seed, 253 Harvester, 254 Irrigator, 255 Grafted Sapling.
 
-All tiles above are painted by `make_atlas.py`. The rest (46-47, 63,
-121-127, 162-175, 189-191, 197-255) are free for new blocks/items. Claim a tile here,
-add a painter to `make_atlas.py`, and point the code at it (the `tiles` field
-on the kBlocks row for blocks, `atlasTile` on the kItems row for material
-items).
+Until Oct 2026 a placeable had no icon of its own and showed its block's side
+tile, which for a block with a 3D model is a texture the world never draws.
+`iconTile()` now prefers an item's own `atlasTile` and still falls back to the
+block's side, so a new placeable needs no icon to work. Transparency welcome.
+
+## Spare tiles
+
+Free for new blocks/items: 46-47, 63, 121-127, 162-175, 189-191, 197-207.
+Claim a tile here and point the code at it (the `tiles` field on the kBlocks
+row for blocks, `atlasTile` on the kItems row for items).
+
+**The atlas is the source now.** Since the PixelLab art pass (Oct 2026, see
+`ART_PROGRESS.md`) the terrain and every item icon are generated art written
+into atlas.png, and `make_atlas.py` refuses to run without `--overwrite-art`.
+Tiles not yet replaced -- mostly machine faces waiting for 3D models -- are
+still the script's starters.
 
 ## shapes.png — the other sheet
 

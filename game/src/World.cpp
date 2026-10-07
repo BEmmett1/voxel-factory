@@ -1,5 +1,7 @@
 #include "game/World.h"
 
+#include "game/BlockShape.h"
+
 namespace {
     // Floor division / positive modulo so chunk routing works for negative
     // world coordinates too.
@@ -54,6 +56,14 @@ void World::setBlock(int wx, int wy, int wz, BlockId id) {
 void World::markDirtyAt(int wx, int wy, int wz) {
     const auto it = m_chunks.find(toChunkCoord(wx, wy, wz));
     if (it != m_chunks.end()) it->second->markDirty();
+}
+
+void World::markDirtyAround(const glm::ivec3& pos) {
+    markDirtyAt(pos.x, pos.y, pos.z);
+    for (const glm::ivec3& d : kShapeFaceDirs) {
+        const glm::ivec3 n = pos + d;
+        markDirtyAt(n.x, n.y, n.z);
+    }
 }
 
 Chunk& World::getOrCreateChunk(const glm::ivec3& coord) {

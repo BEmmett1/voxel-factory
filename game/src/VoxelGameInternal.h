@@ -32,6 +32,13 @@ namespace vg {
     // Sun direction, shared by the chunk and entity passes.
     inline const glm::vec3 kLightDir = glm::normalize(glm::vec3{-0.4f, -1.0f, -0.3f});
 
+    // The Overworld sky (the clear colour), eased between by rain intensity.
+    // Dusk, not noon: the moodier, alchemical art direction (Oct 2026) needs
+    // a sky that agrees with it -- a dusky world under a bright blue sky reads
+    // as a texture swap, not a mood. The arena keeps its own colours.
+    inline const glm::vec3 kSkyClear{0.24f, 0.34f, 0.40f}; // twilight teal
+    inline const glm::vec3 kSkyStorm{0.20f, 0.21f, 0.27f}; // bruised slate
+
     // ---- Player physics: the feel knobs. Tune freely. ----
     inline constexpr float kWalkSpeed    = 4.5f;   // blocks per second
     inline constexpr float kSprintMult   = 1.6f;   // LCtrl multiplier
@@ -83,6 +90,57 @@ namespace vg {
     inline constexpr float kDropIconScale = 400.0f; // px * blocks; bigger = bigger
     inline constexpr float kDropIconMin   = 14.0f;  // px floor, far away
     inline constexpr float kDropIconMax   = 100.0f; // px cap, up close
+
+    // ---- Conduit cargo --------------------------------------------------
+    // An item riding a tube. It is world geometry now, so these are BLOCKS,
+    // not pixels -- a billboard that shrinks with distance for free instead of
+    // by arithmetic, and one that a wall can hide.
+    inline constexpr float kCargoSize     = 0.42f; // quad edge, in blocks
+    // Lifted clear of the hub because the authored tube texture is opaque
+    // wherever it is painted: an item at the centre would be inside solid
+    // pipe. Set this to 0 when the art grows windows -- nothing else moves.
+    inline constexpr float kCargoLift     = 0.38f;
+    // Bright enough to read against a dark tube without washing the icon out.
+    inline constexpr float kCargoEmissive = 0.45f;
+
+    // What an Alchemy Circle's pedestals (and the core's catalyst) hold,
+    // floating over each block. Same camera-facing icons as tube cargo.
+    inline constexpr float kCircleItemSize     = 0.40f; // quad edge, in blocks
+    inline constexpr float kCircleItemLift     = 0.30f; // centre above the block's top
+    inline constexpr float kCircleItemBob      = 0.05f; // bob amplitude, blocks
+    inline constexpr float kCircleItemBobRate  = 2.2f;  // radians per second
+    inline constexpr int   kCircleItemStack    = 3;     // icons drawn per pile, at most
+    inline constexpr float kCircleItemFan      = 0.16f; // spread between stacked icons
+    inline constexpr float kCircleItemEmissive = 0.35f;
+
+    // ---- Alchemy ritual effect (VoxelGameEffects.cpp) ----
+    // Presentation only: none of this touches the sim or the save. Quick and
+    // punchy by design -- the finish is over in about a second.
+    // Tier colours, matching the circle panel's LESSER / GREATER header.
+    inline const glm::vec3 kRitualLesserColor{0.35f, 0.80f, 1.00f};
+    inline const glm::vec3 kRitualGreaterColor{0.70f, 0.45f, 1.00f};
+    // While a started circle crafts, its pedestal items rise and brighten...
+    inline constexpr float kRitualItemLift     = 0.35f; // extra lift at full progress
+    inline constexpr float kRitualItemEmissive = 0.9f;  // emissive at full progress
+    // ...and stream motes into the core, faster as progress fills.
+    inline constexpr float kRitualMoteRate     = 5.0f;  // motes/s per pedestal, at start
+    inline constexpr float kRitualMoteRateEnd  = 22.0f; // ...and just before the finish
+    // The finish: the ingredients rush in, a flash, a ring of sparks, a column
+    // of light, and the result popping up over the core.
+    inline constexpr int   kRitualConverge     = 10;    // motes per consumed pedestal
+    inline constexpr int   kRitualSparks       = 64;    // the outward burst
+    inline constexpr int   kRitualShockwave    = 56;    // the ring racing along the ground
+    inline constexpr int   kRitualColumn       = 40;    // the rising column
+    inline constexpr float kRitualPopSeconds   = 1.2f;  // result icon hangs this long
+    inline constexpr float kRitualPopSize      = 0.55f; // result icon edge, blocks
+    inline constexpr float kRitualVolume       = 0.8f;  // "ritual" one-shot (positional)
+    inline constexpr float kRitualFxDist       = 40.0f; // no effect beyond this range
+
+    // How steeply you must look for a placed conduit to run VERTICALLY rather
+    // than along the ground: |front.y| past this, i.e. about 72 degrees. It
+    // has to sit clear of the angle you hold to place a block at your feet
+    // (55-60 degrees), or laying a floor run silently aims every segment down.
+    inline constexpr float kVerticalLook = 0.95f;
 
     // ---- Melee (the sword swings through the aim raycast) ----
     // (Per-hit damage is per WEAPON now: ItemInfo::weaponDamage in Item.cpp,
@@ -231,6 +289,10 @@ namespace vg {
     // is to RAISE this (fewer, weightier turns) rather than to cut
     // kManualSlowdown, which would flatten the gap the powered tier sells.
     inline constexpr float kCrankProgress = 3.0f;
+    // How quickly a cranked part (PartAnim::cranked) catches up with the turns
+    // the hand has made, per second. High enough that a steady rhythm reads as
+    // one continuous motion, low enough that a single tap still visibly eases.
+    inline constexpr float kCrankAnimEase = 10.0f;
     // The handle's rotation, clockwise from the top. One array, so changing the
     // gesture -- or making it per-machine later -- is a single edit. These are
     // the ARROWS deliberately: WASD stays with row navigation inside a panel,
@@ -246,10 +308,12 @@ namespace vg {
     // index naming the vertex's ShapeId plus one uniform array of this frame's
     // v-offsets — never a remesh, so an animated machine costs nothing beyond
     // the uniform upload. Sized with headroom exactly like kMaxEntityBones so
-    // adding a shape doesn't mean editing the shader — 32 covers modelling
-    // every machine and then some, and the array is a few dozen bytes uploaded
-    // once a frame, so the headroom is cheaper than ever revisiting this.
-    inline constexpr int   kMaxShapeBanks  = 32;     // must match uAnimV[] in voxel.vert
+    // adding a shape doesn't mean editing the shader. It was 32, which the
+    // art pass outgrew at the Anvil (Oct 2026): giving every machine a model
+    // lands near 60 shapes. 64 still fits GL 3.3's vertex-uniform floor even
+    // on a driver that spends a whole vec4 per array float -- about 209 of the
+    // guaranteed 256 vec4 with uPartRot/uPartOff and the matrices.
+    inline constexpr int   kMaxShapeBanks  = 64;     // must match uAnimV[] in voxel.vert
     // Moving block PARTS get their own uniform array, one 3x3 per part that is
     // actually animated -- not one per group in every model, which would run to
     // hundreds. A 3x3 rather than a 4x4 is what keeps this affordable: 32 of
@@ -355,6 +419,8 @@ namespace vg {
     inline constexpr float kHumMaxDistance = 14.0f; // hum audible radius (blocks)
     inline constexpr int   kMaxHums        = 12;    // loop cap; nearest machines win
     inline constexpr float kRainVolume     = 0.5f;  // rain loop gain at intensity 1
+    inline constexpr float kRainPausedGain = 0.35f; // rain ducks to this share while paused
+    inline constexpr float kRainDuckRate   = 6.0f;  // how fast it ducks / returns, per second
 
     // ---- Deny reasons ----
     // How long a refusal's reason stays on screen (it fades over the last

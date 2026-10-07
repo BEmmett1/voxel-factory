@@ -17,6 +17,8 @@
 #include "game/Drop.h"
 #include "game/Dimension.h"
 #include "game/HashIVec3.h"
+#include "game/MachineSystem.h"
+#include "game/ParticleSystem.h"
 #include "game/PlayerController.h"
 #include "game/Weather.h"
 #include "game/PowerSystem.h"
@@ -27,6 +29,7 @@
 #include <climits>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -64,6 +67,9 @@ private:
     void remeshDirtyChunks();    // rebuild only changed chunks (once per frame)
     void updateShapeAnim();      // pick each shape's animation frame (a uniform, not a remesh)
     void updatePartAnim();       // pose each moving block part (a uniform, not a remesh)
+    // Which hand-cranked machine is being turned (the one whose panel is open),
+    // remeshing on the edge, and ease the handle toward the turns banked.
+    void updateCrankAnim(float dt);
     void solvePowerAndMarkDirty(); // recompute power; queue glow-changed chunks
     void buildHighlightMesh();   // unit wireframe cube for the target outline
     void buildCrosshairMesh();   // screen-space '+' at the center
@@ -71,6 +77,8 @@ private:
     void drawCraftMenu();        // crafting menu overlay
     void drawHelp();             // F1 how-to-play overlay
     void drawDebugOverlay();     // F3 perf readout
+    void drawCursor();           // the game-drawn pointer while the mouse is released
+    void takeScreenshot();       // end of onRender: back buffer -> PNG
     void updateMenu();           // crafting menu navigation + crafting
     void openPauseMenu();        // freezes the simulation (engine setPaused)
     void closePauseMenu();       // resume
@@ -150,6 +158,11 @@ private:
     // since nobody is standing there). See the definition for why.
     void rollLeafDrops(const glm::ivec3& p, bool chopped);
     void buildRainMesh();                           // per-frame falling streaks
+    void buildCargoMesh();                          // per-frame cargo + circle contents
+    // The Alchemy Circle's ritual effect: motes while a started circle crafts,
+    // and the finish (converge, flash, sparks, column, result pop) for every
+    // completion the last ticks reported. Per frame, on the pause-aware dt.
+    void updateRitualEffects(float dt);
     void updateHums();                              // sync hum loops to power state
     void updateBucketFill();                        // held bucket catches rain
     // Spawn a physical item into the active dimension (mining yields + the
@@ -182,8 +195,35 @@ private:
     // and on the same terms: a part turning is a uniform, never a remesh.
     // Sized to vg::kMaxShapeParts on first use, like m_shapeAnimV.
     std::vector<glm::mat3> m_partRot;
+    std::vector<glm::vec3> m_partOff; // each slot's translation (PartMotion::Bob)
+    // Cranked parts move with the player's hand, not the clock: every step of
+    // the handle adds a quarter turn to m_crankTarget, and m_crankTurns eases
+    // after it. m_cranking is the set the mesher animates in spite of no power.
+    std::unordered_set<glm::ivec3, IVec3Hash> m_cranking;
+    // The ShapeId of that machine, as an int (-1 when none; ShapeId is only
+    // forward-declared here): the one shape allowed to fill the uniform slots
+    // every cranked part shares.
+    int m_crankShape = -1;
+    float m_crankTurns = 0.0f;
+    float m_crankTarget = 0.0f;
     engine::Mesh       m_rainMesh;      // falling streaks, rebuilt per frame
     std::vector<float> m_rainScratch;
+    // Conduit cargo, as world geometry rather than the UiRenderer billboard it
+    // used to be -- so an item behind a wall is hidden by the wall, which a
+    // screen-space icon could never be.
+    engine::Mesh       m_cargoMesh;
+    std::vector<float> m_cargoScratch;
+    // Ritual effects. None of it is saved or read by the sim: tickPowered
+    // REPORTS finished rituals into m_circlesDone and the frame spends them.
+    ParticleSystem     m_particles;
+    std::vector<MachineSystem::CircleCompletion> m_circlesDone;
+    struct RitualPop {
+        glm::vec3 pos{0.0f};
+        ItemId    item = ItemId::None;
+        float     age = 0.0f;
+    };
+    std::vector<RitualPop> m_ritualPops; // result icons hanging over a core
+    std::minstd_rand   m_fxRng{0x5eedu}; // visual jitter only; never the sim's RNG
     engine::Mesh       m_highlightMesh;
     engine::Mesh       m_crosshairMesh;
     engine::UiRenderer m_ui;
@@ -229,6 +269,10 @@ private:
     std::unordered_map<glm::ivec3, float, IVec3Hash>   m_saplings; // pos -> growth timer
     CropSystem::CropMap                                m_crops;    // pos -> seconds into this stage
     int m_beltTimer = 0;           // ticks since the last belt step
+    // Seconds since that step, at RENDER rate, for sliding cargo between
+    // cells. The CreatureSystem::m_sinceTick pattern: the sim stays at 20 Hz
+    // and only the picture interpolates.
+    float m_beltLerp = 0.0f;
     int m_leafPity = 0;            // leaves lost since the last sapling drop
     float m_leafDecayTimer = 0.0f; // seconds since the last leaf-decay pass
     std::uint32_t m_growthRng = 0xC2B2AE35u; // grass-spread cell sampling
@@ -242,6 +286,7 @@ private:
     std::vector<DroppedItem> m_drops;
 
     engine::AudioLoop m_rainLoop = 0; // rain ambience; gain follows the intensity
+    float m_rainDuck = 1.0f;          // 1 playing, eases to kRainPausedGain while paused
     std::unordered_map<glm::ivec3, engine::AudioLoop, IVec3Hash> m_humLoops;
 
     Weather m_weather;          // rain/clear phases + eased visual intensity
@@ -262,6 +307,7 @@ private:
     bool m_invOpen = false;              // inventory overlay (Tab) visible?
     bool m_helpOpen = false;             // F1 help overlay visible?
     bool m_debugOpen = false;            // F3 perf overlay visible?
+    bool m_screenshotPending = false;    // capture this frame once it is drawn
     int  m_menuSelection = 0;
     bool m_pauseOpen = false;            // pause menu (Esc); sim time frozen
     int  m_pauseSel = 0;

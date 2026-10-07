@@ -22,13 +22,16 @@ uniform mat4 uProj;
 // This frame's v-offset into an animated shape texture, one per ShapeId.
 // Frames are bands stacked down shapes.png, so advancing one is a shift in v
 // -- which is why a bubbling cauldron never costs a remesh.
-uniform float uAnimV[32]; // must match vg::kMaxShapeBanks
+uniform float uAnimV[64]; // must match vg::kMaxShapeBanks
 // This frame's transform for every moving part, one per slot. Slot 0 is
 // permanently identity, so a static vertex costs a multiply and moves nowhere.
 // A 3x3 rather than a 4x4 because no translation is needed (see below) -- which
 // leaves room for uniform SCALE in the same matrix, for a part that pulses
 // rather than turns.
 uniform mat3 uPartRot[32]; // must match vg::kMaxShapeParts
+// ...and each slot's TRANSLATION, applied after the turn: a pestle plunging
+// into its bowl is a move, which no 3x3 can say. Slot 0 is (0,0,0).
+uniform vec3 uPartOff[32]; // must match vg::kMaxShapeParts
 
 out vec3 vNormal;
 out vec2 vUv;
@@ -40,8 +43,9 @@ void main() {
     // touching a cell's top face lands in the next one up). It never has to be:
     // rotating p about `pivot` is p + (M*d - d) where d = p - pivot, and d is a
     // vector, identical in cell and world space. The bake supplies d.
-    mat3 part = uPartRot[int(aPartSlot + 0.5)];
-    vec3 pos = aPos + (part * aPartOff - aPartOff);
+    int slot = int(aPartSlot + 0.5);
+    mat3 part = uPartRot[slot];
+    vec3 pos = aPos + (part * aPartOff - aPartOff) + uPartOff[slot];
 
     gl_Position = uProj * uView * uModel * vec4(pos, 1.0);
     // The normal turns with the part, or a spinning drill would keep the

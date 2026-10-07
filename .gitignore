@@ -19,3 +19,7 @@ game/assets/atlas_preview.png
 .claude/settings.local.json
 .claude/prompt-log.txt
 .claude/plans/
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc

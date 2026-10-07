@@ -239,7 +239,7 @@ struct ItemInfo {
     // kItems (static_asserted).
     const char* key = "";
     const char* name = "-";
-    int         atlasTile = -1;            // icon tile for materials; -1 for placeables (see iconTile)
+    int         atlasTile = -1;            // icon tile; -1 = none (a placeable then borrows its block's side, see iconTile)
     bool        placeable = false;         // can it be placed in the world?
     BlockId     placesBlock = BlockId::Air; // which block it places
     BlockId     nodeBlock = BlockId::Air;  // the node that yields this raw (see nodeForRaw)

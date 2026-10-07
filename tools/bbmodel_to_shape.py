@@ -182,17 +182,21 @@ def read_png(data):
     return w, h, rgba
 
 
-def write_png(path, w, h, rgba):
+def encode_png(w, h, rgba):
+    """Encode an RGBA buffer as 8-bit RGBA PNG bytes."""
     def chunk(tag, data):
         return (struct.pack(">I", len(data)) + tag + data +
                 struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
 
     raw = b"".join(b"\x00" + bytes(rgba[y * w * 4:(y + 1) * w * 4]) for y in range(h))
-    png = (b"\x89PNG\r\n\x1a\n" +
-           chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) +
-           chunk(b"IDAT", zlib.compress(raw, 9)) +
-           chunk(b"IEND", b""))
-    Path(path).write_bytes(png)
+    return (b"\x89PNG\r\n\x1a\n" +
+            chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw, 9)) +
+            chunk(b"IEND", b""))
+
+
+def write_png(path, w, h, rgba):
+    Path(path).write_bytes(encode_png(w, h, rgba))
 
 
 def blit(dst, dw, dst_x, dst_y, src, sw, sx, sy, w, h):

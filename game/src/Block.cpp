@@ -40,17 +40,26 @@ namespace {
         // Equipment / machines (machines show a distinct lid tile on top). Your
         // own placed gear stays retrievable by hand: soft, ungated.
         {.id = B::Generator, .key = "core:generator",
-         .name = "Generator", .color = {0.86f, 0.45f, 0.12f},
-         .machine = true, .drop = {I::GeneratorItem, 1}, .tiles = {16, 17, 17}, .hardness = 0.5f},
+         .name = "Generator", .fullCube = false, .color = {0.86f, 0.45f, 0.12f},
+         .machine = true, .drop = {I::GeneratorItem, 1}, .tiles = {16, 17, 17}, .hardness = 0.5f, .shape = ShapeId::Generator},
+        // Wire and Conduit are the two blocks whose whole FUNCTION is being
+        // thin, so a painted cube was the one place the art contradicted the
+        // mechanic. Both are hubs with six arms drawn per neighbour
+        // (kConnectParts); fullCube = false is what lets you see between them,
+        // and costs the usual three things: they no longer occlude, no longer
+        // keep rain out, and no longer stop grass spreading -- all correct for
+        // something you can see daylight through.
         {.id = B::Wire, .key = "core:wire",
-         .name = "Wire", .color = {0.82f, 0.72f, 0.20f},
-         .drop = {I::WireItem, 1}, .tiles = {18, 18, 18}, .hardness = 0.5f},
+         .name = "Wire", .fullCube = false, .color = {0.82f, 0.72f, 0.20f},
+         .drop = {I::WireItem, 1}, .tiles = {18, 18, 18}, .hardness = 0.5f,
+         .shape = ShapeId::WireHub},
         {.id = B::Belt, .key = "core:belt",
-         .name = "Conduit", .color = {0.22f, 0.22f, 0.26f},
-         .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f},
+         .name = "Conduit", .fullCube = false, .color = {0.22f, 0.22f, 0.26f},
+         .drop = {I::Conduit, 1}, .tiles = {19, 19, 19}, .hardness = 0.5f,
+         .shape = ShapeId::ConduitHub},
         {.id = B::Grinder, .key = "core:grinder",
-         .name = "Grinder", .color = {0.45f, 0.45f, 0.48f},
-         .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f},
+         .name = "Grinder", .fullCube = false, .color = {0.45f, 0.45f, 0.48f},
+         .machine = true, .drop = {I::GrinderItem, 1}, .tiles = {21, 22, 22}, .hardness = 0.5f, .shape = ShapeId::Grinder},
         // The first shaped block: a real 3D model rather than a painted cube,
         // so it no longer fills its cell (does not occlude, does not keep rain
         // out) and you collide with the basin and legs instead of the whole
@@ -71,11 +80,11 @@ namespace {
          .machine = true, .drop = {I::AlembicItem, 1}, .tiles = {27, 28, 28},
          .hardness = 0.5f, .shape = ShapeId::AlchemicalAlembic},
         {.id = B::Distiller, .key = "core:distiller",
-         .name = "Distiller", .color = {0.58f, 0.30f, 0.55f},
-         .machine = true, .drop = {I::DistillerItem, 1}, .tiles = {29, 30, 30}, .hardness = 0.5f},
+         .name = "Distiller", .fullCube = false, .color = {0.58f, 0.30f, 0.55f},
+         .machine = true, .drop = {I::DistillerItem, 1}, .tiles = {29, 30, 30}, .hardness = 0.5f, .shape = ShapeId::Distiller},
         {.id = B::Transmuter, .key = "core:transmuter",
-         .name = "Transmuter", .color = {0.85f, 0.75f, 0.35f},
-         .machine = true, .drop = {I::TransmuterItem, 1}, .tiles = {31, 32, 32}, .hardness = 0.5f},
+         .name = "Transmuter", .fullCube = false, .color = {0.85f, 0.75f, 0.35f},
+         .machine = true, .drop = {I::TransmuterItem, 1}, .tiles = {31, 32, 32}, .hardness = 0.5f, .shape = ShapeId::Transmuter},
         {.id = B::Miner, .key = "core:miner",
          .name = "Miner", .fullCube = false,
          .color = {0.35f, 0.40f, 0.46f},
@@ -83,13 +92,19 @@ namespace {
          .hardness = 0.5f, .shape = ShapeId::AugerMiningRig},
         // Resource nodes -> raw materials. Mineral/metal nodes gate behind a
         // pickaxe; the herb (a plant) and sand (loose) break by hand.
+        // Nodes and sources read as OBJECTS sitting on the world rather than
+        // as terrain, which a painted cube could never do -- and the sources
+        // are the island's landmarks, the thing you navigate by on the way out
+        // past the plateau.
         {.id = B::HerbBush, .key = "core:herb_bush",
-         .name = "Herb Bush", .color = {0.20f, 0.55f, 0.22f},
-         .node = true, .drop = {I::Herb, 1}, .tiles = {48, 48, 48}, .hardness = 0.4f},
+         .name = "Herb Bush", .fullCube = false, .color = {0.20f, 0.55f, 0.22f},
+         .node = true, .drop = {I::Herb, 1}, .tiles = {48, 48, 48}, .hardness = 0.4f,
+         .shape = ShapeId::HerbBush},
         {.id = B::CrystalNode, .key = "core:crystal_node",
-         .name = "Crystal Node", .color = {0.55f, 0.45f, 0.85f},
+         .name = "Crystal Node", .fullCube = false, .color = {0.55f, 0.45f, 0.85f},
          .node = true, .drop = {I::Crystal, 1}, .tiles = {49, 49, 49},
-         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone},
+         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone,
+         .shape = ShapeId::VioletCrystalCluster},
         {.id = B::CopperOre, .key = "core:copper_ore",
          .name = "Copper Ore", .color = {0.70f, 0.45f, 0.30f},
          .node = true, .drop = {I::CopperOre, 1}, .tiles = {50, 50, 50},
@@ -98,41 +113,55 @@ namespace {
          .name = "Sand", .color = {0.85f, 0.78f, 0.55f},
          .node = true, .drop = {I::Sand, 1}, .tiles = {51, 51, 51}, .hardness = 0.6f, .tool = T::Shovel},
         {.id = B::EssenceVent, .key = "core:essence_vent",
-         .name = "Essence Vent", .color = {0.60f, 0.28f, 0.72f},
+         .name = "Essence Vent", .fullCube = false, .color = {0.60f, 0.28f, 0.72f},
          .node = true, .drop = {I::Essence, 1}, .tiles = {53, 53, 53},
-         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone},
+         .hardness = 5.0f, .tool = T::Pickaxe, .toolTier = kTierStone,
+         .shape = ShapeId::DarkStoneVent},
         // Sources glow and grow their node nearby; mining one drops its
         // placeable item (relocatable).
+        // All six sources are modelled now. They share a silhouette and differ
+        // by stone, crown and colour, which is what lets them work as the
+        // landmarks you steer by from across the island.
         {.id = B::SourceHerb, .key = "core:source_herb",
-         .name = "Herb Source", .color = {0.30f, 0.95f, 0.30f},
+         .name = "Herb Source", .fullCube = false, .color = {0.30f, 0.95f, 0.30f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::HerbBush,
-         .drop = {I::HerbSourceItem, 1}, .tiles = {54, 54, 54}, .hardness = 0.5f},
+         .drop = {I::HerbSourceItem, 1}, .tiles = {54, 54, 54}, .hardness = 0.5f,
+         .shape = ShapeId::MossyShrineStandingStone},
         {.id = B::SourceCrystal, .key = "core:source_crystal",
-         .name = "Crystal Source", .color = {0.75f, 0.55f, 1.00f},
+         .name = "Crystal Source", .fullCube = false, .color = {0.75f, 0.55f, 1.00f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::CrystalNode,
-         .drop = {I::CrystalSourceItem, 1}, .tiles = {55, 55, 55}, .hardness = 0.5f},
+         .drop = {I::CrystalSourceItem, 1}, .tiles = {55, 55, 55}, .hardness = 0.5f,
+         .shape = ShapeId::RunedStandingStone},
         {.id = B::SourceCopper, .key = "core:source_copper",
-         .name = "Copper Source", .color = {1.00f, 0.55f, 0.25f},
+         .name = "Copper Source", .fullCube = false, .color = {1.00f, 0.55f, 0.25f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::CopperOre,
-         .drop = {I::CopperSourceItem, 1}, .tiles = {56, 56, 56}, .hardness = 0.5f},
+         .drop = {I::CopperSourceItem, 1}, .tiles = {56, 56, 56}, .hardness = 0.5f,
+         .shape = ShapeId::VerdigrisStandingStone},
         {.id = B::SourceSand, .key = "core:source_sand",
-         .name = "Sand Source", .color = {1.00f, 0.92f, 0.55f},
+         .name = "Sand Source", .fullCube = false, .color = {1.00f, 0.92f, 0.55f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::SandNode,
-         .drop = {I::SandSourceItem, 1}, .tiles = {57, 57, 57}, .hardness = 0.5f},
+         .drop = {I::SandSourceItem, 1}, .tiles = {57, 57, 57}, .hardness = 0.5f,
+         .shape = ShapeId::SandSource},
         {.id = B::SourceEssence, .key = "core:source_essence",
-         .name = "Essence Source", .color = {0.85f, 0.35f, 1.00f},
+         .name = "Essence Source", .fullCube = false, .color = {0.85f, 0.35f, 1.00f},
          .emissive = 0.6f, .source = true, .spawnsNode = B::EssenceVent,
-         .drop = {I::EssenceSourceItem, 1}, .tiles = {59, 59, 59}, .hardness = 0.5f},
+         .drop = {I::EssenceSourceItem, 1}, .tiles = {59, 59, 59}, .hardness = 0.5f,
+         .shape = ShapeId::EssenceSource},
+        // An open timber frame: the one block whose whole point is that you
+        // can see and climb THROUGH it, so a solid cube was telling the
+        // opposite of the truth.
         {.id = B::Scaffold, .key = "core:scaffold",
-         .name = "Scaffold", .color = {0.68f, 0.62f, 0.48f},
-         .drop = {I::ScaffoldItem, 1}, .tiles = {4, 4, 4}, .hardness = 0.6f},
+         .name = "Scaffold", .fullCube = false, .color = {0.68f, 0.62f, 0.48f},
+         .drop = {I::ScaffoldItem, 1}, .tiles = {4, 4, 4}, .hardness = 0.6f,
+         .shape = ShapeId::TimberScaffoldFrame},
         // Forestry. Leaves drop nothing here: the chance sapling drop is
         // rolled at the mining site, not in this table. A log splits into two
         // wood (fuel AND structure).
         {.id = B::Sapling, .key = "core:sapling",
-         .name = "Sapling", .color = {0.45f, 0.72f, 0.28f},
+         .name = "Sapling", .fullCube = false, .color = {0.45f, 0.72f, 0.28f},
          .drop = {I::SaplingItem, 1}, .tiles = {5, 5, 5}, .hardness = 0.2f,
-         .needsSoil = SoilKind::Soil, .treeSize = 1},
+         .needsSoil = SoilKind::Soil, .treeSize = 1,
+         .shape = ShapeId::TreeSapling},
         {.id = B::Log, .key = "core:log",
          .name = "Log", .color = {0.45f, 0.33f, 0.18f},
          .drop = {I::Wood, 2}, .tiles = {6, 7, 6},
@@ -141,9 +170,9 @@ namespace {
          .name = "Leaves", .color = {0.18f, 0.50f, 0.16f},
          .tiles = {8, 8, 8}, .hardness = 0.2f},
         {.id = B::RainBarrel, .key = "core:rain_barrel",
-         .name = "Rain Barrel", .color = {0.40f, 0.28f, 0.15f},
+         .name = "Rain Barrel", .fullCube = false, .color = {0.40f, 0.28f, 0.15f},
          .machine = true, .drop = {I::RainBarrelItem, 1},
-         .tiles = {52, 58, 58}, .hardness = 0.5f}, // open water top, stave sides
+         .tiles = {52, 58, 58}, .hardness = 0.5f, .shape = ShapeId::RainBarrel}, // open water top, stave sides
         {.id = B::VoidStone, .key = "core:void_stone",
          .name = "Voidstone", .color = {0.24f, 0.16f, 0.36f},
          .tiles = {60, 60, 60}, // arena ground; deliberately no drop
@@ -153,132 +182,136 @@ namespace {
         // updateSources, drops a relocatable item, glows) with no new sim
         // code; the node is harvested like any other.
         {.id = B::ResonantNode, .key = "core:resonant_node",
-         .name = "Resonant Node", .color = {0.95f, 0.55f, 0.95f},
+         .name = "Resonant Node", .fullCube = false, .color = {0.95f, 0.55f, 0.95f},
          .node = true, .drop = {I::Resonance, 1}, .tiles = {61, 61, 61},
          // Gated at IRON: the game's premium raw is what gives the tier above
          // copper something to be for.
-         .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron},
+         .hardness = 6.0f, .tool = T::Pickaxe, .toolTier = kTierIron,
+         .shape = ShapeId::BicolourCrystalNode},
         {.id = B::ResonantSource, .key = "core:resonant_source",
-         .name = "Resonant Source", .color = {1.00f, 0.60f, 1.00f},
+         .name = "Resonant Source", .fullCube = false, .color = {1.00f, 0.60f, 1.00f},
          .emissive = 0.7f, .source = true, .spawnsNode = B::ResonantNode,
-         .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}, .hardness = 0.5f},
+         .drop = {I::ResonantSourceItem, 1}, .tiles = {62, 62, 62}, .hardness = 0.5f,
+         .shape = ShapeId::ResonantSource},
         // Composter machine: composts plant matter into renewable Dirt. Uses
         // spare machine atlas tiles (35 top, 36 side).
         {.id = B::Composter, .key = "core:composter",
-         .name = "Composter", .color = {0.36f, 0.25f, 0.14f},
-         .machine = true, .drop = {I::ComposterItem, 1}, .tiles = {35, 36, 36}, .hardness = 0.5f},
+         .name = "Composter", .fullCube = false, .color = {0.36f, 0.25f, 0.14f},
+         .machine = true, .drop = {I::ComposterItem, 1}, .tiles = {35, 36, 36}, .hardness = 0.5f, .shape = ShapeId::Composter},
         // Forge machine: block-crafts weapons/armor. Uses spare machine atlas
         // tiles (37 top, 38 side).
         {.id = B::Forge, .key = "core:forge",
-         .name = "Forge", .color = {0.30f, 0.22f, 0.24f},
-         .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f},
+         .name = "Forge", .fullCube = false, .color = {0.30f, 0.22f, 0.24f},
+         .machine = true, .drop = {I::ForgeItem, 1}, .tiles = {37, 38, 38}, .hardness = 0.5f, .shape = ShapeId::Forge},
         // Press machine: forms the shared parts tier. Uses spare machine atlas
         // tiles (39 top, 40 side).
         {.id = B::Press, .key = "core:press",
-         .name = "Press", .color = {0.42f, 0.44f, 0.52f},
-         .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f},
+         .name = "Press", .fullCube = false, .color = {0.42f, 0.44f, 0.52f},
+         .machine = true, .drop = {I::PressItem, 1}, .tiles = {39, 40, 40}, .hardness = 0.5f, .shape = ShapeId::Press},
         // The Alchemy Circle. Both halves are machines so they get a Machine
         // entity (buffers + progress) and ride the existing save records; the
         // Core glows faintly so a built circle reads as alive at night. Uses
         // spare machine atlas tiles (41/42 core, 43/44 pedestal).
         {.id = B::RuneCore, .key = "core:rune_core",
-         .name = "Rune Core", .color = {0.34f, 0.28f, 0.46f},
+         .name = "Rune Core", .fullCube = false, .color = {0.34f, 0.28f, 0.46f},
          .emissive = 0.25f, .machine = true, .drop = {I::RuneCoreItem, 1},
-         .tiles = {41, 42, 42}, .hardness = 0.5f},
+         .tiles = {41, 42, 42}, .hardness = 0.5f,
+         .shape = ShapeId::RuneCore},
         {.id = B::Pedestal, .key = "core:pedestal",
-         .name = "Pedestal", .color = {0.58f, 0.56f, 0.62f},
+         .name = "Pedestal", .fullCube = false, .color = {0.58f, 0.56f, 0.62f},
          .machine = true, .drop = {I::PedestalItem, 1}, .tiles = {43, 44, 44},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::MossyRunePedestal},
         // ---- The recipe overhaul: four powered machines (atlas row 8) ----
         // The Furnace glows: it is the only machine whose "on" state is a
         // fire, and a lit furnace should read across the factory floor at
         // night the way an energized network does.
         {.id = B::Furnace, .key = "core:furnace",
-         .name = "Furnace", .color = {0.46f, 0.38f, 0.33f},
+         .name = "Furnace", .fullCube = false, .color = {0.46f, 0.38f, 0.33f},
          .emissive = 0.20f, .machine = true, .drop = {I::FurnaceItem, 1},
-         .tiles = {128, 129, 129}, .hardness = 0.5f},
+         .tiles = {128, 129, 129}, .hardness = 0.5f, .shape = ShapeId::Furnace},
         {.id = B::Sifter, .key = "core:sifter",
-         .name = "Sifter", .color = {0.61f, 0.52f, 0.36f},
+         .name = "Sifter", .fullCube = false, .color = {0.61f, 0.52f, 0.36f},
          .machine = true, .drop = {I::SifterItem, 1}, .tiles = {130, 131, 131},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Sifter},
         {.id = B::Glassblower, .key = "core:glassblower",
-         .name = "Glassblower", .color = {0.36f, 0.44f, 0.49f},
+         .name = "Glassblower", .fullCube = false, .color = {0.36f, 0.44f, 0.49f},
          .machine = true, .drop = {I::GlassblowerItem, 1}, .tiles = {132, 133, 133},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Glassblower},
         {.id = B::Compactor, .key = "core:compactor",
-         .name = "Compactor", .color = {0.49f, 0.48f, 0.45f},
+         .name = "Compactor", .fullCube = false, .color = {0.49f, 0.48f, 0.45f},
          .machine = true, .drop = {I::CompactorItem, 1}, .tiles = {134, 135, 135},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Compactor},
         // ---- The manual tier (atlas tiles 136-161) -----------------------
         // Thirteen rows of pure data. Each is soft (hardness 0.5) and drops
         // itself, like every other machine, so relocating your hand-cranked
         // starter kit stays free.
         {.id = B::Bloomery, .key = "core:bloomery",
-         .name = "Bloomery", .color = {0.44f, 0.36f, 0.31f},
+         .name = "Bloomery", .fullCube = false, .color = {0.44f, 0.36f, 0.31f},
          .emissive = 0.18f, .machine = true, .drop = {I::BloomeryItem, 1},
-         .tiles = {136, 137, 137}, .hardness = 0.5f},
+         .tiles = {136, 137, 137}, .hardness = 0.5f, .shape = ShapeId::Bloomery},
         {.id = B::Sieve, .key = "core:sieve",
-         .name = "Sieve", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Sieve", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::SieveItem, 1}, .tiles = {138, 139, 139},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Sieve},
         {.id = B::Blowpipe, .key = "core:blowpipe",
-         .name = "Blowpipe", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Blowpipe", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::BlowpipeItem, 1}, .tiles = {140, 141, 141},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Blowpipe},
         {.id = B::Tamper, .key = "core:tamper",
-         .name = "Tamper", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Tamper", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::TamperItem, 1}, .tiles = {142, 143, 143},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Tamper},
         {.id = B::Mortar, .key = "core:mortar",
-         .name = "Mortar", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Mortar", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::MortarItem, 1}, .tiles = {144, 145, 145},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Mortar},
         {.id = B::HandPress, .key = "core:hand_press",
-         .name = "Hand Press", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Hand Press", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::HandPressItem, 1}, .tiles = {146, 147, 147},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::HandPress},
         {.id = B::Anvil, .key = "core:anvil",
-         .name = "Anvil", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Anvil", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::AnvilItem, 1}, .tiles = {148, 149, 149},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Anvil},
         {.id = B::CompostHeap, .key = "core:compost_heap",
-         .name = "Compost Heap", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Compost Heap", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::CompostHeapItem, 1}, .tiles = {150, 151, 151},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::CompostHeap},
         {.id = B::MixingBowl, .key = "core:mixing_bowl",
-         .name = "Mixing Bowl", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Mixing Bowl", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::MixingBowlItem, 1}, .tiles = {152, 153, 153},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::MixingBowl},
         {.id = B::InfusionStand, .key = "core:infusion_stand",
-         .name = "Infusion Stand", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Infusion Stand", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::InfusionStandItem, 1}, .tiles = {154, 155, 155},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::InfusionStand},
         {.id = B::Still, .key = "core:still",
-         .name = "Still", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Still", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::StillItem, 1}, .tiles = {156, 157, 157},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Still},
         {.id = B::HandDistiller, .key = "core:hand_distiller",
-         .name = "Hand Distiller", .color = {0.50f, 0.38f, 0.23f},
+         .name = "Hand Distiller", .fullCube = false, .color = {0.50f, 0.38f, 0.23f},
          .machine = true, .drop = {I::HandDistillerItem, 1}, .tiles = {158, 159, 159},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::HandDistiller},
         {.id = B::HandTransmuter, .key = "core:hand_transmuter",
-         .name = "Hand Transmuter", .color = {0.44f, 0.43f, 0.41f},
+         .name = "Hand Transmuter", .fullCube = false, .color = {0.44f, 0.43f, 0.41f},
          .machine = true, .drop = {I::HandTransmuterItem, 1}, .tiles = {160, 161, 161},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::HandTransmuter},
         // ---- Bulk storage -------------------------------------------------
         {.id = B::StorageCrate, .key = "core:storage_crate",
-         .name = "Storage Crate", .color = {0.55f, 0.40f, 0.22f},
+         .name = "Storage Crate", .fullCube = false, .color = {0.55f, 0.40f, 0.22f},
          .machine = true, .drop = {I::StorageCrateItem, 1}, .tiles = {192, 193, 193},
-         .hardness = 0.5f}, // lid on top, slatted sides
+         .hardness = 0.5f, .shape = ShapeId::StorageCrate}, // lid on top, slatted sides
         // ---- Farming ------------------------------------------------------
         // Worked ground. Drops Dirt, so tilling is not a way to duplicate soil,
         // and it must SURVIVE a harvest -- the Harvester resets a cell to
         // stage 0 and never untills, or an automated field would need
         // re-tilling by hand forever. Softer than Dirt: it has been broken up.
         {.id = B::TilledSoil, .key = "core:tilled_soil",
-         .name = "Tilled Soil", .color = {0.36f, 0.24f, 0.13f},
+         .name = "Tilled Soil", .fullCube = false, .color = {0.36f, 0.24f, 0.13f},
          .drop = {I::DirtItem, 1}, .tiles = {9, 10, 2}, .hardness = 0.5f,
-         .tool = T::Shovel, .provides = SoilKind::Tilled},
+         .tool = T::Shovel, .provides = SoilKind::Tilled,
+         .shape = ShapeId::TilledSoil},
         // Crops: crossed planes, so they do not fill their cell (no occlusion,
         // no keeping the rain off the field below). They stay SOLID, which is
         // what lets you aim at one and break it -- walking through wheat is a
@@ -303,29 +336,31 @@ namespace {
          .drop = {I::Herb, 2}, .tiles = {12, 12, 12}, .hardness = 0.15f,
          .needsSoil = SoilKind::Tilled, .shape = ShapeId::HerbCrop3},
         {.id = B::Harvester, .key = "core:harvester",
-         .name = "Harvester", .color = {0.62f, 0.58f, 0.30f},
+         .name = "Harvester", .fullCube = false, .color = {0.62f, 0.58f, 0.30f},
          .machine = true, .drop = {I::HarvesterItem, 1}, .tiles = {13, 14, 14},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Harvester},
         {.id = B::Irrigator, .key = "core:irrigator",
-         .name = "Irrigator", .color = {0.42f, 0.58f, 0.72f},
+         .name = "Irrigator", .fullCube = false, .color = {0.42f, 0.58f, 0.72f},
          .machine = true, .drop = {I::IrrigatorItem, 1}, .tiles = {15, 45, 45},
-         .hardness = 0.5f},
+         .hardness = 0.5f, .shape = ShapeId::Irrigator},
         // Tilled soil fed compost. Drops Dirt like the tilled ground it came
         // from, for the same reason: enriching must not be a way to duplicate
         // soil either. It has no item of its own -- you make it in place with
         // compost, the way you make Tilled Soil in place with the hoe.
         {.id = B::RichSoil, .key = "core:rich_soil",
-         .name = "Rich Soil", .color = {0.30f, 0.21f, 0.13f},
+         .name = "Rich Soil", .fullCube = false, .color = {0.30f, 0.21f, 0.13f},
          .drop = {I::DirtItem, 1}, .tiles = {194, 195, 2}, .hardness = 0.5f,
-         .tool = T::Shovel, .provides = SoilKind::Rich},
+         .tool = T::Shovel, .provides = SoilKind::Rich,
+         .shape = ShapeId::RichSoil},
         // Two saplings bound together with compost. Grows the size-2 tree
         // (5 logs, 74 leaves) in the same 45 seconds, which is what turns the
         // sapling SURPLUS -- a tree returns ~8 for the one that made it -- into
         // more wood per plot rather than more saplings you cannot place.
         {.id = B::SaplingGrafted, .key = "core:sapling_grafted",
-         .name = "Grafted Sapling", .color = {0.38f, 0.66f, 0.24f},
+         .name = "Grafted Sapling", .fullCube = false, .color = {0.38f, 0.66f, 0.24f},
          .drop = {I::GraftedSaplingItem, 1}, .tiles = {196, 196, 196},
-         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2},
+         .hardness = 0.2f, .needsSoil = SoilKind::Soil, .treeSize = 2,
+         .shape = ShapeId::GraftedSapling},
     };
 
     static_assert(std::size(kBlocks) == static_cast<std::size_t>(BlockId::Count),

@@ -8,6 +8,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -23,6 +24,17 @@ namespace MachineSystem {
 
     using MachineMap = std::unordered_map<glm::ivec3, Machine, IVec3Hash>;
     using BeltMap    = std::unordered_map<glm::ivec3, Belt, IVec3Hash>;
+
+    // A ritual that just finished: where, what it made, which tier (the effect
+    // is coloured by it), and which ring slot gave which ingredient (None =
+    // that pedestal was not part of the pattern). Presentation only -- never
+    // saved, and nothing in the sim reads it back.
+    struct CircleCompletion {
+        glm::ivec3            core{0};
+        ItemId                made = ItemId::None;
+        bool                  greater = false;
+        std::array<ItemId, 8> consumed{};
+    };
 
     // Does this machine use `item` as an input, AND is there room for another?
     // A machine locked to a specific recipe only accepts that recipe's inputs
@@ -77,9 +89,15 @@ namespace MachineSystem {
     // reaped and so has to hand the new seedling its growth timer -- the same
     // registry-sync duty WorldEdit does for a hand-placed one. Passed rather
     // than reached for, because MachineSystem takes its state as parameters.
+    //
+    // `circlesDone`, when given, collects one CircleCompletion per ritual that
+    // finished this tick. The sim REPORTS the moment rather than the renderer
+    // inferring it from buffer counts, which a belt draining the output in the
+    // same tick would hide.
     void tickPowered(World& world, MachineMap& machines, const PowerState& power,
                      std::uint32_t seed, std::uint32_t& rngCounter,
-                     CropSystem::CropMap& crops);
+                     CropSystem::CropMap& crops,
+                     std::vector<CircleCompletion>* circlesDone = nullptr);
 
     // Where the water is right now: the positions of irrigators that are
     // switched on and still have wetness banked. Handed to CropSystem::tick,
