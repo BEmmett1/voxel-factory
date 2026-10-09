@@ -94,24 +94,36 @@ tree knew about it. Worth naming as a process gap, not just a schedule slip.
       discharged on Aug 24: the batch merged as PR #6 and all three platforms
       went green on the merge commit, first try
 
-- [ ] **Bake the thin set together, in ONE run** (the bake packs one
-      sheet): Conduit→**Tube** (hub box + an arm per connected neighbour),
-      **Wire**, **Pedestal**, **Rune Core**. Wire rides along free — same
-      change, no gameplay. Pedestal/Rune Core because the Circle is the
-      most-looked-at thing in the game
-- [ ] **Multi-item belts + `progress`** on `Belt`; cargo lerps against
-      `m_beltTimer / kBeltStepTicks` so reagents visibly flow. Keep `beltStep`'s
-      claim/snapshot discipline — it is what stops chaining and merging
-- [ ] **Draw cargo as world geometry inside the glass**, retiring the
-      `UiRenderer` billboard for belt items (today an item behind a wall still
-      draws, with no depth test and no distance cull)
-- [ ] Save **v26**: belt record grows. Tail-append within the belt record if it
-      can be (the v23 filter precedent) so `kOldestLoadable` need not move
-- [ ] `--selftest`: a multi-slot belt round-trips, a full belt refuses, a
-      filtered multi-slot belt still binds both ways, and a pre-v26 belt loads
-      as a one-slot belt
-- [ ] Leave **powered belts** alone — the roadmap says decide it in play, and
-      the tube change is the wrong commit to bury a difficulty decision in
+**The tube work landed Sep 9 and merged Oct 7 (PR #8)** — a month late, and
+with one deliberate scope cut: flowing cargo turned out to need no save change
+at all, so the "one bump" reason for bundling multi-slot belts in was gone, and
+they were left for play to decide (below).
+
+- [x] **Bake the thin set together, in ONE run**: Conduit→**Tube** (hub + an
+      arm per connected neighbour), **Wire**, **Pedestal**, **Rune Core**, plus
+      the Sapling. The arms are named PARTS of one model, shown per cell by
+      `kConnectParts` + `TubeShape`, so a run, a corner and a junction are one
+      bake. The hub art is a placeholder benny is re-authoring
+- [x] **Cargo flows** — but not via a `progress` field. `Belt::cameFrom` is
+      transient, set by `beltStep` on the RECEIVER, and the render lerps one
+      step behind the sim, so it is never wrong at a junction and costs no save
+      version. Claim/snapshot discipline untouched
+- [x] **Cargo is world geometry**, depth-tested and distance-culled with the
+      ground drops. Not yet *inside* the glass — the hub texture is opaque, so
+      cargo rides above it (`kCargoLift`) until the art grows windows
+- [ ] ~~Save **v26**~~ / ~~multi-slot `--selftest`s~~ — **deferred with
+      multi-slot belts.** No save change was needed for anything that shipped.
+      Design for when it is wanted is in CLAUDE.md (**Belts became tubes**)
+- [x] **Powered belts left alone**, as planned
+- Found on the way: floor runs were all being laid facing DOWN (a 44° look
+  counted as vertical — invisible on a cube, a row of stubs on a tube), and the
+  arms' collision boxes stood you on arms that weren't drawn. Both fixed
+- Also in PR #8, untracked by this roadmap until now: the **art pass** (dusk
+  sky and terrain, every item icon redone, nodes and sources as objects —
+  `ART_PROGRESS.md`), `tools/modelkit` for building and checking models
+  without the game, the Alchemy Circle's **START** gate and ritual effect,
+  F2 screenshots, a game-drawn cursor so recordings show it, and pause freezing
+  the rain
 
 ### Week 3 (Aug 22–28) — parts move, then the manual tier stops being 13 boxes
 
@@ -146,7 +158,11 @@ tree knew about it. Worth naming as a process gap, not just a schedule slip.
       design. (The first attempt at that control was junk — captured with the
       game PAUSED, which freezes the animation clock and would have read zero
       whatever the gate did.)
-- [ ] **Model the manual tier (13 blocks)** — the worst offenders and the first
+- [x] **Model the manual tier (13 blocks)** (Oct 2–4, PR #8) — and then every
+      other machine too; see **Model coverage** below. Each hand-cranked model's
+      moving part follows the crank (`PartAnim::cranked`), and cranked parts
+      share one block of uniform slots so eleven of them cost one. Original
+      brief: the worst offenders and the first
       thing a new player meets. Author them near the CROP end of the budget, not
       the Infuser end; they are hand tools, so a low-quad silhouette is both
       cheaper and more honest. Anything whose appeal is motion (Anvil, Mortar,
@@ -316,19 +332,18 @@ the pillar slips to post-launch.
     line feeding a crate feeds N machines evenly, and crate + filters is a
     sorter. A dedicated round-robin block would buy nothing the pair doesn't
     already do
-  - **Multi-item belts — do them WITH "belts become tubes" (Q1 2027).** `Belt`
-    carries one item and has no sub-cell progress. Slots plus a progress
-    fraction is the *same* `Belt` layout change the tube item already wants for
-    visibly flowing cargo, so bundling them buys one save bump and one visual
-    payoff instead of two of each
+  - **Multi-item belts — unbundled from the tubes (Oct 2026).** The bundling
+    rested on flowing cargo needing a `Belt` layout change; it didn't (the
+    transient `cameFrom` lerp), so the shared save bump never existed. What is
+    left is a THROUGHPUT decision — one item per belt per step is the current
+    ceiling — and like powered belts it should be decided in play. Design
+    (v26 in-record tail-append) is in CLAUDE.md
   - **Powered belts: a tuning decision, not a build.** Making belts power nodes
     would sharply change the early game (your first conveyor would need a
     fueled generator). Decide it in play before writing any of it
   - **Storage/logistics still open after Aug 2026:** multi-item belts (below),
-    powered belts (below), auto-eject (below), fluids (below), and the visual
-    half — **belts become tubes**, which is now the most valuable of them,
-    because filters and crate junctions made a line something you have to READ
-    at a glance
+    powered belts (below), auto-eject (below), fluids (below). The visual
+    half — **belts become tubes** — landed Oct 2026 (PR #8)
   - **Machine output auto-eject is mostly already done** — belts pull from the
     machine directly behind them (`beltStep` step 3). What is genuinely missing
     is a machine pushing into an *adjacent* belt that is not aligned behind it,
@@ -594,11 +609,16 @@ the pillar slips to post-launch.
   AABB overlaps nothing and the crop would have been neither walk-into-able
   nor breakable. Only a genuinely flat element gets that; the first cut
   applied it to any thin box and quietly fattened four shipped models.
-  Still open: block PARTS don't move, and 31 of 35 machines have no model at
-  all — see **Model coverage** below
-- **Model coverage — the art backlog.** Nothing has tracked this, and it is
-  the largest single gap between how the game plays and how it looks. **Four
-  of thirty-five machines are modelled** (Cauldron, Alembic, Miner, Infuser),
+  Both former gaps are closed: block parts move (Aug–Sep 2026) and every
+  machine has a model (Oct 2026) — see **Model coverage** below
+- [x] **Model coverage — the art backlog** (closed Oct 2026, PR #8). Every
+  machine, source, node, soil, sapling, the Scaffold, the Circle, Wire and
+  Conduit are shaped blocks; `ART_PROGRESS.md` logs each and
+  `tools/block_models/<block>.py` remakes it. Open on this line: the conduit
+  hub is a placeholder awaiting benny's art, and the budget has **not** been
+  confirmed in F3 on a factory that places the whole tier (week 3's last box).
+  The rest of this entry is the original brief, kept for its budget numbers.
+  Then: **Four of thirty-five machines were modelled** (Cauldron, Alembic, Miner, Infuser),
   plus the four HerbCrop stages and Air's `Empty`; every other row in
   `kMachineTraitSeed` is a painted cube, including the whole thirteen-machine
   manual tier. The machinery to fix it all exists — bake, append a `ShapeId`
@@ -653,7 +673,13 @@ the pillar slips to post-launch.
   the moving piece as its own named group with a sensible pivot, then add one
   `kPartAnims` row. That is the whole of it; a group the table never names is
   free and simply stays still
-- **Belts become tubes:** the first real customer of block shapes, now
+- [x] **Belts become tubes** (Sep 2026, merged Oct 2026 as PR #8; see
+  CLAUDE.md for how it came out). Still open from it: windows in the hub art so
+  cargo rides inside (`kCargoLift` → 0); a walk-over decision, since the hub is
+  ~0.54 blocks tall and a run must be jumped onto; and the conduit's ~62 KB per straight segment is the
+  first machine-scale cost placed in bulk — measure a big factory in F3 before
+  the hub is re-authored, so the new art has a number to hit. Original entry:
+  the first real customer of block shapes, now
   unblocked. The Conduit becomes a thin glass **Tube** — a hub box plus an arm
   toward each connected neighbour (belt or machine), so runs read as continuous
   pipe, corners look like corners, and it is thin enough to walk over. Two

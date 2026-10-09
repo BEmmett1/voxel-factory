@@ -309,8 +309,9 @@ Item economy (theme: **Alchemy / Apothecary**; loop: mine → hand-craft → aut
   power + game.
 - **Econ 5 / M5** — conduit block-entities (`Belt.h`: facing + one carried item). `beltStep()`
   (sub-tick) pushes into the machine ahead, hops items belt→belt (snapshot + claims prevent
-  chaining/merging), and pulls from the machine behind. Carried items render as floating
-  icons. Facing set from the player's look on placement. The generator→grinder→conduit→
+  chaining/merging), and pulls from the machine behind. Carried items render as flowing
+  world-space icons (see **Belts became tubes**). Facing set from the player's look on
+  placement. The generator→grinder→conduit→
   cauldron loop now runs itself.
 
 World & closed-loop economy:
@@ -561,19 +562,17 @@ Textures:
   which binds `shapes.png` instead. Same vertex layout; they are split because
   they sample different sheets, which beats a per-vertex sheet selector across
   the whole world — and it is the pass transparency will need anyway when the
-  Conduit becomes a glass tube. A world with no shaped blocks never binds the
+  tube hub grows glass windows. A world with no shaped blocks never binds the
   second sheet. `shapes.png` has no generated fallback: missing = shaped blocks
   don't draw, said once in the log.
 - **Alpha CUTOUT in `voxel.frag`** — the world pass samples RGBA and
   `discard`s below `kAlphaCutoff` (0.5). Cutout, deliberately not alpha
   blending: it is order-independent, so chunks can keep being drawn in
   hash-map order with no depth sort and no second pass, which blending would
-  force. It is currently INERT — every one of the 53 block-sampled atlas tiles
-  and every packed rect in `shapes.png` is fully opaque (the transparency in
-  atlas.png is all unused grid slots and the item-icon rows, which
-  `UiRenderer`'s own shader draws), so nothing changed appearance. It exists
-  for the textures that will have alpha: a crossed-plane crop (farming) and
-  the glass Conduit/tube. Note `discard` can cost early-Z on some GPUs; if it
+  force. It shipped inert (every texture then was opaque) and now has two
+  users: the crossed-plane crops, and tube cargo, whose item icons are drawn
+  in the world pass with their transparent surround discarded. A windowed
+  tube hub would be the third. Note `discard` can cost early-Z on some GPUs; if it
   ever shows in F3, the fix is a separate program for cutout geometry, not a
   uniform toggle (drivers key off the discard being present in the shader at
   all, not on whether it executes).
@@ -871,6 +870,98 @@ becomes a puzzle):
   RNG counter alone, a belt facing a full machine keeps its cargo, a crate
   feeds two belts one item each per step, filters pull only their item and
   refuse the rest, and a belt filter round-trips through the save.
+
+Belts became tubes (Sep 2026, merged Oct 2026 as PR #8 — the visual half
+of logistics, and **no save change**):
+- **One baked hub, six named arms, drawn per CELL.** Conduit
+  (`ShapeId::ConduitHub`) and Wire (`ShapeId::WireHub`) are shaped blocks
+  (`fullCube = false`), but which arms show is a property of the cell's
+  neighbours, not of the BlockId. Rather than bake 64 arrangements, the arms are
+  named PARTS of one model (`arm_north..arm_down`), and **`kConnectParts`**
+  (BlockShape.h, the `kPartAnims` discipline a second time) binds each part
+  NAME to a face index in `kShapeFaceDirs` order. A typo is a `static_assert`;
+  `kPartFaces` resolves `(shape, part) -> face` at compile time so the mesher
+  never string-compares. `appendShaped` takes an `armMask` and skips a quad
+  whose part hangs off a masked-out face; anything without connection parts
+  passes `kAllFaces` and pays nothing. Note Blockbench's convention: **north is
+  −Z**, and `--selftest` proves each arm's geometry really reaches the wall its
+  name claims, since a mirrored model would connect correctly and point the
+  wrong way.
+- **`kFaces` takes its offsets from `kShapeFaceDirs`** rather than writing the
+  six directions a second time: a face INDEX is shared vocabulary now, and a
+  divergence would connect the right arm to the wrong side silently.
+- **The rules are `TubeShape`** (TubeShape.h/.cpp, free functions over the
+  registries, so `--selftest` can ask "does a corner grow the right two arms"
+  instead of someone squinting at a screen). They differ on purpose. **A wire
+  asks `PowerSystem::isPowerNode`** — the solver's own flood predicate, so a
+  wire that looks connected always is. **A conduit follows the items**: out the
+  way it faces, back to a machine it pulls from, and sideways to any belt aiming
+  INTO it; two belts running side by side share no arm, because nothing passes
+  between them.
+- **The OUT arm is always drawn, even into open air, and glows**
+  (`kConduitFlowGlow` in ChunkMesher.cpp, a per-vertex emissive value — no
+  pass). It inherited the retired top-face arrow's job: a conduit must say which
+  way it moves things whether or not anything is there to receive them. The
+  look-at tooltip gained a conduit case (FLOW: <dir>, its filter, and the
+  routing rule), which together with the glowing arm replaces everything the
+  arrow said.
+- **Cargo is world geometry and it flows** (`buildCargoMesh`, drawn after the
+  shaped pass with the atlas bound). The old `UiRenderer` billboards drew
+  through walls at any range and teleported between cells. `Belt::cameFrom` is
+  TRANSIENT — recorded on the RECEIVER by `beltStep` (on the receiver because a
+  corner turns), cleared at the top of every step, set only where an item really
+  moved — and the render lerps from `pos + cameFrom` into the cell over the
+  following step. **One step behind the sim, never wrong**: predicting the next
+  hop would snap back every time a belt lost a claim at a junction. A jammed
+  line parks its cargo dead centre. The save fixture sets `cameFrom` and asserts
+  it comes back cleared, so a later "helpful" addition to the belt record has to
+  argue with a test. Being in the world pass also put the **alpha cutout** to
+  work (an icon's transparent surround is discarded, not a black card) and gave
+  cargo the ground drops' distance cull (`kDropRenderDist`). The **filter ghost
+  stays screen-space** on purpose: it is an annotation, it must read through the
+  tube it labels, and cutout cannot tint.
+- **Cargo rides ABOVE the hub** (`kCargoLift` 0.38) because the hub texture is
+  opaque: an item at the centre would be inside solid pipe. When the art grows
+  windows (alpha holes, never translucency — the cutout rule), set `kCargoLift`
+  to 0 and nothing else moves.
+- **Collision is the hub alone** (`3a48825`). The arms are baked with all six,
+  but Collision and raycasts take a `World` and cannot see belt facings, so they
+  collided with arms that weren't drawn — a lone conduit stood you 0.25 above
+  its visible top. Both shapes now collide with the always-drawn hub, so
+  collision can never claim more than the picture; `--selftest` pins that a
+  connected shape's boxes stay inside its always-drawn quads. The conduit hub
+  is ~0.54 of a block (0.23..0.77), so **you jump onto a run, you do not walk
+  over it**; the gap between hubs (0.46) is narrower than a body (0.6), so a run
+  does bear you.
+- **Placement fixes the tube exposed**: a conduit used to go vertical once
+  `|front.y| > 0.7` (a 44° glance), and you look ~55–60° down to lay a run at
+  your feet — so floor runs all faced DOWN. Invisible on a cube; a row of
+  disconnected stubs on a tube. Now `kVerticalLook` = 0.95 (~72°). A conduit
+  added to the END of a run, on the run's own axis, inherits its facing; one
+  clicked onto a run's SIDE still branches the way you look.
+- **Re-aiming dirties the neighbourhood** (`World::markDirtyAround`): arms
+  follow facing, so a rotate can take an arm off the neighbour that fed it.
+  Block edits already dirtied their neighbours.
+- **Budget** (14-float shaped vertex, ~336 B per quad). Conduit: 126
+  always-drawn quads (frame, rivets, core glass) + 30 per arm — **~42 KB alone,
+  ~62 KB for a straight run, ~100 KB as a six-way junction**, against 1.3 KB for
+  a plain cube. Wire: 6 + 5 per arm, ~5 KB in a run. The conduit is the first
+  content placed in BULK at machine-scale cost; not yet measured on a large
+  factory in F3, and the fix if it shows is leaner art (rivets/rails into the
+  texture), not code. The art itself is a placeholder benny is re-authoring;
+  keep the contract — same file stems, the six `arm_*` group names, geometry
+  inside the cell. `models/conduit_arm.bbmodel` is unused by the bake.
+- `tools/normalize_shape_texture.py` crops an authored animation strip to frame
+  0 for a block that can never animate (a conduit is not a power node, a
+  pedestal draws no power). `tools/make_wire_model.py` generated the wire
+  placeholder — overwrite `models/wire_hub.bbmodel` keeping the group names,
+  and then delete the generator's half (the creature-model convention).
+- **Deliberately NOT in this change: multi-slot belts.** The roadmap had bundled
+  them in to share a save bump, but flowing cargo needed no save change, so the
+  bundling bought nothing; slot count is a throughput decision for play, like
+  powered belts. When wanted: `Belt` gains `std::array<ItemId, kBeltSlots>` as a
+  v23-style in-record tail-append gated on `version >= 26`, `kOldestLoadable`
+  unchanged, and `cameFrom` becomes per-slot.
 
 Farming (Aug 2026 — the island's last renewable, and the one with an
 economic job rather than flavour):
